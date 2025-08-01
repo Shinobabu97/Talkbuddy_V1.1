@@ -602,12 +602,9 @@ function App() {
             <p className="text-xl text-gray-300 mb-8">
               Join thousands of learners who've transformed their speaking skills with TalkBuddy
             </p>
-            <button className="px-8 py-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transform hover:scale-105 transition-all duration-200 font-medium text-lg shadow-lg">
-            <button className="px-8 py-4 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transform hover:scale-105 transition-all duration-200 font-medium text-lg shadow-lg">
             <button className="px-8 py-4 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transform hover:scale-105 transition-all duration-200 font-medium text-lg shadow-lg">
               Try Your First Conversation
             </button>
-          </div>
 
           <div className="border-t border-gray-800 pt-8">
             <div className="grid md:grid-cols-4 gap-8">
