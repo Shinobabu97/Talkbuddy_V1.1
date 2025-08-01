@@ -278,6 +278,40 @@ function App() {
         html {
           scroll-behavior: smooth;
         }
+        
+        .scratch-card {
+          position: relative;
+          min-height: 60px;
+          display: flex;
+          align-items: center;
+        }
+        
+        .scratch-overlay {
+          transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+          z-index: 2;
+        }
+        
+        .scratch-card:hover .scratch-overlay {
+          opacity: 0.8;
+          transform: scale(1.02);
+        }
+        
+        .scratch-card.revealed .scratch-overlay {
+          opacity: 0;
+          transform: scale(0.95);
+          pointer-events: none;
+        }
+        
+        .scratch-content {
+          opacity: 0;
+          transform: translateY(10px);
+          transition: opacity 0.8s ease-out 0.3s, transform 0.8s ease-out 0.3s;
+        }
+        
+        .scratch-card.revealed .scratch-content {
+          opacity: 1;
+          transform: translateY(0);
+        }
       `}</style>
 
       {/* Header */}
@@ -357,6 +391,30 @@ function App() {
                     ))}
                   </div>
                   <span className="font-medium">4.9/5 from 5,500+ users</span>
+                </div>
+              </div>
+
+              {/* Scratch-to-reveal motivational card */}
+              <div className="relative mt-8">
+                <div className="bg-gradient-to-r from-orange-100 to-amber-100 rounded-lg p-4 border border-orange-200 shadow-sm max-w-sm">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <div className="w-2 h-2 bg-orange-400 rounded-full animate-pulse"></div>
+                    <span className="text-xs text-orange-600 font-medium uppercase tracking-wide">Daily Motivation</span>
+                  </div>
+                  <div 
+                    className="scratch-card relative cursor-pointer select-none"
+                    onClick={(e) => {
+                      const target = e.currentTarget;
+                      target.classList.add('revealed');
+                    }}
+                  >
+                    <div className="scratch-overlay absolute inset-0 bg-gradient-to-r from-orange-300 to-amber-300 rounded flex items-center justify-center text-white text-sm font-medium">
+                      Scratch to reveal →
+                    </div>
+                    <div className="scratch-content text-gray-700 text-sm italic leading-relaxed">
+                      "Every expert was once a beginner. Every pro was once an amateur. Every icon was once an unknown."
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
