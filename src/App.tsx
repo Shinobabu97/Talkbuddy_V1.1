@@ -279,38 +279,13 @@ function App() {
           scroll-behavior: smooth;
         }
         
-        .scratch-card {
-          position: relative;
-          min-height: 60px;
-          display: flex;
-          align-items: center;
+        .scratch-card:hover .scratch-dot {
+          animation: subtleShimmer 2s ease-in-out infinite;
         }
         
-        .scratch-overlay {
-          transition: opacity 0.6s ease-out, transform 0.6s ease-out;
-          z-index: 2;
-        }
-        
-        .scratch-card:hover .scratch-overlay {
-          opacity: 0.8;
-          transform: scale(1.02);
-        }
-        
-        .scratch-card.revealed .scratch-overlay {
-          opacity: 0;
-          transform: scale(0.95);
-          pointer-events: none;
-        }
-        
-        .scratch-content {
-          opacity: 0;
-          transform: translateY(10px);
-          transition: opacity 0.8s ease-out 0.3s, transform 0.8s ease-out 0.3s;
-        }
-        
-        .scratch-card.revealed .scratch-content {
-          opacity: 1;
-          transform: translateY(0);
+        @keyframes subtleShimmer {
+          0%, 100% { opacity: 0.9; }
+          50% { opacity: 0.7; }
         }
       `}</style>
 
@@ -419,6 +394,67 @@ function App() {
               </div>
             </div>
 
+              {/* Interactive scratch-to-reveal card */}
+              <div className="relative mt-8">
+                <div className="bg-gradient-to-r from-orange-100 to-amber-100 rounded-lg p-4 border border-orange-200 shadow-sm max-w-sm">
+                  <div 
+                    className="scratch-card relative cursor-pointer select-none h-16 flex items-center justify-center"
+                    onMouseMove={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const x = e.clientX - rect.left;
+                      const y = e.clientY - rect.top;
+                      
+                      // Create scratch effect
+                      const scratchElements = e.currentTarget.querySelectorAll('.scratch-dot');
+                      scratchElements.forEach((dot: any) => {
+                        const dotRect = dot.getBoundingClientRect();
+                        const dotX = dotRect.left - rect.left + dotRect.width / 2;
+                        const dotY = dotRect.top - rect.top + dotRect.height / 2;
+                        const distance = Math.sqrt((x - dotX) ** 2 + (y - dotY) ** 2);
+                        
+                        if (distance < 30) {
+                          dot.style.opacity = '0';
+                        }
+                      });
+                    }}
+                    onClick={(e) => {
+                      // Reveal all on click
+                      const scratchElements = e.currentTarget.querySelectorAll('.scratch-dot');
+                      scratchElements.forEach((dot: any) => {
+                        dot.style.opacity = '0';
+                      });
+                    }}
+                  >
+                    {/* Scratch overlay with dots */}
+                    <div className="absolute inset-0 pointer-events-none">
+                      {Array.from({ length: 120 }).map((_, i) => (
+                        <div
+                          key={i}
+                          className="scratch-dot absolute w-3 h-3 bg-gradient-to-br from-orange-300 to-amber-300 rounded-full transition-opacity duration-300"
+                          style={{
+                            left: `${(i % 12) * 8.33}%`,
+                            top: `${Math.floor(i / 12) * 10}%`,
+                            opacity: 0.9
+                          }}
+                        />
+                      ))}
+                    </div>
+                    
+                    {/* Hidden content that gets revealed */}
+                    <div className="relative z-10 text-gray-700 text-sm italic text-center leading-relaxed px-2">
+                      {Math.random() > 0.5 
+                        ? "Making mistakes? Perfect! That's how you learn." 
+                        : "Sounding silly? Your AI buddy has heard it all."
+                      }
+                    </div>
+                    
+                    {/* Scratch instruction overlay */}
+                    <div className="absolute inset-0 flex items-center justify-center text-orange-600 text-sm font-medium pointer-events-none">
+                      Scratch here →
+                    </div>
+                  </div>
+                </div>
+              </div>
             <div className="relative">
               <div className="absolute inset-0 bg-gradient-to-r from-orange-200 to-orange-300 rounded-full transform scale-110 soft-glow"></div>
               <div className="relative bg-white rounded-2xl p-8 shadow-2xl">
