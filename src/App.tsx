@@ -385,7 +385,7 @@ function App() {
       </section>
 
       {/* Social Proof */}
-      <section className="py-12 bg-white section-transition">
+      <section className="py-12 bg-gray-200/80 backdrop-blur-sm section-transition">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <p className="text-center text-gray-600 mb-8">
             More than 5,500+ language learners trust TalkBuddy
@@ -401,7 +401,7 @@ function App() {
       </section>
 
       {/* Benefits Section */}
-      <section id="benefits" className="py-20 section-transition relative bg-gray-50">
+      <section id="benefits" className="py-20 section-transition relative subtle-bg-shift">
         <div className="absolute inset-0 opacity-5">
           <div className="absolute inset-0" style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23f97316' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
@@ -423,7 +423,7 @@ function App() {
               return (
                 <div 
                   key={index}
-                  className="bg-white/95 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 border border-orange-200 hover:border-orange-300 group hover:bg-orange-50 stagger-item section-transition"
+                  className="bg-gray-100/90 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 border border-orange-400 hover:border-orange-500 group hover:bg-orange-200/80 stagger-item section-transition"
                 >
                   <div className="mb-4">
                     <Icon className="h-10 w-10 text-orange-800 mb-3 group-hover:text-orange-900 transition-colors duration-300" />
@@ -442,7 +442,7 @@ function App() {
       </section>
 
       {/* How It Works */}
-      <section id="how-it-works" className="py-20 bg-gray-25 section-transition relative">
+      <section id="how-it-works" className="py-20 bg-gray-200/90 backdrop-blur-sm section-transition relative">
         <div className="absolute inset-0 opacity-5">
           <div className="absolute inset-0" style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23f97316' fill-opacity='0.1' fill-rule='evenodd'%3E%3Cpath d='m0 40l40-40h-40v40zm40 0v-40h-40l40 40z'/%3E%3C/g%3E%3C/svg%3E")`,
@@ -462,7 +462,7 @@ function App() {
             {steps.map((step, index) => (
               <div 
                 key={index}
-                className="bg-white/95 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 border border-orange-200 hover:border-orange-300 group hover:bg-orange-50 stagger-item section-transition"
+                className="bg-gray-100/90 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 border border-orange-400 hover:border-orange-500 group hover:bg-orange-200/80 stagger-item section-transition"
               >
                 <div className="flex flex-col lg:flex-row items-center gap-8">
                   <div className="flex-shrink-0">
@@ -486,7 +486,7 @@ function App() {
       </section>
 
       {/* Testimonials */}
-      <section id="testimonials" className="py-20 section-transition bg-gray-50 relative">
+      <section id="testimonials" className="py-20 section-transition bg-gradient-to-b from-amber-25 to-orange-25 relative">
         <div className="absolute inset-0 opacity-5">
           <div className="absolute inset-0" style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23f97316' fill-opacity='0.1'%3E%3Cpath d='M0 0h40v40H0V0zm40 40h40v40H40V40z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
@@ -509,7 +509,7 @@ function App() {
             >
               {testimonials.map((testimonial, index) => (
                 <div key={index} className="w-full flex-shrink-0 px-4">
-                  <div className="bg-white/95 backdrop-blur-sm rounded-xl p-8 shadow-lg max-w-2xl mx-auto border border-orange-200">
+                  <div className="bg-gray-100/90 backdrop-blur-sm rounded-xl p-8 shadow-lg max-w-2xl mx-auto border border-orange-400">
                     <div className="flex mb-4">
                       {[...Array(testimonial.rating)].map((_, i) => (
                         <Star key={i} className="h-5 w-5 text-yellow-600 fill-current" />
@@ -547,7 +547,7 @@ function App() {
       </section>
 
       {/* FAQ Section */}
-      <section id="faq" className="py-20 bg-gray-25 section-transition relative">
+      <section id="faq" className="py-20 bg-gray-200/90 backdrop-blur-sm section-transition relative">
         <div className="absolute inset-0 opacity-5">
           <div className="absolute inset-0" style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23f97316' fill-opacity='0.1' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='3'/%3E%3Ccircle cx='13' cy='13' r='3'/%3E%3C/g%3E%3C/svg%3E")`,
@@ -565,10 +565,10 @@ function App() {
 
           <div className="space-y-4">
             {faqs.map((faq, index) => (
-              <div key={index} className="bg-white/95 backdrop-blur-sm rounded-lg shadow-md border border-orange-200 hover:border-orange-300 transition-colors duration-200">
+              <div key={index} className="bg-gray-100/90 backdrop-blur-sm rounded-lg shadow-md border border-orange-400 hover:border-orange-500 transition-colors duration-200">
                 <button
                   onClick={() => toggleFAQ(index)}
-                  className="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-orange-50 transition-colors duration-200"
+                  className="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-orange-200 transition-colors duration-200"
                 >
                   <span className="font-semibold text-gray-800 pr-4">
                     {faq.question}
