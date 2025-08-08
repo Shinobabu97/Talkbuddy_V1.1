@@ -26,6 +26,7 @@ function App() {
   const [openFAQ, setOpenFAQ] = useState<number | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentTestimonial, setCurrentTestimonial] = useState(0);
+  const [isSigningUp, setIsSigningUp] = useState(false);
 
   const benefits = [
     {
@@ -157,7 +158,7 @@ function App() {
       
       if (event === 'SIGNED_UP') {
         console.log('User signed up - preventing dashboard and showing login modal');
-        setPreventDashboard(true);
+        setIsSigningUp(true);
         setUser(null);
         setAuthModalMode('login');
         setShowSuccessMessage(true);
@@ -167,20 +168,24 @@ function App() {
         await supabase.auth.signOut();
         
       } else if (event === 'SIGNED_IN' && session?.user) {
-        console.log('User signed in normally');
-        setPreventDashboard(false);
-        setUser({
-          id: session.user.id,
-          email: session.user.email!,
-          user_metadata: session.user.user_metadata
-        });
-        setAuthModalOpen(false);
-        setShowSuccessMessage(false);
+        if (isSigningUp) {
+          console.log('User signed in after signup - ignoring');
+          // Don't set user, keep them on hero page
+        } else {
+          console.log('User signed in normally');
+          setUser({
+            id: session.user.id,
+            email: session.user.email!,
+            user_metadata: session.user.user_metadata
+          });
+          setAuthModalOpen(false);
+          setShowSuccessMessage(false);
+        }
         
       } else if (event === 'SIGNED_OUT') {
         // User signed out
         setUser(null);
-        setPreventDashboard(false);
+        setIsSigningUp(false);
         setShowSuccessMessage(false);
       }
       
@@ -255,6 +260,7 @@ function App() {
   const handleAuthModal = (mode: 'login' | 'signup') => {
     setAuthModalMode(mode);
     setShowSuccessMessage(false);
+    setIsSigningUp(false);
     setAuthModalOpen(true);
   };
 
