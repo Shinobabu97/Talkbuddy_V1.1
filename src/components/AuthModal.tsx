@@ -67,26 +67,39 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     
     setCheckingEmail(true);
     try {
-      // Try to initiate password reset - this only works if user exists
-      const { error } = await supabase.auth.resetPasswordForEmail(
-        email,
-        { redirectTo: 'https://example.com/dummy' } // Dummy redirect
-      );
+      // Try to sign in with a known invalid password
+      // This will give us different error messages for existing vs non-existing users
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: 'invalid-password-check-123456789'
+      });
       
-      // If no error, user exists
-      if (!error) {
+      if (error) {
+        // Check the error message to determine if user exists
+        if (error.message.includes('Invalid login credentials') || 
+            error.message.includes('Email not confirmed') ||
+            error.message.includes('Invalid email or password')) {
+          // User exists but password is wrong (which is expected)
+          setEmailExists(true);
+          setMessage({
+            type: 'error',
+            text: 'An account with this email already exists. Please try logging in instead.'
+          });
+        } else {
+          // User doesn't exist or other error
+          setEmailExists(false);
+          setMessage(null);
+        }
+      } else {
+        // This shouldn't happen with our invalid password, but just in case
         setEmailExists(true);
         setMessage({
           type: 'error',
           text: 'An account with this email already exists. Please try logging in instead.'
         });
-      } else {
-        // User doesn't exist
-        setEmailExists(false);
-        setMessage(null);
       }
     } catch (error) {
-      // If there's an error, assume user doesn't exist
+      // If there's a network error or other issue, assume user doesn't exist
       setEmailExists(false);
       setMessage(null);
     } finally {
