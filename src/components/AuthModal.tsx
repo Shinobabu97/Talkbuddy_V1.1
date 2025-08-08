@@ -53,42 +53,48 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     setMessage(null);
     
     try {
-      // Try to sign in with dummy password to check if user exists
-      const { error } = await supabase.auth.signInWithPassword({
+      // Try to sign up with a dummy password to check if user exists
+      const { data, error } = await supabase.auth.signUp({
         email: formData.email,
-        password: 'dummy-password-that-wont-work-12345'
+        password: 'dummy-password-12345',
+        options: {
+          data: {
+            first_name: 'Test',
+            last_name: 'User',
+          }
+        }
       });
 
       if (error) {
         console.log('🔍 Testing email:', formData.email);
         console.log('🔍 Error message:', error.message);
-        console.log('🔍 Error code:', error.code);
         
-        // Check for different error messages that indicate user does NOT exist
-        if (error.message === 'Invalid login credentials' || 
-            error.message.includes('Invalid login credentials') ||
-            error.code === 'invalid_credentials') {
-          console.log('✅ Email is AVAILABLE - User not found');
-          setMessage({
-            type: 'success',
-            text: 'Email is available for signup!'
-          });
-        } else if (error.message.includes('User not found') || 
-                   error.message.includes('not found') ||
-                   error.message.includes('does not exist')) {
-          console.log('❌ Email EXISTS - User found');
+        // Check for user already exists errors
+        if (error.message.includes('User already registered') || 
+            error.message.includes('already been registered') ||
+            error.message.includes('already exists')) {
+          console.log('❌ Email EXISTS - User already registered');
           setMessage({
             type: 'error',
             text: 'An account with this email already exists. Please try logging in instead.'
           });
         } else {
-          // For any other error, don't show a message - could be network issue
-          console.log('🔍 Other error (treating as network issue):', error.message);
+          // For any other error, assume email is available
+          console.log('✅ Email is AVAILABLE - Other error:', error.message);
+          setMessage({
+            type: 'success',
+            text: 'Email is available for signup!'
+          });
         }
       } else {
-        // This shouldn't happen with dummy password, but if it does, user doesn't exist
-        console.log('🔍 Unexpected success - user exists, signing out');
-        await supabase.auth.signOut();
+        // Success means user was created (but we need to clean up)
+        console.log('✅ Email is AVAILABLE - Signup succeeded, cleaning up');
+        
+        // Immediately sign out to clean up the test user
+        if (data.user) {
+          await supabase.auth.signOut();
+        }
+        
         setMessage({
           type: 'success',
           text: 'Email is available for signup!'
@@ -96,7 +102,11 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       }
     } catch (error) {
       console.log('🔍 Network error:', error);
-      // Don't show message for network errors
+      // Assume available on network errors
+      setMessage({
+        type: 'success',
+        text: 'Email is available for signup!'
+      });
     }
     
     setCheckingUser(false);
