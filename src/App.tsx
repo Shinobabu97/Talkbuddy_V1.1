@@ -151,15 +151,16 @@ function App() {
       }
 
     // Listen for auth changes
-      
-            email: session.user.email!,
-            user_metadata: session.user.user_metadata
-          });
-          setAuthModalOpen(false);
-          setShowSuccessMessage(false);
-        }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        setUser({
+          id: session.user.id,
+          email: session.user.email!,
+          user_metadata: session.user.user_metadata
+        });
+        setAuthModalOpen(false);
+        setShowSuccessMessage(false);
       } else if (event === 'SIGNED_OUT') {
-        // User signed out
         setUser(null);
         setIsSigningUp(false);
         setShowSuccessMessage(false);
