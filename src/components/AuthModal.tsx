@@ -40,13 +40,16 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
 
   // Check if user exists when email field loses focus (onBlur)
   const handleEmailBlur = async () => {
-    if (!formData.email || mode !== 'signup') return;
+    if (!formData.email || mode !== 'signup' || checkingUser) return;
     
     // Only check if email looks valid
     if (formData.email.includes('@') && formData.email.includes('.')) {
       setCheckingUser(true);
       
       try {
+        // Clear any existing messages first
+        setMessage(null);
+        
         // Try to sign in with the email and a dummy password to check if user exists
         const { error } = await supabase.auth.signInWithPassword({
           email: formData.email,
@@ -54,41 +57,20 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         });
         
         // If we get invalid_credentials, it means the user exists but password is wrong
-        // If we get user_not_found or similar, it means user doesn't exist
+        // If we get other errors, it means user doesn't exist
         if (error?.message === 'Invalid login credentials') {
           // User exists (email found but password wrong)
           setMessage({
             type: 'error',
             text: 'An account with this email already exists. Please try logging in instead.'
           });
-        } else if (error?.message?.includes('user_not_found') || 
-                   error?.message?.includes('not found') ||
-                   error?.message?.includes('does not exist')) {
-          // User doesn't exist - clear any existing error messages
-          setMessage(prev => {
-            if (prev?.text?.includes('account with this email already exists')) {
-              return null;
-            }
-            return prev;
-          });
         } else {
-          // Other errors (network, etc.) - don't block signup
-          setMessage(prev => {
-            if (prev?.text?.includes('account with this email already exists')) {
-              return null;
-            }
-            return prev;
-          });
+          // User doesn't exist or other errors - allow signup
+          // Message is already cleared above
         }
       } catch (error) {
-        // Network or other errors - clear any existing duplicate user error messages
+        // Network or other errors - allow signup
         console.warn('Error checking user existence:', error);
-        setMessage(prev => {
-          if (prev?.text?.includes('account with this email already exists')) {
-            return null;
-          }
-          return prev;
-        });
       } finally {
         setCheckingUser(false);
       }
@@ -100,14 +82,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       ...prev,
       [e.target.name]: e.target.value
     }));
-    
-    // Clear any existing messages when user types
-    setMessage(prev => {
-      if (prev && !prev.text.includes('account with this email already exists')) {
-        return null;
-      }
-      return prev;
-    });
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
