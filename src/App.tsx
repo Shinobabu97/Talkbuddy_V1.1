@@ -185,13 +185,13 @@ function App() {
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (entry.isIntersecting) {
-          entry.target.classList.add('animate-in');
+          entry.target.classList.add('fade-in');
           
           // Add staggered animation to child elements with delay
           const staggerElements = entry.target.querySelectorAll('.stagger-animate');
           staggerElements.forEach((element, index) => {
             setTimeout(() => {
-              element.classList.add('animate-in');
+              element.classList.add('fade-in');
             }, index * 200);
           });
         }
@@ -233,34 +233,33 @@ function App() {
       <style jsx>{`
         .scroll-animate {
           opacity: 1;
-          transform: translateY(0) scale(1);
-          transition: all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+          transform: translateY(0);
+          transition: all 0.8s ease-out;
         }
         
-        .scroll-animate:not(.animate-in) {
-          opacity: 0;
-          transform: translateY(40px) scale(0.96);
-        }
-        
-        .scroll-animate.animate-in {
-          opacity: 1;
-          transform: translateY(0) scale(1);
+        .scroll-animate.fade-in {
+          animation: fadeInUp 0.8s ease-out forwards;
         }
         
         .stagger-animate {
           opacity: 1;
-          transform: translateY(0) scale(1);
-          transition: all 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+          transform: translateY(0);
+          transition: all 0.6s ease-out;
         }
         
-        .stagger-animate:not(.animate-in) {
-          opacity: 0;
-          transform: translateY(30px) scale(0.95);
+        .stagger-animate.fade-in {
+          animation: fadeInUp 0.6s ease-out forwards;
         }
         
-        .stagger-animate.animate-in {
-          opacity: 1;
-          transform: translateY(0) scale(1);
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(30px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
         
         .float-animation {
@@ -384,7 +383,7 @@ function App() {
       </header>
 
       {/* Hero Section */}
-      <section id="home" className="relative overflow-hidden py-20 lg:py-28 scroll-animate subtle-bg-shift">
+      <section id="home" className="relative overflow-hidden py-20 lg:py-28 subtle-bg-shift">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className="space-y-8">
@@ -442,7 +441,7 @@ function App() {
       </section>
 
       {/* Social Proof */}
-      <section className="py-12 bg-white/80 backdrop-blur-sm scroll-animate">
+      <section className="py-12 bg-white/80 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <p className="text-center text-gray-600 mb-8">
             More than 5,500+ language learners trust TalkBuddy
@@ -458,7 +457,7 @@ function App() {
       </section>
 
       {/* Benefits Section */}
-      <section id="benefits" className="py-20 scroll-animate relative subtle-bg-shift">
+      <section id="benefits" className="py-20 relative subtle-bg-shift scroll-animate">
         <div className="absolute inset-0 opacity-5">
           <div className="absolute inset-0" style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23f97316' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
@@ -499,7 +498,7 @@ function App() {
       </section>
 
       {/* How It Works */}
-      <section id="how-it-works" className="py-20 bg-white/90 backdrop-blur-sm scroll-animate relative">
+      <section id="how-it-works" className="py-20 bg-white/90 backdrop-blur-sm relative scroll-animate">
         <div className="absolute inset-0 opacity-5">
           <div className="absolute inset-0" style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23f97316' fill-opacity='0.1' fill-rule='evenodd'%3E%3Cpath d='m0 40l40-40h-40v40zm40 0v-40h-40l40 40z'/%3E%3C/g%3E%3C/svg%3E")`,
@@ -543,7 +542,7 @@ function App() {
       </section>
 
       {/* Testimonials */}
-      <section id="testimonials" className="py-20 scroll-animate bg-gradient-to-b from-amber-50 to-orange-50 relative">
+      <section id="testimonials" className="py-20 bg-gradient-to-b from-amber-50 to-orange-50 relative scroll-animate">
         <div className="absolute inset-0 opacity-5">
           <div className="absolute inset-0" style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23f97316' fill-opacity='0.1'%3E%3Cpath d='M0 0h40v40H0V0zm40 40h40v40H40V40z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
@@ -604,7 +603,7 @@ function App() {
       </section>
 
       {/* FAQ Section */}
-      <section id="faq" className="py-20 bg-white/90 backdrop-blur-sm scroll-animate relative">
+      <section id="faq" className="py-20 bg-white/90 backdrop-blur-sm relative scroll-animate">
         <div className="absolute inset-0 opacity-5">
           <div className="absolute inset-0" style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23f97316' fill-opacity='0.1' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='3'/%3E%3Ccircle cx='13' cy='13' r='3'/%3E%3C/g%3E%3C/svg%3E")`,
