@@ -50,8 +50,102 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       setMessage(null); // Clear any existing messages
       
       try {
-        // Use signInWithPassword with a known wrong password to check if user exists
-        const { data, error } = await supabase.auth.signInWithPassword({
+        // Method 1: Try to reset password - this will tell us if user exists
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+          formData.email,
+          {
+            redirectTo: `${window.location.origin}/reset-password`,
+          }
+        );
+        
+        console.log('Password reset attempt:', { resetError }); // Debug log
+        
+        if (!resetError) {
+          // No error means user exists and reset email would be sent
+          console.log('User EXISTS in auth table - reset email would be sent'); // Debug log
+          setMessage({
+            type: 'error',
+            text: 'An account with this email already exists. Please try logging in instead.'
+          });
+        } else {
+          // Check the specific error message
+          const errorMessage = resetError.message.toLowerCase();
+          console.log('Reset error message:', errorMessage); // Debug log
+          
+          if (errorMessage.includes('user not found') || 
+              errorMessage.includes('email not found') ||
+              errorMessage.includes('no user found') ||
+              errorMessage.includes('invalid email')) {
+            // User doesn't exist - good for signup
+            console.log('User DOES NOT EXIST in auth table - email available for signup'); // Debug log
+            setMessage(null);
+          } else {
+            // Other error - might be rate limiting or network issue, don't block signup
+            console.log('Other reset error (not blocking signup):', resetError.message);
+            setMessage(null);
+          }
+        }
+      } catch (error) {
+        console.log('Network/unexpected error during reset check:', error);
+        setMessage(null);
+      }
+      
+      // If reset method is unreliable, try alternative method
+      if (!message) {
+        try {
+          // Method 2: Try sign in with obviously wrong password
+          const { error: signInError } = await supabase.auth.signInWithPassword({
+            email: formData.email,
+            password: 'definitely-wrong-password-123456789'
+          });
+          
+          console.log('Sign in test error:', signInError?.message); // Debug log
+          
+          if (signInError) {
+            const errorMsg = signInError.message.toLowerCase();
+            
+            if (errorMsg.includes('invalid login credentials') || 
+                errorMsg.includes('wrong password') ||
+                errorMsg.includes('incorrect password')) {
+              // User exists but password is wrong
+              console.log('CONFIRMED: User EXISTS in auth table (wrong password error)'); // Debug log
+              setMessage({
+                type: 'error',
+                text: 'An account with this email already exists. Please try logging in instead.'
+              });
+            } else if (errorMsg.includes('user not found') || 
+                       errorMsg.includes('email not found') ||
+                       errorMsg.includes('no user found')) {
+              // User doesn't exist
+              console.log('CONFIRMED: User DOES NOT EXIST in auth table'); // Debug log
+              setMessage(null);
+            } else {
+              // Other error - don't block signup
+              console.log('Other sign in error (not blocking):', signInError.message);
+              setMessage(null);
+            }
+          } else {
+            // This shouldn't happen with wrong password, but if it does, don't block
+            console.log('Unexpected success with wrong password');
+            setMessage(null);
+          }
+        } catch (error) {
+          console.log('Network error during sign in test:', error);
+          setMessage(null);
+        }
+      }
+      
+      setCheckingUser(false);
+    } else {
+      // Invalid email format - clear any existing messages
+      setMessage(null);
+    }
+  };
+
+  // Remove the alternative method since we're using the main one
+  const handleEmailBlurAlternative = async () => {
+    // This method is no longer used
+  };
           email: formData.email,
           password: 'intentionally-wrong-password-12345'
         });
