@@ -35,6 +35,9 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       setShowPassword(false);
       setLoading(false);
       setCheckingUser(false);
+    } else {
+      // Clear message when modal opens
+      setMessage(null);
     }
   }, [isOpen]);
 
