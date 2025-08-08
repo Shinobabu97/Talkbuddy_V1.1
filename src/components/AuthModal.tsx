@@ -13,6 +13,8 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [emailExists, setEmailExists] = useState<boolean | null>(null);
+  const [checkingEmail, setCheckingEmail] = useState(false);
   
   const [formData, setFormData] = useState({
     firstName: '',
@@ -38,6 +40,11 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     }
   }, [isOpen]);
 
+  const checkEmailExists = async () => {
+    // Implementation for checking email exists
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData(prev => ({
       ...prev,
       [e.target.name]: e.target.value
@@ -47,9 +54,18 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     if (e.target.name === 'email' && mode === 'signup') {
       setEmailExists(null); // Reset previous check
       if (e.target.value && e.target.value.includes('@')) {
-    setCheckingEmail(true);
-    try {
+        setCheckingEmail(true);
+        try {
+          // Email checking logic would go here
+        } catch (error) {
+          // Error handling
+        } finally {
+          setCheckingEmail(false);
+        }
+      }
+    }
   };
+
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -92,6 +108,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       setLoading(false);
     }
   };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
