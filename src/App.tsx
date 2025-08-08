@@ -446,16 +446,16 @@ function App() {
       </section>
 
       {/* Social Proof */}
-      <section className="py-16 bg-white/80 backdrop-blur-sm mb-0">
+      <section className="py-16 bg-white/80 backdrop-blur-sm mb-0 scroll-animate">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
-          <p className="text-center text-gray-600 mb-8">
+          <p className="text-center text-gray-600 mb-8 stagger-animate">
             More than 5,500+ language learners trust TalkBuddy
           </p>
           <div className="flex flex-wrap justify-center items-center gap-8 opacity-60">
-            <div className="text-2xl font-bold text-gray-700">Working Professionals</div>
-            <div className="text-2xl font-bold text-gray-700">University Students</div>
-            <div className="text-2xl font-bold text-gray-700">Language Enthusiasts</div>
-            <div className="text-2xl font-bold text-gray-700">International Teams</div>
+            <div className="text-2xl font-bold text-gray-700 stagger-animate gentle-bounce">Working Professionals</div>
+            <div className="text-2xl font-bold text-gray-700 stagger-animate gentle-bounce" style={{ animationDelay: '0.5s' }}>University Students</div>
+            <div className="text-2xl font-bold text-gray-700 stagger-animate gentle-bounce" style={{ animationDelay: '1s' }}>Language Enthusiasts</div>
+            <div className="text-2xl font-bold text-gray-700 stagger-animate gentle-bounce" style={{ animationDelay: '1.5s' }}>International Teams</div>
             
           </div>
         </div>
