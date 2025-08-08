@@ -40,7 +40,7 @@ export default function Dashboard({ user }: DashboardProps) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-100 to-orange-100">
       {/* Header */}
-      <header className="bg-white/95 backdrop-blur-sm border-b border-amber-300">
+      <header className="bg-orange-50/95 backdrop-blur-sm border-b border-amber-300">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center space-x-2">
@@ -79,7 +79,7 @@ export default function Dashboard({ user }: DashboardProps) {
           {mockStats.map((stat, index) => {
             const Icon = stat.icon;
             return (
-              <div key={index} className="bg-white rounded-xl p-6 shadow-lg border border-orange-300">
+              <div key={index} className="bg-orange-50 rounded-xl p-6 shadow-lg border border-orange-300">
                 <div className="flex items-center justify-between mb-2">
                   <Icon className={`h-6 w-6 ${stat.color}`} />
                 </div>
@@ -98,7 +98,7 @@ export default function Dashboard({ user }: DashboardProps) {
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Quick Start */}
           <div className="lg:col-span-2">
-            <div className="bg-white rounded-xl p-6 shadow-lg border border-orange-300 mb-6">
+            <div className="bg-orange-50 rounded-xl p-6 shadow-lg border border-orange-300 mb-6">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">
                 Quick Start
               </h2>
@@ -126,7 +126,7 @@ export default function Dashboard({ user }: DashboardProps) {
             </div>
 
             {/* Recent Topics */}
-            <div className="bg-white rounded-xl p-6 shadow-lg border border-orange-300">
+            <div className="bg-orange-50 rounded-xl p-6 shadow-lg border border-orange-300">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">
                 Recent Topics
               </h2>
@@ -154,7 +154,7 @@ export default function Dashboard({ user }: DashboardProps) {
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Progress Chart */}
-            <div className="bg-white rounded-xl p-6 shadow-lg border border-orange-300">
+            <div className="bg-orange-50 rounded-xl p-6 shadow-lg border border-orange-300">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
                 Weekly Progress
               </h3>
@@ -180,7 +180,7 @@ export default function Dashboard({ user }: DashboardProps) {
             </div>
 
             {/* Achievements */}
-            <div className="bg-white rounded-xl p-6 shadow-lg border border-orange-300">
+            <div className="bg-orange-50 rounded-xl p-6 shadow-lg border border-orange-300">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
                 Recent Achievements
               </h3>
