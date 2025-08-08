@@ -37,7 +37,13 @@
 }
 
 .subtle-bg-shift {
-  background: linear-gradient(45deg, #fef7ed 0%, #fff7ed 50%, #fef7ed 100%);
+  background: linear-gradient(45deg, #fed7aa 0%, #fdba74 50%, #fed7aa 100%);
+  background-size: 200% 200%;
+  animation: subtleShift 20s ease-in-out infinite;
+}
+
+.subtle-bg-shift-dark {
+  background: linear-gradient(45deg, #fed7aa 0%, #fdba74 50%, #fed7aa 100%);
   background-size: 200% 200%;
   animation: subtleShift 20s ease-in-out infinite;
 }

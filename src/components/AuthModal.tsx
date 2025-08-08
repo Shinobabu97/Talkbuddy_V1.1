@@ -150,8 +150,8 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
         {message && (
           <div className={`mb-4 p-3 rounded-lg ${
             message.type === 'success' 
-              ? 'bg-green-50 text-green-700 border border-green-200' 
-              : 'bg-red-50 text-red-700 border border-red-200'
+              ? 'bg-green-100 text-green-800 border border-green-300' 
+              : 'bg-red-100 text-red-800 border border-red-300'
           }`}>
             {message.text}
           </div>
