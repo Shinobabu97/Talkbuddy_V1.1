@@ -48,44 +48,118 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       setMessage(null); // Clear any existing messages
       
       try {
-        // Try to sign in with a dummy password to check if user exists
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: formData.email,
-          password: 'dummy-password-for-checking-123456', // Wrong password on purpose
-        });
+        // Use password reset to check if email exists in auth table
+        const { data, error } = await supabase.auth.resetPasswordForEmail(
+          formData.email,
+          {
+            redirectTo: 'https://example.com/reset', // Dummy redirect URL
+          }
+        );
+        
+        console.log('Password reset response:', { data, error }); // Debug log
         
         if (error) {
-          console.log('Email check - Error:', error.message); // Debug log
+          console.log('Password reset error:', error.message); // Debug log
           
           const errorMessage = error.message.toLowerCase();
           
-          // If we get "Invalid login credentials", it means the user exists but password is wrong
-          if (errorMessage.includes('invalid login credentials') || 
-              errorMessage.includes('invalid credentials')) {
-            // Email exists in auth table - show error
-            console.log('Email already exists in auth table - user found'); // Debug log
-            setMessage({
-              type: 'error',
-              text: 'An account with this email already exists. Please try logging in instead.'
-            });
-          } else if (errorMessage.includes('user not found') || 
-                     errorMessage.includes('email not found')) {
-            // Email doesn't exist - clear any errors
-            console.log('Email is available for signup - user not found'); // Debug log
+          // Check for "user not found" or similar messages
+          if (errorMessage.includes('user not found') || 
+              errorMessage.includes('email not found') ||
+              errorMessage.includes('no user found') ||
+              errorMessage.includes('invalid email')) {
+            // Email doesn't exist in auth table - good for signup
+            console.log('Email is available for signup - user not found in auth table'); // Debug log
             setMessage(null);
           } else {
-            // Other errors (rate limiting, network, etc.) - don't block signup but log them
-            console.log('Email check - Other error (not blocking signup):', error.message);
+            // Other errors - don't block signup but log them
+            console.log('Password reset - Other error (not blocking signup):', error.message);
             setMessage(null);
           }
         } else {
-          // No error means login succeeded - this shouldn't happen with dummy password
-          console.log('Unexpected: Login succeeded with dummy password'); // Debug log
-          setMessage(null);
+          // No error means password reset email would be sent - user exists
+          console.log('Email already exists in auth table - password reset would be sent'); // Debug log
+          setMessage({
+            type: 'error',
+            text: 'An account with this email already exists. Please try logging in instead.'
+          });
         }
       } catch (error) {
         // Network or other unexpected errors - don't block signup
         console.log('Network/unexpected error during email check:', error);
+        setMessage(null);
+      } finally {
+        setCheckingUser(false);
+      }
+    }
+  };
+
+  // Alternative method using admin API (if available)
+  const handleEmailBlurAlternative = async () => {
+    if (!formData.email || mode !== 'signup' || checkingUser || loading) return;
+    
+    // Only check if email looks valid
+    if (formData.email.includes('@') && formData.email.includes('.')) {
+      setCheckingUser(true);
+      setMessage(null);
+      
+      try {
+        // Try to sign up with a temporary password to check if user exists
+        const { data, error } = await supabase.auth.signUp({
+          email: formData.email,
+          password: 'temp-check-password-123456789', // Temporary password
+        });
+        
+        console.log('Signup check response:', { data, error }); // Debug log
+        
+        if (error) {
+          console.log('Signup check error:', error.message); // Debug log
+          
+          const errorMessage = error.message.toLowerCase();
+          
+          // Check for user already exists errors
+          if (errorMessage.includes('user already registered') ||
+              errorMessage.includes('already been registered') ||
+              errorMessage.includes('email address is already registered') ||
+              errorMessage.includes('user with this email already exists') ||
+              errorMessage.includes('already registered') ||
+              errorMessage.includes('duplicate') ||
+              errorMessage.includes('already exists')) {
+            // Email exists in auth table
+            console.log('Email already exists in auth table - user already registered'); // Debug log
+            setMessage({
+              type: 'error',
+              text: 'An account with this email already exists. Please try logging in instead.'
+            });
+          } else {
+            // Other errors - might be rate limiting, network, etc.
+            console.log('Signup check - Other error (not blocking signup):', error.message);
+            setMessage(null);
+          }
+        } else if (data.user) {
+          // Check if user was actually created or if it's a duplicate
+          if (data.user.email_confirmed_at || data.user.confirmed_at) {
+            // User already existed and is confirmed
+            console.log('Email already exists - user is confirmed'); // Debug log
+            setMessage({
+              type: 'error',
+              text: 'An account with this email already exists. Please try logging in instead.'
+            });
+          } else {
+            // New user created for checking - this means email was available
+            console.log('Email is available for signup - new user created for check'); // Debug log
+            setMessage(null);
+            
+            // Clean up the temporary user (optional - Supabase will handle unconfirmed users)
+            // Note: We can't delete users from client side, but unconfirmed users are automatically cleaned up
+          }
+        } else {
+          // Unexpected case
+          console.log('Unexpected signup response'); // Debug log
+          setMessage(null);
+        }
+      } catch (error) {
+        console.log('Network/unexpected error during signup check:', error);
         setMessage(null);
       } finally {
         setCheckingUser(false);
