@@ -67,13 +67,18 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         return;
       }
 
-      // Try a different approach - attempt password reset to check if user exists
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(formData.email, {
-        redirectTo: `${window.location.origin}/fake-redirect-${Date.now()}`,
+      // First, check if user exists by attempting to sign in with a dummy password
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: 'dummy-password-check-12345'
       });
 
-      // If no error on password reset, user exists
-      if (!resetError) {
+      // If we get "Invalid login credentials", user exists but wrong password
+      // If we get "Invalid login credentials" or "Email not confirmed", user exists
+      if (signInError && (
+        signInError.message.includes('Invalid login credentials') ||
+        signInError.message.includes('Email not confirmed')
+      )) {
         setMessage({
           type: 'error',
           text: 'An account with this email already exists. Please try logging in instead.'
@@ -81,7 +86,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         return;
       }
 
-      // If we get here, user likely doesn't exist, proceed with signup
+      // If we get here, user doesn't exist, proceed with signup
       const { data, error } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -95,20 +100,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
 
       if (error) throw error;
 
-      // Check if user was actually created or already exists
-      if (data.user && data.user.email_confirmed_at !== null) {
-        // User already exists and is confirmed
-        setMessage({
-          type: 'success',
-          text: 'Account created successfully! Please check your email to confirm your account before signing in.'
-        });
-      } else {
-        // User already exists and is confirmed
-        setMessage({
-          type: 'success',
-          text: 'Account created successfully! Please check your email to confirm your account before signing in.'
-        });
-      }
       // New user created successfully
       setMessage({
         type: 'success',
