@@ -607,7 +607,6 @@ function App() {
           </div>
 
           <div className="border-t border-gray-800 pt-8">
-          <div className="border-t border-gray-700 pt-8">
             <div className="grid md:grid-cols-4 gap-8">
               <div className="md:col-span-2">
                 <div className="flex items-center space-x-2 mb-4">
@@ -641,11 +640,9 @@ function App() {
             </div>
             
             <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-            <div className="border-t border-gray-700 mt-8 pt-8 text-center text-gray-400">
               <p>&copy; 2025 TalkBuddy. All rights reserved. Built for language learners who want to speak with confidence.</p>
             </div>
           </div>
-        </div>
       </footer>
 
       <AuthModal
@@ -659,6 +656,4 @@ function App() {
       />
     </div>
   );
-}
-
 export default App;
