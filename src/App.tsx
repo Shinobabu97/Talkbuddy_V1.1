@@ -178,16 +178,28 @@ function App() {
 
   useEffect(() => {
     const observerOptions = {
-      threshold: 0.2,
-      rootMargin: '0px 0px -100px 0px'
+      threshold: 0.1,
+      rootMargin: '0px 0px -50px 0px'
     };
 
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (entry.isIntersecting) {
           entry.target.classList.add('fade-in');
+          
+          const staggerElements = entry.target.querySelectorAll('.stagger-animate');
+          staggerElements.forEach((element, index) => {
+            setTimeout(() => {
+              element.classList.add('fade-in');
+            }, index * 150);
+          });
         } else {
           entry.target.classList.remove('fade-in');
+          
+          const staggerElements = entry.target.querySelectorAll('.stagger-animate');
+          staggerElements.forEach((element) => {
+            element.classList.remove('fade-in');
+          });
         }
       });
     }, observerOptions);
@@ -267,14 +279,6 @@ function App() {
           animation: gentleBounce 4s ease-in-out infinite;
         }
         
-        .animate-fade-in {
-          animation: fadeIn 1s ease-out;
-        }
-        
-        .animate-slide-up {
-          animation: slideUp 1.2s ease-out 0.3s both;
-        }
-        
         .subtle-bg-shift {
           background: linear-gradient(45deg, #fef7ed 0%, #fff7ed 50%, #fef7ed 100%);
           background-size: 200% 200%;
@@ -305,16 +309,6 @@ function App() {
           0%, 100% { transform: translateY(0px); }
           25% { transform: translateY(-5px); }
           75% { transform: translateY(-2px); }
-        }
-        
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        
-        @keyframes slideUp {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 0.6; transform: translateY(0); }
         }
         
         @keyframes subtleShift {
@@ -454,14 +448,14 @@ function App() {
       {/* Social Proof */}
       <section className="py-16 bg-white/80 backdrop-blur-sm mb-0 scroll-animate">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
-          <p className="text-center text-gray-600 mb-8 animate-fade-in">
+          <p className="text-center text-gray-600 mb-8 stagger-animate">
             More than 5,500+ language learners trust TalkBuddy
           </p>
-          <div className="flex flex-wrap justify-center items-center gap-8 opacity-60 animate-slide-up">
-            <div className="text-2xl font-bold text-gray-700">Working Professionals</div>
-            <div className="text-2xl font-bold text-gray-700">University Students</div>
-            <div className="text-2xl font-bold text-gray-700">Language Enthusiasts</div>
-            <div className="text-2xl font-bold text-gray-700">International Teams</div>
+          <div className="flex flex-wrap justify-center items-center gap-8 opacity-60">
+            <div className="text-2xl font-bold text-gray-700 stagger-animate gentle-bounce">Working Professionals</div>
+            <div className="text-2xl font-bold text-gray-700 stagger-animate gentle-bounce" style={{ animationDelay: '0.5s' }}>University Students</div>
+            <div className="text-2xl font-bold text-gray-700 stagger-animate gentle-bounce" style={{ animationDelay: '1s' }}>Language Enthusiasts</div>
+            <div className="text-2xl font-bold text-gray-700 stagger-animate gentle-bounce" style={{ animationDelay: '1.5s' }}>International Teams</div>
             
           </div>
         </div>
