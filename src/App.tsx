@@ -381,7 +381,7 @@ function App() {
       </section>
 
       {/* Social Proof */}
-      <section className="py-20 bg-white/95 backdrop-blur-sm border-y border-orange-200 shadow-sm scroll-animate">
+      <section className="py-20 bg-gradient-to-b from-orange-50 to-amber-100 border-y border-orange-200/50 shadow-sm scroll-animate">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-gray-900 mb-4">
@@ -394,35 +394,35 @@ function App() {
           
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
             <div className="text-center stagger-animate">
-              <div className="bg-orange-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+              <div className="bg-orange-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-orange-200 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
                 <Users className="h-8 w-8 text-orange-600" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Working Professionals</h3>
-              <p className="text-gray-600 text-sm">Building confidence for meetings and presentations</p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-orange-700 transition-colors duration-300">Working Professionals</h3>
+              <p className="text-gray-600 text-sm hover:text-gray-700 transition-colors duration-300">Building confidence for meetings and presentations</p>
             </div>
             
-            <div className="text-center stagger-animate" style={{ animationDelay: '0.2s' }}>
-              <div className="bg-blue-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+            <div className="text-center stagger-animate">
+              <div className="bg-blue-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-blue-200 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
                 <Target className="h-8 w-8 text-blue-600" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">University Students</h3>
-              <p className="text-gray-600 text-sm">Preparing for academic discussions and social interactions</p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-blue-700 transition-colors duration-300">University Students</h3>
+              <p className="text-gray-600 text-sm hover:text-gray-700 transition-colors duration-300">Preparing for academic discussions and social interactions</p>
             </div>
             
-            <div className="text-center stagger-animate" style={{ animationDelay: '0.4s' }}>
-              <div className="bg-green-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+            <div className="text-center stagger-animate">
+              <div className="bg-green-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-green-200 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
                 <Star className="h-8 w-8 text-green-600" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Language Enthusiasts</h3>
-              <p className="text-gray-600 text-sm">Passionate learners perfecting their speaking skills</p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-green-700 transition-colors duration-300">Language Enthusiasts</h3>
+              <p className="text-gray-600 text-sm hover:text-gray-700 transition-colors duration-300">Passionate learners perfecting their speaking skills</p>
             </div>
             
-            <div className="text-center stagger-animate" style={{ animationDelay: '0.6s' }}>
-              <div className="bg-purple-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+            <div className="text-center stagger-animate">
+              <div className="bg-purple-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-purple-200 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
                 <Shield className="h-8 w-8 text-purple-600" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">International Teams</h3>
-              <p className="text-gray-600 text-sm">Improving cross-cultural communication</p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-purple-700 transition-colors duration-300">International Teams</h3>
+              <p className="text-gray-600 text-sm hover:text-gray-700 transition-colors duration-300">Improving cross-cultural communication</p>
             </div>
           </div>
         </div>
