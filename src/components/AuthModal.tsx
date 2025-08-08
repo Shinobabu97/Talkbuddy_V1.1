@@ -48,40 +48,44 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       setMessage(null); // Clear any existing messages
       
       try {
-        // Use password reset to check if email exists - this won't actually send an email
-        // but will tell us if the email is registered
-        const { error } = await supabase.auth.resetPasswordForEmail(formData.email, {
-          redirectTo: 'https://example.com/reset', // Dummy redirect URL
+        // Try to sign up with a temporary password to check if email exists
+        const { data, error } = await supabase.auth.signUp({
+          email: formData.email,
+          password: 'TempCheck123!@#', // Strong temporary password for checking
+          options: {
+            data: {
+              first_name: 'temp',
+              last_name: 'temp'
+            }
+          }
         });
         
         if (error) {
           console.log('Email check error:', error.message); // Debug log
           
-          // If no error, it means email exists and reset email would be sent
-          // If error, check what type of error it is
+          // Check for various error messages that indicate user already exists
           const errorMessage = error.message.toLowerCase();
-          
-          // Check for errors that indicate user doesn't exist
-          if (errorMessage.includes('user not found') || 
-              errorMessage.includes('email not found') ||
-              errorMessage.includes('no user found') ||
-              errorMessage.includes('invalid email')) {
-            // Email doesn't exist - good for signup
-            console.log('Email is available for signup');
-            setMessage(null);
+          if (errorMessage.includes('user already registered') || 
+              errorMessage.includes('already been registered') ||
+              errorMessage.includes('email address is already registered') ||
+              errorMessage.includes('user with this email already exists') ||
+              errorMessage.includes('email already exists') ||
+              errorMessage.includes('already registered') ||
+              errorMessage.includes('duplicate') ||
+              error.status === 422) { // Unprocessable Entity - often used for duplicate emails
+            setMessage({
+              type: 'error',
+              text: 'An account with this email already exists. Please try logging in instead.'
+            });
           } else {
-            // Other errors might indicate rate limiting or server issues
-            // Don't block signup for these
-            console.log('Unknown error during email check (not blocking signup):', error.message);
+            // Other errors (invalid email format, network issues, etc.) - don't block signup
+            console.log('Email check error (not blocking signup):', error.message);
             setMessage(null);
           }
         } else {
-          // No error means the email exists and reset email would be sent
-          console.log('Email exists in database');
-          setMessage({
-            type: 'error',
-            text: 'An account with this email already exists. Please try logging in instead.'
-          });
+          // No error means the email is available for signup
+          console.log('Email is available for signup'); // Debug log
+          setMessage(null); // Email is available
         }
       } catch (error) {
         // Network or other unexpected errors - don't block signup  
@@ -89,79 +93,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         setMessage(null);
       } finally {
         setCheckingUser(false);
-      }
-    }
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData(prev => ({
-      ...prev,
-      [e.target.name]: e.target.value
-    }));
-    
-    // Clear error message when user starts typing in email field
-    if (e.target.name === 'email' && message?.text?.includes('account with this email already exists')) {
-      setMessage(null);
-    }
-  };
-
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // Prevent signup if we know user exists
-    if (message?.text?.includes('account with this email already exists')) {
-      return;
-    }
-    
-    setLoading(true);
-    setMessage(null);
-
-    try {
-      const { error } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          data: {
-            first_name: formData.firstName,
-            last_name: formData.lastName,
-          }
-        }
-      });
-
-      if (error) {
-        // Handle specific duplicate user errors during actual signup
-        const errorMessage = error.message.toLowerCase();
-        if (errorMessage.includes('user already registered') || 
-            errorMessage.includes('already been registered') ||
-            errorMessage.includes('email address is already registered') ||
-            errorMessage.includes('user with this email already exists') ||
-            errorMessage.includes('email already exists') ||
-            errorMessage.includes('already registered') ||
-            errorMessage.includes('duplicate') ||
-            error.status === 422) {
-            setMessage({
-              type: 'error',
-              text: 'An account with this email already exists. Please try logging in instead.'
-            });
-          } else {
-            throw error;
-          }
-        } else {
-          setMessage({
-            type: 'success',
-            text: 'Account created successfully! Please check your email to verify your account.'
-          });
-          
-          // Clear form
-          setFormData({ firstName: '', lastName: '', email: '', password: '' });
-        }
-      } catch (error: any) {
-        setMessage({
-          type: 'error',
-          text: error.message || 'An error occurred during sign up'
-        });
-      } finally {
-        setLoading(false);
       }
     }
   };
