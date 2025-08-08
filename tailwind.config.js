@@ -9,10 +9,10 @@ export default {
           100: '#fdf9f0',
         },
         'amber': {
-          25: '#fffef7',
+          25: '#fefcf3',
         },
         'orange': {
-          25: '#fffdf7',
+          25: '#fefaf6',
         }
       }
     },
