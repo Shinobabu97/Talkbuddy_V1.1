@@ -82,11 +82,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
           type: 'success',
           text: 'Account created successfully! Please check your email to confirm your account.'
         });
-      }
-    } catch (error: any) {
-      // Handle different error cases
-      if (error.message?.includes('User already registered') || 
-          error.message?.includes('already been registered')) {
         setMessage({
           type: 'error',
           text: 'An account with this email already exists. Please try logging in instead.'
