@@ -103,7 +103,6 @@ export default function Dashboard({ user }: DashboardProps) {
                 Quick Start
               </h2>
               <div className="grid md:grid-cols-2 gap-4">
-                <button className="p-4 bg-orange-50 hover:bg-orange-100 rounded-lg border border-orange-200 transition-colors text-left">
                 <button className="p-4 bg-orange-100 hover:bg-orange-200 rounded-lg border border-orange-300 transition-colors text-left">
                   <div className="flex items-center space-x-3 mb-2">
                     <Play className="h-6 w-6 text-orange-600" />
@@ -114,7 +113,6 @@ export default function Dashboard({ user }: DashboardProps) {
                   </p>
                 </button>
                 
-                <button className="p-4 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors text-left">
                 <button className="p-4 bg-blue-100 hover:bg-blue-200 rounded-lg border border-blue-300 transition-colors text-left">
                   <div className="flex items-center space-x-3 mb-2">
                     <BookOpen className="h-6 w-6 text-blue-600" />
