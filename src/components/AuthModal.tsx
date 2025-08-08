@@ -13,6 +13,8 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [emailExists, setEmailExists] = useState<boolean | null>(null);
+  const [checkingEmail, setCheckingEmail] = useState(false);
   
   const [formData, setFormData] = useState({
     firstName: '',
@@ -33,40 +35,69 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       setFormData({ firstName: '', lastName: '', email: '', password: '' });
       setShowPassword(false);
       setLoading(false);
+      setEmailExists(null);
+      setCheckingEmail(false);
     }
   }, [isOpen]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setMessage(null); // Clear any previous messages
+    if (e.target.name === 'email') {
+      setEmailExists(null); // Reset email existence check when email changes
+    }
     setFormData(prev => ({
       ...prev,
       [e.target.name]: e.target.value
     }));
   };
 
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setMessage(null);
+  const checkEmailExists = async () => {
+    if (!formData.email || mode !== 'signup') return;
     
+    setCheckingEmail(true);
     try {
-      // Try to initiate password reset to check if user exists
-      // This is a safer way to check user existence
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+      // Try to initiate password reset - this only works if user exists
+      const { error } = await supabase.auth.resetPasswordForEmail(
         formData.email,
         { redirectTo: 'https://example.com/dummy' } // Dummy redirect
       );
-
-      // If reset succeeds, user exists
-      if (!resetError) {
+      
+      // If no error, user exists
+      if (!error) {
+        setEmailExists(true);
         setMessage({
           type: 'error',
           text: 'An account with this email already exists. Please try logging in instead.'
         });
-        return;
+      } else {
+        // User doesn't exist
+        setEmailExists(false);
+        setMessage(null);
       }
-
-      // If reset fails, user likely doesn't exist, proceed with signup
+    } catch (error) {
+      // If there's an error, assume user doesn't exist
+      setEmailExists(false);
+      setMessage(null);
+    } finally {
+      setCheckingEmail(false);
+    }
+  };
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // If we already know the email exists, don't proceed
+    if (emailExists === true) {
+      setMessage({
+        type: 'error',
+        text: 'An account with this email already exists. Please try logging in instead.'
+      });
+      return;
+    }
+    
+    setLoading(true);
+    setMessage(null);
+    
+    try {
       const { data, error } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -240,6 +271,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
                     name="password"
                     value={formData.password}
                     onChange={handleInputChange}
+                    onFocus={checkEmailExists}
                     className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors"
                     placeholder="••••••••"
                     required
@@ -252,12 +284,17 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
                   >
                     {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                   </button>
+                  {checkingEmail && (
+                    <div className="absolute right-12 top-1/2 transform -translate-y-1/2">
+                      <Loader2 className="animate-spin h-4 w-4 text-orange-500" />
+                    </div>
+                  )}
                 </div>
               </div>
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || emailExists === true}
                 className="w-full py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transform hover:scale-105 transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center"
               >
                 {loading ? (
