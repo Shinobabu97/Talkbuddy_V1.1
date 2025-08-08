@@ -165,9 +165,17 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
 
       onClose();
     } catch (error: any) {
+      let errorMessage = 'An error occurred during login';
+      
+      if (error.message === 'Invalid login credentials') {
+        errorMessage = 'Invalid email or password. Please check your credentials and try again.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       setMessage({
         type: 'error',
-        text: error.message || 'An error occurred during login'
+        text: errorMessage
       });
     } finally {
       setLoading(false);
