@@ -387,7 +387,7 @@ function App() {
       </header>
 
       {/* Hero Section */}
-      <section id="home" className="relative overflow-hidden py-20 lg:py-28 subtle-bg-shift">
+      <section id="home" className="relative overflow-hidden min-h-screen flex items-center subtle-bg-shift">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className="space-y-8">
@@ -445,7 +445,7 @@ function App() {
       </section>
 
       {/* Social Proof */}
-      <section className="py-12 bg-white/80 backdrop-blur-sm">
+      <section className="py-16 bg-white/80 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <p className="text-center text-gray-600 mb-8">
             More than 5,500+ language learners trust TalkBuddy
@@ -461,7 +461,7 @@ function App() {
       </section>
 
       {/* Benefits Section */}
-      <section id="benefits" className="py-20 relative subtle-bg-shift scroll-animate">
+      <section id="benefits" className="py-20 relative subtle-bg-shift scroll-animate mt-0">
         <div className="absolute inset-0 opacity-5">
           <div className="absolute inset-0" style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23f97316' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
