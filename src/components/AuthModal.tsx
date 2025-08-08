@@ -67,7 +67,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
         // Store email for success state
         setSignupEmail(formData.email);
         
-        // Create user account
+        // Create user account - let Supabase auto-login
         const { data, error } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
@@ -80,8 +80,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
         });
 
         if (error) throw error;
-        
-        // Don't do anything here - let the auth state change handle it
+        // Auth state change will handle the rest
         
       } else if (mode === 'forgot') {
         const { error } = await supabase.auth.resetPasswordForEmail(formData.email);

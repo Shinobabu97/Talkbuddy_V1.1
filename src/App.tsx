@@ -22,6 +22,7 @@ function App() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
   const [showSuccessLogin, setShowSuccessLogin] = useState(false);
+  const [justSignedUp, setJustSignedUp] = useState(false);
   const [openFAQ, setOpenFAQ] = useState<number | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentTestimonial, setCurrentTestimonial] = useState(0);
@@ -156,10 +157,22 @@ function App() {
         // If this is from signup, show success modal instead of dashboard
         if (event === 'SIGNED_UP') {
           // Don't set user - keep them on hero page
-          // Show login modal with success message
-          setShowSuccessLogin(true);
-          setAuthModalMode('login');
-          setAuthModalOpen(true);
+          // Set user first (dashboard loads for microsecond)
+          setUser({
+            id: session.user.id,
+            email: session.user.email!,
+            user_metadata: session.user.user_metadata
+          });
+          setJustSignedUp(true);
+          
+          // After microsecond, show login modal with success message
+          setTimeout(() => {
+            setUser(null); // Remove user to go back to hero
+            setShowSuccessLogin(true);
+            setAuthModalMode('login');
+            setAuthModalOpen(true);
+            setJustSignedUp(false);
+          }, 1); // 1 millisecond delay
           // Sign out the user so they need to login properly
           supabase.auth.signOut();
         } else if (event === 'SIGNED_IN' && !showSuccessLogin) {
@@ -183,6 +196,7 @@ function App() {
       } else {
         setUser(null);
         setShowSuccessLogin(false);
+        setJustSignedUp(false);
       }
       setLoading(false);
     });
