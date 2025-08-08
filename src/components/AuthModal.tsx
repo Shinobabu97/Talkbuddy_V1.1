@@ -13,6 +13,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [checkingUser, setCheckingUser] = useState(false);
   
   const [formData, setFormData] = useState({
     firstName: '',
@@ -33,18 +34,73 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       setFormData({ firstName: '', lastName: '', email: '', password: '' });
       setShowPassword(false);
       setLoading(false);
+      setCheckingUser(false);
     }
   }, [isOpen]);
+
+  // Check if user exists when email changes (with debounce)
+  React.useEffect(() => {
+    if (!formData.email || mode !== 'signup') return;
+    
+    const timeoutId = setTimeout(async () => {
+      if (formData.email.includes('@') && formData.email.includes('.')) {
+        setCheckingUser(true);
+        try {
+          // Check if user exists by attempting to sign in with a dummy password
+          // This is a safe way to check user existence without exposing user data
+          const { error } = await supabase.auth.signInWithPassword({
+            email: formData.email,
+            password: 'dummy-password-for-check'
+          });
+          
+          // If error is "Invalid login credentials", user exists
+          // If error is "Email not confirmed", user exists but not confirmed
+          // If error is something else, we can't determine - allow signup attempt
+          if (error?.message === 'Invalid login credentials' || 
+              error?.message === 'Email not confirmed' ||
+              error?.message?.includes('Email not confirmed')) {
+            setMessage({
+              type: 'error',
+              text: 'An account with this email already exists. Please try logging in instead.'
+            });
+          } else {
+            // Clear any existing error messages for this email
+            if (message?.text?.includes('account with this email already exists')) {
+              setMessage(null);
+            }
+          }
+        } catch (error) {
+          // Network or other errors - don't block signup
+          console.warn('Error checking user existence:', error);
+        } finally {
+          setCheckingUser(false);
+        }
+      }
+    }, 800); // Debounce for 800ms
+    
+    return () => clearTimeout(timeoutId);
+  }, [formData.email, mode, message]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData(prev => ({
       ...prev,
       [e.target.name]: e.target.value
     }));
-    setMessage(null);
+    
+    // Only clear non-duplicate-user messages
+    if (message && !message.text.includes('account with this email already exists')) {
+      setMessage(null);
+    }
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Prevent signup if we know user exists
+    if (message?.text?.includes('account with this email already exists')) {
+      return;
+    }
+    
     setLoading(true);
     setMessage(null);
 
@@ -70,10 +126,19 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       // Clear form
       setFormData({ firstName: '', lastName: '', email: '', password: '' });
     } catch (error: any) {
-      setMessage({
-        type: 'error',
-        text: error.message || 'An error occurred during sign up'
-      });
+      // Handle specific duplicate user errors
+      if (error.message?.includes('User already registered') || 
+          error.message?.includes('already been registered')) {
+        setMessage({
+          type: 'error',
+          text: 'An account with this email already exists. Please try logging in instead.'
+        });
+      } else {
+        setMessage({
+          type: 'error',
+          text: error.message || 'An error occurred during sign up'
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -207,10 +272,19 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
                     name="email"
                     value={formData.email}
                     onChange={handleInputChange}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors"
+                    className={`w-full pl-10 pr-12 py-3 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors ${
+                      message?.text?.includes('account with this email already exists') 
+                        ? 'border-red-300 bg-red-50' 
+                        : 'border-gray-300'
+                    }`}
                     placeholder="john@example.com"
                     required
                   />
+                  {checkingUser && (
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      <div className="animate-spin h-4 w-4 border-2 border-orange-600 border-t-transparent rounded-full"></div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -242,13 +316,13 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || checkingUser || message?.text?.includes('account with this email already exists')}
                 className="w-full py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transform hover:scale-105 transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center"
               >
-                {loading ? (
+                {loading || checkingUser ? (
                   <>
                     <Loader2 className="animate-spin h-5 w-5 mr-2" />
-                    Creating Account...
+                    {loading ? 'Creating Account...' : 'Checking Email...'}
                   </>
                 ) : (
                   'Create Account'
@@ -267,6 +341,18 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
                   </button>
                 </p>
               </div>
+              
+              {message?.text?.includes('account with this email already exists') && (
+                <div className="text-center mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setMode('login')}
+                    className="text-sm text-orange-600 hover:text-orange-700 font-medium underline"
+                  >
+                    Go to Login →
+                  </button>
+                </div>
+              )}
             </form>
           )}
 
