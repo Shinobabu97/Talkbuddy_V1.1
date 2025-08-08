@@ -58,31 +58,43 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       });
 
       if (error) {
-        console.log('🔍 Sign-in error:', error.message, error.code);
+        console.log('🔍 Testing email:', formData.email);
+        console.log('🔍 Error message:', error.message);
+        console.log('🔍 Error code:', error.code);
         
-        // If we get "Invalid login credentials", it means the user exists but password is wrong
-        if (error.message === 'Invalid login credentials') {
-          console.log('❌ Email EXISTS in Supabase auth table (invalid credentials = user exists)');
+        // Check for different error messages that indicate user exists
+        if (error.message === 'Invalid login credentials' || 
+            error.message.includes('Invalid login credentials') ||
+            error.code === 'invalid_credentials') {
+          console.log('❌ Email EXISTS - User found but wrong password');
           setMessage({
             type: 'error',
             text: 'An account with this email already exists. Please try logging in instead.'
           });
-        } else {
-          // Any other error (like "User not found") means email is available
-          console.log('✅ Email is AVAILABLE for signup (user not found or other error)');
+        } else if (error.message.includes('User not found') || 
+                   error.message.includes('not found') ||
+                   error.message.includes('does not exist')) {
+          console.log('✅ Email is AVAILABLE - User not found');
           setMessage({
             type: 'success',
             text: 'Email is available for signup!'
           });
+        } else {
+          // For any other error, don't show a message - could be network issue
+          console.log('🔍 Other error (treating as network issue):', error.message);
         }
       } else {
-        // This shouldn't happen with a dummy password, but if it does, sign out immediately
-        console.log('🔍 Unexpected successful sign-in with dummy password');
+        // This shouldn't happen with dummy password, but if it does, user exists
+        console.log('🔍 Unexpected success - user exists, signing out');
         await supabase.auth.signOut();
+        setMessage({
+          type: 'error',
+          text: 'An account with this email already exists. Please try logging in instead.'
+        });
       }
     } catch (error) {
-      console.log('🔍 Network/other error:', error);
-      // Don't show error to user for network issues
+      console.log('🔍 Network error:', error);
+      // Don't show message for network errors
     }
     
     setCheckingUser(false);
