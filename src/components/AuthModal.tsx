@@ -57,6 +57,8 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         // Success - close modal manually since we removed auto-close from App.tsx
         onClose();
       } else if (mode === 'signup') {
+        console.log('Starting signup process...', { email: formData.email });
+        
         const { error } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
@@ -68,11 +70,15 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
           }
         });
 
+        console.log('Signup result:', { error });
+        
         if (error) throw error;
 
+        console.log('Signup successful, signing out...');
         // Sign out immediately to prevent auto-login
         await supabase.auth.signOut();
         
+        console.log('Setting success state...');
         // Clear form and switch to login mode with success message
         setFormData({ firstName: '', lastName: '', email: formData.email, password: '' });
         setShowSignupSuccess(true);
@@ -81,6 +87,8 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
           type: 'success', 
           text: 'Account successfully created. Now login here.' 
         });
+        
+        console.log('Success state set, should show login form now');
         
       } else if (mode === 'forgot') {
         const { error } = await supabase.auth.resetPasswordForEmail(formData.email);
@@ -93,6 +101,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         });
       }
     } catch (error: any) {
+      console.error('Auth error:', error);
       setMessage({ 
         type: 'error', 
         text: error.message || 'An error occurred. Please try again.' 
