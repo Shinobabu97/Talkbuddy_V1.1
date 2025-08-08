@@ -46,6 +46,8 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     setLoading(true);
     setMessage(null);
 
+    console.log('Form submitted, mode:', mode);
+    console.log('Form data:', { ...formData, password: '[HIDDEN]' });
     try {
       if (mode === 'login') {
         const { error } = await supabase.auth.signInWithPassword({
@@ -59,6 +61,8 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         onClose();
         
       } else if (mode === 'signup') {
+        console.log('Starting signup process...');
+        
         const { error } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
@@ -70,11 +74,14 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
           }
         });
 
+        console.log('Signup response:', { data, error });
         if (error) throw error;
 
+        console.log('Signup successful, signing out...');
         // Sign out immediately to prevent auto-login
         await supabase.auth.signOut();
         
+        console.log('Setting success state...');
         // Set success state and switch to login
         setSignupSuccess(true);
         setMode('login');
@@ -90,6 +97,8 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
           password: '' 
         }));
         
+        console.log('Success state set, should now show login form');
+        
       } else if (mode === 'forgot') {
         const { error } = await supabase.auth.resetPasswordForEmail(formData.email);
         
@@ -101,6 +110,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         });
       }
     } catch (error: any) {
+      console.error('Auth error:', error);
       setMessage({ 
         type: 'error', 
         text: error.message || 'An error occurred. Please try again.' 
