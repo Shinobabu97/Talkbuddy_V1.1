@@ -159,7 +159,10 @@ function App() {
           email: session.user.email!,
           user_metadata: session.user.user_metadata
         });
-        setAuthModalOpen(false);
+        // Only close modal if user is actually logged in (not during signup process)
+        if (_event === 'SIGNED_IN') {
+          setAuthModalOpen(false);
+        }
       } else {
         setUser(null);
       }
