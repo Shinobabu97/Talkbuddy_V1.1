@@ -38,45 +38,35 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     }
   }, [isOpen]);
 
-  // Check if user exists when email changes (with debounce)
-  React.useEffect(() => {
+  // Check if user exists when email field loses focus (onBlur)
+  const handleEmailBlur = async () => {
     if (!formData.email || mode !== 'signup') return;
     
-    const timeoutId = setTimeout(async () => {
-      if (formData.email.includes('@') && formData.email.includes('.')) {
-        setCheckingUser(true);
-        try {
-          // Try to sign up with a temporary password to check if user exists
-          const { error } = await supabase.auth.signUp({
-            email: formData.email,
-            password: 'temp-check-password-123',
-            options: {
-              data: {
-                temp_check: true
-              }
+    // Only check if email looks valid
+    if (formData.email.includes('@') && formData.email.includes('.')) {
+      setCheckingUser(true);
+      
+      try {
+        // Try to sign up with a temporary password to check if user exists
+        const { error } = await supabase.auth.signUp({
+          email: formData.email,
+          password: 'temp-check-password-123',
+          options: {
+            data: {
+              temp_check: true
             }
-          });
-          
-          // If user already exists, Supabase will return specific error
-          if (error?.message?.includes('User already registered') || 
-              error?.message?.includes('already been registered') ||
-              error?.message?.includes('already exists')) {
-            setMessage({
-              type: 'error',
-              text: 'An account with this email already exists. Please try logging in instead.'
-            });
-          } else {
-            // Clear any existing duplicate user error messages
-            setMessage(prev => {
-              if (prev?.text?.includes('account with this email already exists')) {
-                return null;
-              }
-              return prev;
-            });
           }
-        } catch (error) {
-          // Network or other errors - don't block signup, allow user to try
-          console.warn('Error checking user existence:', error);
+        });
+        
+        // If user already exists, Supabase will return specific error
+        if (error?.message?.includes('User already registered') || 
+            error?.message?.includes('already been registered') ||
+            error?.message?.includes('already exists')) {
+          setMessage({
+            type: 'error',
+            text: 'An account with this email already exists. Please try logging in instead.'
+          });
+        } else {
           // Clear any existing duplicate user error messages
           setMessage(prev => {
             if (prev?.text?.includes('account with this email already exists')) {
@@ -84,14 +74,22 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
             }
             return prev;
           });
-        } finally {
-          setCheckingUser(false);
         }
+      } catch (error) {
+        // Network or other errors - don't block signup, allow user to try
+        console.warn('Error checking user existence:', error);
+        // Clear any existing duplicate user error messages
+        setMessage(prev => {
+          if (prev?.text?.includes('account with this email already exists')) {
+            return null;
+          }
+          return prev;
+        });
+      } finally {
+        setCheckingUser(false);
       }
-    }, 800); // Debounce for 800ms
-    
-    return () => clearTimeout(timeoutId);
-  }, [formData.email, mode]);
+    }
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData(prev => ({
@@ -99,7 +97,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       [e.target.name]: e.target.value
     }));
     
-    // Only clear non-duplicate-user messages
+    // Clear any existing messages when user types
     setMessage(prev => {
       if (prev && !prev.text.includes('account with this email already exists')) {
         return null;
@@ -295,6 +293,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
                     name="email"
                     value={formData.email}
                     onChange={handleInputChange}
+                    onBlur={handleEmailBlur}
                     className={`w-full pl-10 pr-12 py-3 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors ${
                       message?.text?.includes('account with this email already exists') 
                         ? 'border-red-300 bg-red-50' 
