@@ -76,7 +76,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
           type: 'error',
           text: 'An account with this email already exists. Please try logging in instead.'
         });
-      } else {
       } else if (data.user && data.user.email_confirmed_at === null) {
         // New user created, needs email confirmation
         setMessage({
