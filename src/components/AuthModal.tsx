@@ -285,37 +285,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
             </button>
           )}
         </div>
-              <button
-                onClick={() => setMode('signup')}
-                className="text-orange-600 hover:text-orange-700 font-medium"
-              >
-                Don't have an account? Sign up
-              </button>
-              <div>
-                <button
-                  onClick={() => setMode('forgot')}
-                  className="text-sm text-gray-600 hover:text-gray-800"
-                >
-                  Forgot your password?
-                </button>
-              </div>
-            </div>
-          ) : mode === 'signup' ? (
-            <button
-              onClick={() => setMode('login')}
-              className="text-orange-600 hover:text-orange-700 font-medium"
-            >
-              Already have an account? Sign in
-            </button>
-          ) : (
-            <button
-              onClick={() => setMode('login')}
-              className="text-orange-600 hover:text-orange-700 font-medium"
-            >
-              Back to sign in
-            </button>
-          )}
-        </div>
       </div>
     </div>
   );
