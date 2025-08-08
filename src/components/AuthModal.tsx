@@ -46,25 +46,27 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       if (formData.email.includes('@') && formData.email.includes('.')) {
         setCheckingUser(true);
         try {
-          // Check if user exists by attempting to sign in with a dummy password
-          // This is a safe way to check user existence without exposing user data
-          const { error } = await supabase.auth.signInWithPassword({
+          // Try to sign up with a temporary password to check if user exists
+          const { error } = await supabase.auth.signUp({
             email: formData.email,
-            password: 'dummy-password-for-check'
+            password: 'temp-check-password-123',
+            options: {
+              data: {
+                temp_check: true
+              }
+            }
           });
           
-          // If error is "Invalid login credentials", user exists
-          // If error is "Email not confirmed", user exists but not confirmed
-          // If error is something else, we can't determine - allow signup attempt
-          if (error?.message === 'Invalid login credentials' || 
-              error?.message === 'Email not confirmed' ||
-              error?.message?.includes('Email not confirmed')) {
+          // If user already exists, Supabase will return specific error
+          if (error?.message?.includes('User already registered') || 
+              error?.message?.includes('already been registered') ||
+              error?.message?.includes('already exists')) {
             setMessage({
               type: 'error',
               text: 'An account with this email already exists. Please try logging in instead.'
             });
           } else {
-            // Clear any existing error messages for this email
+            // Clear any existing duplicate user error messages
             setMessage(prev => {
               if (prev?.text?.includes('account with this email already exists')) {
                 return null;
@@ -73,8 +75,15 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
             });
           }
         } catch (error) {
-          // Network or other errors - don't block signup
+          // Network or other errors - don't block signup, allow user to try
           console.warn('Error checking user existence:', error);
+          // Clear any existing duplicate user error messages
+          setMessage(prev => {
+            if (prev?.text?.includes('account with this email already exists')) {
+              return null;
+            }
+            return prev;
+          });
         } finally {
           setCheckingUser(false);
         }
