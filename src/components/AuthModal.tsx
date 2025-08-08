@@ -78,8 +78,8 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         await supabase.auth.signOut();
       }
     } catch (error) {
-      console.log('🔍 Network error during email check:', error);
-      // For network errors, don't show anything to user
+      console.log('🔍 Network/other error:', error);
+      // Don't show error to user for network issues
     }
     
     setCheckingUser(false);
@@ -87,9 +87,10 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
 
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Clear message when email changes
+    // Clear message and checking state when email changes
     if (e.target.name === 'email') {
       setMessage(null);
+      setCheckingUser(false);
     }
     
     setFormData(prev => ({
@@ -99,13 +100,15 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
+    if (!formData.email || mode !== 'signup' || loading || !formData.email.includes('@')) {
     
     // Prevent signup if we know user exists
     if (message?.text?.includes('account with this email already exists')) {
       return;
     }
     
+    // Clear any previous message before checking
+    setMessage(null);
     setLoading(true);
     setMessage(null);
 
@@ -152,24 +155,26 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setMessage(null);
-
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+          console.log('❌ Email EXISTS:', formData.email);
+      
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: formData.email,
         password: formData.password,
       });
-
-      if (error) throw error;
-
+          console.log('✅ Email AVAILABLE:', formData.email, '(Error:', error.message, ')');
+        console.log('🔍 Sign-in error for', formData.email, ':', error.message);
       onClose();
     } catch (error: any) {
       let errorMessage = 'An error occurred during login';
       
       if (error.message === 'Invalid login credentials') {
-        errorMessage = 'Invalid email or password. Please check your credentials and try again.';
-      } else if (error.message) {
+        console.log('🔍 Unexpected success - signing out immediately');
         errorMessage = error.message;
+        setMessage({
+          type: 'success',
+          text: 'Email is available for signup!'
+        });
       }
       
       setMessage({
