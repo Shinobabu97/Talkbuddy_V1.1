@@ -103,7 +103,6 @@ export default function Dashboard({ user }: DashboardProps) {
                 Quick Start
               </h2>
               <div className="grid md:grid-cols-2 gap-4">
-                <button className="p-4 bg-orange-50 hover:bg-orange-100 rounded-lg border border-orange-200 transition-colors text-left">
                 <button className="p-4 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors text-left">
                   <div className="flex items-center space-x-3 mb-2">
                     <Play className="h-6 w-6 text-indigo-600" />
@@ -143,7 +142,6 @@ export default function Dashboard({ user }: DashboardProps) {
                         <div className="text-sm text-gray-600">{topic.duration}</div>
                       </div>
                     </div>
-                    <button className="text-orange-600 hover:text-orange-700 font-medium text-sm">
                     <button className="text-indigo-600 hover:text-indigo-700 font-medium text-sm">
                       {topic.completed ? 'Review' : 'Continue'}
                     </button>
@@ -218,7 +216,6 @@ export default function Dashboard({ user }: DashboardProps) {
               <p className="text-indigo-100 text-sm mb-4">
                 Continue building your confidence with personalized conversations.
               </p>
-              <button className="w-full py-2 bg-white text-orange-600 rounded-lg hover:bg-orange-50 transition-colors font-medium">
               <button className="w-full py-2 bg-white text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors font-medium">
                 Start Speaking
               </button>
