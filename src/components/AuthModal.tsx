@@ -40,7 +40,9 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
 
   // Check if user exists when email field loses focus (onBlur)
   const handleEmailBlur = async () => {
-    if (!formData.email || mode !== 'signup' || checkingUser || loading) return;
+    if (!formData.email || mode !== 'signup' || checkingUser || loading) {
+      return;
+    }
     
     // Only check if email looks valid
     if (formData.email.includes('@') && formData.email.includes('.')) {
@@ -48,49 +50,60 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       setMessage(null); // Clear any existing messages
       
       try {
-        // Use password reset to check if email exists in auth table
-        const { data, error } = await supabase.auth.resetPasswordForEmail(
-          formData.email,
-          {
-            redirectTo: 'https://example.com/reset', // Dummy redirect URL
-          }
-        );
+        // Use signInWithPassword with a known wrong password to check if user exists
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: formData.email,
+          password: 'intentionally-wrong-password-12345'
+        });
         
-        console.log('Password reset response:', { data, error }); // Debug log
+        console.log('Email check response:', { data, error }); // Debug log
         
         if (error) {
-          console.log('Password reset error:', error.message); // Debug log
+          console.log('Email check error:', error.message); // Debug log
           
           const errorMessage = error.message.toLowerCase();
           
-          // Check for "user not found" or similar messages
-          if (errorMessage.includes('user not found') || 
-              errorMessage.includes('email not found') ||
-              errorMessage.includes('no user found') ||
-              errorMessage.includes('invalid email')) {
-            // Email doesn't exist in auth table - good for signup
-            console.log('Email is available for signup - user not found in auth table'); // Debug log
+          // If we get "invalid login credentials", it means the user exists but password is wrong
+          if (errorMessage.includes('invalid login credentials')) {
+            // User exists in auth table
+            console.log('Email already exists in auth table - user found'); // Debug log
+            setMessage({
+              type: 'error',
+              text: 'An account with this email already exists. Please try logging in instead.'
+            });
+          } else if (errorMessage.includes('email not confirmed') || 
+                     errorMessage.includes('email not verified')) {
+            // User exists but email not confirmed
+            console.log('Email exists but not confirmed'); // Debug log
+            setMessage({
+              type: 'error',
+              text: 'An account with this email already exists. Please check your email for verification or try logging in.'
+            });
+          } else if (errorMessage.includes('user not found') || 
+                     errorMessage.includes('email not found') ||
+                     errorMessage.includes('no user found')) {
+            // Email doesn't exist - good for signup
+            console.log('Email is available for signup - user not found'); // Debug log
             setMessage(null);
           } else {
-            // Other errors - don't block signup but log them
-            console.log('Password reset - Other error (not blocking signup):', error.message);
+            // Other errors - assume email is available
+            console.log('Other error (assuming email available):', error.message);
             setMessage(null);
           }
         } else {
-          // No error means password reset email would be sent - user exists
-          console.log('Email already exists in auth table - password reset would be sent'); // Debug log
-          setMessage({
-            type: 'error',
-            text: 'An account with this email already exists. Please try logging in instead.'
-          });
+          // This shouldn't happen with wrong password, but if it does, user exists
+          console.log('Unexpected success - user might exist'); // Debug log
+          setMessage(null); // Don't block signup
         }
       } catch (error) {
-        // Network or other unexpected errors - don't block signup
-        console.log('Network/unexpected error during email check:', error);
+        console.log('Network/unexpected error:', error);
         setMessage(null);
       } finally {
         setCheckingUser(false);
       }
+    } else {
+      // Invalid email format - clear any existing messages
+      setMessage(null);
     }
   };
 
@@ -169,6 +182,11 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
 
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Clear message when email changes
+    if (e.target.name === 'email') {
+      setMessage(null);
+    }
+    
     setFormData(prev => ({
       ...prev,
       [e.target.name]: e.target.value
