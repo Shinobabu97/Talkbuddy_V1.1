@@ -102,8 +102,13 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
           type: 'success',
           text: 'Account created successfully! Please check your email to confirm your account before signing in.'
         });
+      } else {
         // User already exists and is confirmed
         setMessage({
+          type: 'success',
+          text: 'Account created successfully! Please check your email to confirm your account before signing in.'
+        });
+      }
       // New user created successfully
       setMessage({
         type: 'success',
