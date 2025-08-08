@@ -173,6 +173,7 @@ function App() {
           id: session.user.id,
           email: session.user.email!,
           user_metadata: session.user.user_metadata
+        });
         setAuthModalOpen(false);
         setShowSuccessMessage(false);
         
