@@ -13,11 +13,69 @@ import {
   Menu,
   X
 } from 'lucide-react';
+import { supabase, AuthUser } from './lib/supabase';
+import AuthModal from './components/AuthModal';
+import Dashboard from './components/Dashboard';
 
 function App() {
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
   const [openFAQ, setOpenFAQ] = useState<number | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentTestimonial, setCurrentTestimonial] = useState(0);
+
+  useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setUser({
+          id: session.user.id,
+          email: session.user.email!,
+          user_metadata: session.user.user_metadata
+        });
+      }
+      setLoading(false);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setUser({
+          id: session.user.id,
+          email: session.user.email!,
+          user_metadata: session.user.user_metadata
+        });
+        setAuthModalOpen(false);
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleAuthModal = (mode: 'login' | 'signup') => {
+    setAuthModalMode(mode);
+    setAuthModalOpen(true);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 flex items-center justify-center">
+        <div className="text-center">
+          <Mic className="h-12 w-12 text-orange-600 mx-auto mb-4 animate-pulse" />
+          <p className="text-gray-600">Loading TalkBuddy...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (user) {
+    return <Dashboard user={user} />;
+  }
 
   const benefits = [
     {
@@ -298,7 +356,10 @@ function App() {
             </nav>
 
             <div className="flex items-center space-x-4">
-              <button className="hidden md:inline-flex px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transform hover:scale-105 transition-all duration-200 font-medium">
+              <button 
+                onClick={() => handleAuthModal('login')}
+                className="hidden md:inline-flex px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transform hover:scale-105 transition-all duration-200 font-medium"
+              >
                 Login
               </button>
 
@@ -321,8 +382,11 @@ function App() {
               <a href="#how-it-works" className="block py-2 text-gray-700 hover:text-blue-600">How It Works</a>
               <a href="#testimonials" className="block py-2 text-gray-700 hover:text-blue-600">Reviews</a>
               <a href="#faq" className="block py-2 text-gray-700 hover:text-blue-600">FAQ</a>
-              <button className="w-full mt-2 px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors">
-                Get Started
+              <button 
+                onClick={() => handleAuthModal('login')}
+                className="w-full mt-2 px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+              >
+                Login
               </button>
             </div>
           </div>
@@ -347,7 +411,10 @@ function App() {
               </div>
               
               <div className="flex flex-col sm:flex-row gap-4">
-                <button className="px-8 py-4 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transform hover:scale-105 transition-all duration-200 font-medium text-lg shadow-lg">
+                <button 
+                  onClick={() => handleAuthModal('signup')}
+                  className="px-8 py-4 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transform hover:scale-105 transition-all duration-200 font-medium text-lg shadow-lg"
+                >
                   Try Your First Conversation
                 </button>
                 <div className="flex items-center space-x-2 text-gray-600">
@@ -602,7 +669,10 @@ function App() {
             <p className="text-xl text-gray-300 mb-8">
               Join thousands of learners who've transformed their speaking skills with TalkBuddy
             </p>
-            <button className="px-8 py-4 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transform hover:scale-105 transition-all duration-200 font-medium text-lg shadow-lg">
+            <button 
+              onClick={() => handleAuthModal('signup')}
+              className="px-8 py-4 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transform hover:scale-105 transition-all duration-200 font-medium text-lg shadow-lg"
+            >
               Try Your First Conversation
             </button>
           </div>
@@ -646,6 +716,12 @@ function App() {
           </div>
         </div>
       </footer>
+
+      <AuthModal 
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        initialMode={authModalMode}
+      />
     </div>
   );
 }
