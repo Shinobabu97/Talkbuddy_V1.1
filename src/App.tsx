@@ -179,12 +179,13 @@ function App() {
   useEffect(() => {
     const observerOptions = {
       threshold: 0.1,
-      rootMargin: '0px 0px -50px 0px'
+      rootMargin: '0px 0px -100px 0px'
     };
 
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (entry.isIntersecting) {
+          // Element is entering viewport - animate in
           entry.target.classList.add('fade-in');
           
           // Add staggered animation to child elements with delay
@@ -193,6 +194,15 @@ function App() {
             setTimeout(() => {
               element.classList.add('fade-in');
             }, index * 200);
+          });
+        } else {
+          // Element is leaving viewport - reset for next time
+          entry.target.classList.remove('fade-in');
+          
+          // Reset child elements too
+          const staggerElements = entry.target.querySelectorAll('.stagger-animate');
+          staggerElements.forEach((element) => {
+            element.classList.remove('fade-in');
           });
         }
       });
