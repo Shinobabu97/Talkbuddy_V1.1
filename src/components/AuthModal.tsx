@@ -288,7 +288,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
                     name="email"
                     value={formData.email}
                     onChange={handleInputChange}
-                    onBlur={actualHandleEmailBlur}
                     onBlur={handleEmailBlur}
                     className={`w-full pl-10 pr-12 py-3 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors ${
                       message?.text?.includes('account with this email already exists') 
