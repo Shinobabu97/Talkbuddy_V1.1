@@ -154,37 +154,25 @@ function App() {
     // Listen for auth changes - ONLY close modal for successful login
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
-        // If this is from signup, show success modal instead of dashboard
         if (event === 'SIGNED_UP') {
-          // Don't set user - keep them on hero page
           // Set user first (dashboard loads for microsecond)
           setUser({
             id: session.user.id,
             email: session.user.email!,
             user_metadata: session.user.user_metadata
           });
-          setJustSignedUp(true);
           
-          // After microsecond, show login modal with success message
+          // After 1 millisecond, show login modal with success message
           setTimeout(() => {
             setUser(null); // Remove user to go back to hero
-            setShowSuccessLogin(true);
             setAuthModalMode('login');
             setAuthModalOpen(true);
-            setJustSignedUp(false);
+            setShowSuccessLogin(true);
+            // Sign out the user so they need to login properly
+            supabase.auth.signOut();
           }, 1); // 1 millisecond delay
-          // Sign out the user so they need to login properly
-          supabase.auth.signOut();
-        } else if (event === 'SIGNED_IN' && !showSuccessLogin) {
+        } else if (event === 'SIGNED_IN') {
           // Normal login - go to dashboard
-          setUser({
-            id: session.user.id,
-            email: session.user.email!,
-            user_metadata: session.user.user_metadata
-          });
-          setAuthModalOpen(false);
-        } else if (event === 'SIGNED_IN' && showSuccessLogin) {
-          // Login after signup success - go to dashboard
           setUser({
             id: session.user.id,
             email: session.user.email!,
@@ -196,7 +184,6 @@ function App() {
       } else {
         setUser(null);
         setShowSuccessLogin(false);
-        setJustSignedUp(false);
       }
       setLoading(false);
     });

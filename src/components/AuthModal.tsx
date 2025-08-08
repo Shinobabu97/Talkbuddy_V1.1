@@ -14,7 +14,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [signupEmail, setSignupEmail] = useState('');
   
   const [formData, setFormData] = useState({
     firstName: '',
@@ -39,7 +38,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
     if (!isOpen) {
       setMessage(null);
       setFormData({ firstName: '', lastName: '', email: '', password: '' });
-      setSignupEmail('');
       setShowPassword(false);
       setLoading(false);
       setMode(initialMode);
@@ -64,10 +62,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
         // Modal will close automatically via auth state change
         
       } else if (mode === 'signup') {
-        // Store email for success state
-        setSignupEmail(formData.email);
-        
-        // Create user account - let Supabase auto-login
         const { data, error } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
@@ -80,7 +74,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
         });
 
         if (error) throw error;
-        // Auth state change will handle the rest
+        // Let auth state change handle showing success modal
         
       } else if (mode === 'forgot') {
         const { error } = await supabase.auth.resetPasswordForEmail(formData.email);
@@ -106,13 +100,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
-
-  // Pre-fill email if we have it from signup
-  React.useEffect(() => {
-    if (showSuccessMessage && signupEmail && mode === 'login') {
-      setFormData(prev => ({ ...prev, email: signupEmail, password: '' }));
-    }
-  }, [showSuccessMessage, signupEmail, mode]);
 
   const switchMode = (newMode: 'login' | 'signup' | 'forgot') => {
     setMode(newMode);
