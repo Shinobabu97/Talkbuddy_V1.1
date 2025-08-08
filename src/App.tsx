@@ -140,17 +140,7 @@ function App() {
   ];
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUser({
-          id: session.user.id,
-          email: session.user.email!,
-          user_metadata: session.user.user_metadata
-        });
-      }
-
-    // Listen for auth changes
+    // Set up auth state listener first
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
         setUser({
@@ -165,9 +155,18 @@ function App() {
         setIsSigningUp(false);
         setShowSuccessMessage(false);
       }
-      
-      setLoading(false);
     });
+
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setUser({
+          id: session.user.id,
+          email: session.user.email!,
+          user_metadata: session.user.user_metadata
+        });
+      }
+      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
