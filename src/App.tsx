@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Mic, 
   Clock, 
@@ -22,11 +22,11 @@ function App() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
-  const [preventDashboard, setPreventDashboard] = useState(false);
+  const [preventDashboard] = useState(false);
   const [openFAQ, setOpenFAQ] = useState<number | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentTestimonial, setCurrentTestimonial] = useState(0);
-  const [isSigningUp, setIsSigningUp] = useState(false);
+  const signingUpRef = useRef(false);
 
   const benefits = [
     {
@@ -141,18 +141,22 @@ function App() {
 
   useEffect(() => {
     // Set up auth state listener first
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
-        setUser({
-          id: session.user.id,
-          email: session.user.email!,
-          user_metadata: session.user.user_metadata
-        });
-        setAuthModalOpen(false);
-        setShowSuccessMessage(false);
+        if (signingUpRef.current) {
+          await supabase.auth.signOut();
+        } else {
+          setUser({
+            id: session.user.id,
+            email: session.user.email!,
+            user_metadata: session.user.user_metadata
+          });
+          setAuthModalOpen(false);
+          setShowSuccessMessage(false);
+        }
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
-        setIsSigningUp(false);
+        signingUpRef.current = false;
         setShowSuccessMessage(false);
       }
     });
@@ -237,7 +241,7 @@ function App() {
   const handleAuthModal = (mode: 'login' | 'signup') => {
     setAuthModalMode(mode);
     setShowSuccessMessage(false);
-    setIsSigningUp(false);
+    signingUpRef.current = false;
     setAuthModalOpen(true);
   };
 
@@ -642,11 +646,14 @@ function App() {
         </div>
       </footer>
 
-      <AuthModal 
+      <AuthModal
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
         initialMode={authModalMode}
         showSuccessMessage={showSuccessMessage}
+        onSignUpStart={() => {
+          signingUpRef.current = true;
+        }}
       />
     </div>
   );

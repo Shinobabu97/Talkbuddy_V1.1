@@ -1,14 +1,11 @@
 import React from 'react';
-import { 
-  Mic, 
-  LogOut, 
-  BookOpen, 
-  TrendingUp, 
-  Clock, 
+import {
+  Mic,
+  LogOut,
+  BookOpen,
+  Clock,
   Star,
   Play,
-  BarChart3,
-  Calendar,
   Target,
   Award,
   MessageCircle
