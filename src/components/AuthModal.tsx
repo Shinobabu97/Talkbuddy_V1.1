@@ -50,7 +50,38 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     setMessage(null);
     
     try {
-      // Attempt to create new user
+      // First, check if user already exists by attempting to sign in
+      const { data: existingUser, error: signInError } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: 'dummy-password' // This will fail but tell us if user exists
+      });
+
+      // If we get a "Invalid login credentials" error, it could mean:
+      // 1. User doesn't exist, OR 2. User exists but wrong password
+      // If we get "Email not confirmed", user exists but not confirmed
+      if (signInError && signInError.message.includes('Email not confirmed')) {
+        setMessage({
+          type: 'error',
+          text: 'An account with this email already exists but is not confirmed. Please check your email for the confirmation link.'
+        });
+        return;
+      }
+
+      // Try a different approach - attempt password reset to check if user exists
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(formData.email, {
+        redirectTo: `${window.location.origin}/fake-redirect-${Date.now()}`,
+      });
+
+      // If no error on password reset, user exists
+      if (!resetError) {
+        setMessage({
+          type: 'error',
+          text: 'An account with this email already exists. Please try logging in instead.'
+        });
+        return;
+      }
+
+      // If we get here, user likely doesn't exist, proceed with signup
       const { data, error } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -73,25 +104,17 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         });
         // User already exists and is confirmed
         setMessage({
-          type: 'error',
-          text: 'An account with this email already exists. Please try logging in instead.'
-        });
-      } else if (data.user && data.user.email_confirmed_at === null) {
-        // New user created, needs email confirmation
-        setMessage({
-          type: 'success',
-          text: 'Account created successfully! Please check your email to confirm your account.'
-        });
-        setMessage({
-          type: 'error',
-          text: 'An account with this email already exists. Please try logging in instead.'
-        });
-      } else {
-        setMessage({
-          type: 'error',
-          text: error.message || 'An error occurred during signup. Please try again.'
-        });
-      }
+      // New user created successfully
+      setMessage({
+        type: 'success',
+        text: 'Account created successfully! Please check your email to confirm your account.'
+      });
+
+    } catch (error: any) {
+      setMessage({
+        type: 'error',
+        text: error.message || 'An error occurred during signup. Please try again.'
+      });
     } finally {
       setLoading(false);
     }
