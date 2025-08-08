@@ -9,7 +9,6 @@ import {
   CheckCircle,
   Star,
   ChevronDown,
-  ChevronRight,
   Menu,
   X
 } from 'lucide-react';
@@ -22,12 +21,10 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
-  const [isSigningUp, setIsSigningUp] = useState(false);
   const [openFAQ, setOpenFAQ] = useState<number | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentTestimonial, setCurrentTestimonial] = useState(0);
 
-  // Move data arrays and useEffect hooks before any conditional returns
   const benefits = [
     {
       icon: Clock,
@@ -152,16 +149,17 @@ function App() {
       setLoading(false);
     });
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    // Listen for auth changes - ONLY close modal for successful login
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
         setUser({
           id: session.user.id,
           email: session.user.email!,
           user_metadata: session.user.user_metadata
         });
-        // Only close modal when user is authenticated and not in signup process
-        if (!isSigningUp) {
+        
+        // Only close modal on SIGN_IN event (not SIGN_UP)
+        if (event === 'SIGNED_IN') {
           setAuthModalOpen(false);
         }
       } else {
@@ -181,7 +179,6 @@ function App() {
   }, [testimonials.length]);
 
   useEffect(() => {
-    // Only initialize scroll animations when user is null (on landing page)
     if (user) return;
 
     const observerOptions = {
@@ -211,27 +208,22 @@ function App() {
       });
     }, observerOptions);
 
-    // Wait for React to fully render all components
     const initializeObserver = () => {
-      // Use requestAnimationFrame to ensure DOM is fully painted
       requestAnimationFrame(() => {
         const sections = document.querySelectorAll('.scroll-animate');
         if (sections.length > 0) {
           sections.forEach((section) => observer.observe(section));
         } else {
-          // If sections not found, try again after a short delay
           setTimeout(initializeObserver, 200);
         }
       });
     };
 
-    // Multiple fallbacks to ensure initialization
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', initializeObserver);
     } else if (document.readyState === 'interactive') {
       setTimeout(initializeObserver, 100);
     } else {
-      // Document is already complete
       initializeObserver();
     }
 
@@ -239,7 +231,7 @@ function App() {
       observer.disconnect();
       document.removeEventListener('DOMContentLoaded', initializeObserver);
     };
-  }, [user]); // Add user as dependency to reinitialize when logging out
+  }, [user]);
 
   const handleAuthModal = (mode: 'login' | 'signup') => {
     setAuthModalMode(mode);
@@ -738,8 +730,6 @@ function App() {
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
         initialMode={authModalMode}
-        onSignupStart={() => setIsSigningUp(true)}
-        onSignupComplete={() => setIsSigningUp(false)}
       />
     </div>
   );
