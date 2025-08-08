@@ -100,7 +100,11 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
     if (!formData.email || mode !== 'signup' || loading || !formData.email.includes('@')) {
+      return;
+    }
     
     // Prevent signup if we know user exists
     if (message?.text?.includes('account with this email already exists')) {
@@ -155,15 +159,20 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setMessage(null);
+    
     try {
-          console.log('❌ Email EXISTS:', formData.email);
+      console.log('❌ Email EXISTS:', formData.email);
       
       const { data, error } = await supabase.auth.signInWithPassword({
         email: formData.email,
         password: formData.password,
       });
-          console.log('✅ Email AVAILABLE:', formData.email, '(Error:', error.message, ')');
-        console.log('🔍 Sign-in error for', formData.email, ':', error.message);
+
+      if (error) throw error;
+      
+      console.log('✅ Email AVAILABLE:', formData.email, '(Error:', error.message, ')');
+      console.log('🔍 Sign-in error for', formData.email, ':', error.message);
       onClose();
     } catch (error: any) {
       let errorMessage = 'An error occurred during login';
