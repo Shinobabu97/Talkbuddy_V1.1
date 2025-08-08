@@ -63,7 +63,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       } else if (mode === 'signup') {
         console.log('Starting signup process...');
         
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
           options: {
@@ -77,27 +77,24 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         console.log('Signup response:', { data, error });
         if (error) throw error;
 
-        console.log('Signup successful, signing out...');
-        // Sign out immediately to prevent auto-login
-        await supabase.auth.signOut();
-        
-        console.log('Setting success state...');
-        // Set success state and switch to login
-        setSignupSuccess(true);
-        setMode('login');
-        setMessage({ 
-          type: 'success', 
-          text: 'Account successfully created. Now login here.' 
-        });
-        // Keep email, clear password and names
-        setFormData(prev => ({ 
-          firstName: '', 
-          lastName: '', 
-          email: prev.email, 
-          password: '' 
-        }));
-        
-        console.log('Success state set, should now show login form');
+        // If user is automatically logged in, the modal will close via auth state change
+        // If email confirmation is required, show success message
+        if (!data.session) {
+          setSignupSuccess(true);
+          setMode('login');
+          setMessage({ 
+            type: 'success', 
+            text: 'Account successfully created. Now login here.' 
+          });
+          // Keep email, clear password and names
+          setFormData(prev => ({ 
+            firstName: '', 
+            lastName: '', 
+            email: prev.email, 
+            password: '' 
+          }));
+        }
+        // If session exists, user will be automatically logged in and modal will close
         
       } else if (mode === 'forgot') {
         const { error } = await supabase.auth.resetPasswordForEmail(formData.email);

@@ -159,8 +159,8 @@ function App() {
           email: session.user.email!,
           user_metadata: session.user.user_metadata
         });
-        // Only close modal when user successfully logs in (not during signup)
-        // The AuthModal component will handle its own closing logic for signup success
+        // Close modal when user is authenticated
+        setAuthModalOpen(false);
       } else {
         setUser(null);
       }
