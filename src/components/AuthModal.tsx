@@ -65,20 +65,20 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       if (error) throw error;
 
       // Check if user was actually created or already exists
-      if (data.user && data.user.email_confirmed_at === null) {
-        // New user created, needs email confirmation
+      if (data.user && data.user.email_confirmed_at !== null) {
+        // User already exists and is confirmed
         setMessage({
           type: 'success',
           text: 'Account created successfully! Please check your email to confirm your account before signing in.'
         });
-      } else if (data.user && data.user.email_confirmed_at !== null) {
         // User already exists and is confirmed
         setMessage({
           type: 'error',
           text: 'An account with this email already exists. Please try logging in instead.'
         });
       } else {
-        // Fallback for other cases
+      } else if (data.user && data.user.email_confirmed_at === null) {
+        // New user created, needs email confirmation
         setMessage({
           type: 'success',
           text: 'Account created successfully! Please check your email to confirm your account.'
