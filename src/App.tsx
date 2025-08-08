@@ -643,6 +643,7 @@ function App() {
               <p>&copy; 2025 TalkBuddy. All rights reserved. Built for language learners who want to speak with confidence.</p>
             </div>
           </div>
+          </div>
       </footer>
 
       <AuthModal
