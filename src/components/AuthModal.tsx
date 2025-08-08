@@ -57,29 +57,38 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         });
         
         if (error) {
-          // Check if the error indicates user exists
-          if (error.message === 'Invalid login credentials') {
-            // User exists (email found but password wrong)
+          // Check if the error specifically indicates user exists
+          if (error.message === 'Invalid login credentials' || 
+              error.message.includes('Email not confirmed') ||
+              error.message.includes('Invalid email or password')) {
+            // User exists - email found in database
             setMessage({
               type: 'error',
               text: 'An account with this email already exists. Please try logging in instead.'
             });
+          } else if (error.message.includes('User not found') ||
+                     error.message.includes('Invalid email') ||
+                     error.message.includes('signup') ||
+                     error.message.includes('not found')) {
+            // User doesn't exist - clear any existing error
+            setMessage(null);
           } else {
-            // User doesn't exist or other errors - allow signup
+            // Unknown error - don't block signup, clear error
+            console.log('Unknown auth error:', error.message);
             setMessage(null);
           }
         } else {
           // No error means successful login (shouldn't happen with dummy password)
-          // But just in case, treat as user exists
+          // This shouldn't happen with dummy password, but treat as user exists
           setMessage({
             type: 'error',
             text: 'An account with this email already exists. Please try logging in instead.'
           });
         }
       } catch (error) {
-        // Network or other errors - clear any existing error and allow signup
+        // Network or other errors - don't block signup
+        console.log('Network error during email check:', error);
         setMessage(null);
-        console.warn('Error checking user existence:', error);
       } finally {
         setCheckingUser(false);
       }
