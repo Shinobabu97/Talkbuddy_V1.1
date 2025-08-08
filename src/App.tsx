@@ -151,28 +151,27 @@ function App() {
       setLoading(false);
     });
 
-    // Listen for auth changes - ONLY close modal for successful login
+    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
         if (event === 'SIGNED_UP') {
-          // Set user first (dashboard loads for microsecond)
+          // Set user first (dashboard loads briefly)
           setUser({
             id: session.user.id,
             email: session.user.email!,
             user_metadata: session.user.user_metadata
           });
           
-          // After 1 millisecond, show login modal with success message
+          // After brief moment, clear user and show login modal
           setTimeout(() => {
-            setUser(null); // Remove user to go back to hero
+            setUser(null); // This will show hero page
             setAuthModalMode('login');
             setAuthModalOpen(true);
             setShowSuccessLogin(true);
-            // Sign out the user so they need to login properly
             supabase.auth.signOut();
-          }, 1); // 1 millisecond delay
+          }, 10); // 10 milliseconds
         } else if (event === 'SIGNED_IN') {
-          // Normal login - go to dashboard
+          // Only set user for normal login (not signup)
           setUser({
             id: session.user.id,
             email: session.user.email!,
@@ -182,6 +181,7 @@ function App() {
           setShowSuccessLogin(false);
         }
       } else {
+        // User signed out or no session
         setUser(null);
         setShowSuccessLogin(false);
       }
