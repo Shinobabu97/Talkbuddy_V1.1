@@ -48,44 +48,35 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       setMessage(null); // Clear any existing messages
       
       try {
-        // Try to sign up with a temporary password to check if email exists
-        const { data, error } = await supabase.auth.signUp({
-          email: formData.email,
-          password: 'TempCheck123!@#', // Strong temporary password for checking
-          options: {
-            data: {
-              first_name: 'temp',
-              last_name: 'temp'
-            }
-          }
+        // Use password reset to check if email exists - this is a safe way to check
+        const { error } = await supabase.auth.resetPasswordForEmail(formData.email, {
+          redirectTo: 'https://example.com/fake-redirect' // Fake redirect URL
         });
         
         if (error) {
-          console.log('Email check error:', error.message); // Debug log
+          console.log('Email check error:', error.message, 'Status:', error.status); // Debug log
           
-          // Check for various error messages that indicate user already exists
+          // If password reset fails with "User not found" or similar, email doesn't exist
           const errorMessage = error.message.toLowerCase();
-          if (errorMessage.includes('user already registered') || 
-              errorMessage.includes('already been registered') ||
-              errorMessage.includes('email address is already registered') ||
-              errorMessage.includes('user with this email already exists') ||
-              errorMessage.includes('email already exists') ||
-              errorMessage.includes('already registered') ||
-              errorMessage.includes('duplicate') ||
-              error.status === 422) { // Unprocessable Entity - often used for duplicate emails
-            setMessage({
-              type: 'error',
-              text: 'An account with this email already exists. Please try logging in instead.'
-            });
+          if (errorMessage.includes('user not found') || 
+              errorMessage.includes('email not found') ||
+              errorMessage.includes('invalid email') ||
+              errorMessage.includes('no user found')) {
+            // Email doesn't exist - good for signup
+            console.log('Email is available for signup'); // Debug log
+            setMessage(null);
           } else {
-            // Other errors (invalid email format, network issues, etc.) - don't block signup
+            // Other errors might indicate rate limiting or server issues - don't block signup
             console.log('Email check error (not blocking signup):', error.message);
             setMessage(null);
           }
         } else {
-          // No error means the email is available for signup
-          console.log('Email is available for signup'); // Debug log
-          setMessage(null); // Email is available
+          // No error means password reset email would be sent - user exists
+          console.log('Email exists - user found'); // Debug log
+          setMessage({
+            type: 'error',
+            text: 'An account with this email already exists. Please try logging in instead.'
+          });
         }
       } catch (error) {
         // Network or other unexpected errors - don't block signup  
@@ -96,6 +87,73 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       }
     }
   };
+
+  // Alternative method using a more direct approach
+  const handleEmailBlurAlternative = async () => {
+    if (!formData.email || mode !== 'signup' || checkingUser || loading) return;
+    
+    // Only check if email looks valid
+    if (formData.email.includes('@') && formData.email.includes('.')) {
+      setCheckingUser(true);
+      setMessage(null); // Clear any existing messages
+      
+      try {
+        // Try to sign in with a known wrong password to check if user exists
+        const { error } = await supabase.auth.signInWithPassword({
+          email: formData.email,
+          password: 'definitely-wrong-password-12345'
+        });
+        
+        if (error) {
+          console.log('Email check error:', error.message, 'Status:', error.status); // Debug log
+          
+          const errorMessage = error.message.toLowerCase();
+          
+          // "Invalid login credentials" means user exists but password is wrong
+          if (errorMessage.includes('invalid login credentials') || 
+              errorMessage.includes('invalid credentials') ||
+              errorMessage.includes('wrong password')) {
+            console.log('Email exists - user found'); // Debug log
+            setMessage({
+              type: 'error',
+              text: 'An account with this email already exists. Please try logging in instead.'
+            });
+          } else if (errorMessage.includes('email not confirmed') ||
+                     errorMessage.includes('email confirmation')) {
+            // User exists but email not confirmed
+            console.log('Email exists but not confirmed'); // Debug log
+            setMessage({
+              type: 'error', 
+              text: 'An account with this email already exists. Please try logging in instead.'
+            });
+          } else if (errorMessage.includes('user not found') ||
+                     errorMessage.includes('no user found') ||
+                     errorMessage.includes('invalid email')) {
+            // Email doesn't exist - good for signup
+            console.log('Email is available for signup'); // Debug log
+            setMessage(null);
+          } else {
+            // Other errors - don't block signup
+            console.log('Email check error (not blocking signup):', error.message);
+            setMessage(null);
+          }
+        } else {
+          // This shouldn't happen with wrong password, but just in case
+          console.log('Unexpected: No error with wrong password');
+          setMessage(null);
+        }
+      } catch (error) {
+        // Network or other unexpected errors - don't block signup  
+        console.log('Network/unexpected error during email check:', error);
+        setMessage(null);
+      } finally {
+        setCheckingUser(false);
+      }
+    }
+  };
+
+  // Use the alternative method for now
+  const actualHandleEmailBlur = handleEmailBlurAlternative;
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData(prev => ({
@@ -291,7 +349,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
                     name="email"
                     value={formData.email}
                     onChange={handleInputChange}
-                    onBlur={handleEmailBlur}
+                    onBlur={actualHandleEmailBlur}
                     className={`w-full pl-10 pr-12 py-3 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors ${
                       message?.text?.includes('account with this email already exists') 
                         ? 'border-red-300 bg-red-50' 
