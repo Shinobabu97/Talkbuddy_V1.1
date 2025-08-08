@@ -179,7 +179,7 @@ function App() {
   useEffect(() => {
     const observerOptions = {
       threshold: 0.1,
-      rootMargin: '50px 0px -100px 0px'
+      rootMargin: '0px 0px -50px 0px'
     };
 
     const observer = new IntersectionObserver((entries) => {
@@ -198,8 +198,11 @@ function App() {
       });
     }, observerOptions);
 
-    const sections = document.querySelectorAll('.scroll-animate');
-    sections.forEach((section) => observer.observe(section));
+    // Wait for DOM to be ready
+    setTimeout(() => {
+      const sections = document.querySelectorAll('.scroll-animate');
+      sections.forEach((section) => observer.observe(section));
+    }, 100);
 
     return () => observer.disconnect();
   }, []);
@@ -232,34 +235,25 @@ function App() {
     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50">
       <style jsx>{`
         .scroll-animate {
-          opacity: 1;
-          transform: translateY(0);
+          opacity: 0;
+          transform: translateY(30px);
           transition: all 0.8s ease-out;
         }
         
         .scroll-animate.fade-in {
-          animation: fadeInUp 0.8s ease-out forwards;
+          opacity: 1;
+          transform: translateY(0);
         }
         
         .stagger-animate {
-          opacity: 1;
-          transform: translateY(0);
+          opacity: 0;
+          transform: translateY(20px);
           transition: all 0.6s ease-out;
         }
         
         .stagger-animate.fade-in {
-          animation: fadeInUp 0.6s ease-out forwards;
-        }
-        
-        @keyframes fadeInUp {
-          from {
-            opacity: 0;
-            transform: translateY(30px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
+          opacity: 1;
+          transform: translateY(0);
         }
         
         .float-animation {
