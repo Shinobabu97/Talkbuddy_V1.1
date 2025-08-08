@@ -13,6 +13,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [showSignupSuccess, setShowSignupSuccess] = useState(false);
   
   const [formData, setFormData] = useState({
     firstName: '',
@@ -30,6 +31,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
   React.useEffect(() => {
     if (!isOpen) {
       setMessage(null);
+      setShowSignupSuccess(false);
       setFormData({ firstName: '', lastName: '', email: '', password: '' });
       setShowPassword(false);
       setLoading(false);
@@ -70,19 +72,14 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         // Sign out immediately to prevent auto-login
         await supabase.auth.signOut();
         
+        // Clear form and switch to login mode with success message
+        setFormData({ firstName: '', lastName: '', email: formData.email, password: '' });
+        setMode('login');
+        setShowSignupSuccess(true);
         setMessage({ 
           type: 'success', 
-          text: 'Account created successfully! Now please login with your credentials.' 
+          text: 'Account successfully created. Now login here.' 
         });
-        
-        // Clear form
-        setFormData({ firstName: '', lastName: '', email: '', password: '' });
-        
-        // Switch to login mode after a delay
-        setTimeout(() => {
-          setMode('login');
-          setMessage(null);
-        }, 3000);
         
       } else if (mode === 'forgot') {
         const { error } = await supabase.auth.resetPasswordForEmail(formData.email);
@@ -123,11 +120,11 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
 
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            {mode === 'login' ? 'Welcome Back' : mode === 'signup' ? 'Create Account' : 'Reset Password'}
+            {mode === 'login' ? (showSignupSuccess ? 'Login to Your Account' : 'Welcome Back') : mode === 'signup' ? 'Create Account' : 'Reset Password'}
           </h2>
           <p className="text-gray-600">
             {mode === 'login' 
-              ? 'Sign in to continue your language learning journey' 
+              ? (showSignupSuccess ? 'Use your new credentials to access TalkBuddy' : 'Sign in to continue your language learning journey')
               : mode === 'signup'
               ? 'Join thousands of learners building speaking confidence'
               : 'Enter your email to receive reset instructions'
@@ -254,7 +251,40 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
 
         <div className="mt-6 text-center">
           {mode === 'login' ? (
-            <div className="space-y-2">
+            !showSignupSuccess && (
+              <div className="space-y-2">
+                <button
+                  onClick={() => setMode('signup')}
+                  className="text-orange-600 hover:text-orange-700 font-medium"
+                >
+                  Don't have an account? Sign up
+                </button>
+                <div>
+                  <button
+                    onClick={() => setMode('forgot')}
+                    className="text-sm text-gray-600 hover:text-gray-800"
+                  >
+                    Forgot your password?
+                  </button>
+                </div>
+              </div>
+            )
+          ) : mode === 'signup' ? (
+            <button
+              onClick={() => setMode('login')}
+              className="text-orange-600 hover:text-orange-700 font-medium"
+            >
+              Already have an account? Sign in
+            </button>
+          ) : (
+            <button
+              onClick={() => setMode('login')}
+              className="text-orange-600 hover:text-orange-700 font-medium"
+            >
+              Back to sign in
+            </button>
+          )}
+        </div>
               <button
                 onClick={() => setMode('signup')}
                 className="text-orange-600 hover:text-orange-700 font-medium"
