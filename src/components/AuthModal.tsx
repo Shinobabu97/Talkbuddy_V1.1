@@ -13,7 +13,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [showingSignupSuccess, setShowingSignupSuccess] = useState(false);
   
   const [formData, setFormData] = useState({
     firstName: '',
@@ -34,7 +33,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       setFormData({ firstName: '', lastName: '', email: '', password: '' });
       setShowPassword(false);
       setLoading(false);
-      setShowingSignupSuccess(false);
     }
   }, [isOpen]);
 
@@ -71,9 +69,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
 
         // Sign out immediately to prevent auto-login
         await supabase.auth.signOut();
-        // Show success message
-        // Set signup success state to prevent modal from closing
-        setShowingSignupSuccess(true);
         
         setMessage({ 
           type: 'success', 
@@ -83,11 +78,10 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         // Clear form
         setFormData({ firstName: '', lastName: '', email: '', password: '' });
         
-        // Switch to login mode after a short delay
+        // Switch to login mode after a delay
         setTimeout(() => {
           setMode('login');
           setMessage(null);
-          setShowingSignupSuccess(false);
         }, 3000);
         
       } else if (mode === 'forgot') {
