@@ -50,18 +50,15 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     setMessage(null);
     
     try {
-      // First, check if user exists by attempting to sign in with a dummy password
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: formData.email,
-        password: 'dummy-password-check-12345'
-      });
+      // Try to initiate password reset to check if user exists
+      // This is a safer way to check user existence
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        formData.email,
+        { redirectTo: 'https://example.com/dummy' } // Dummy redirect
+      );
 
-      // If we get "Invalid login credentials", user exists but wrong password
-      // If we get "Invalid login credentials" or "Email not confirmed", user exists
-      if (signInError && (
-        signInError.message.includes('Invalid login credentials') ||
-        signInError.message.includes('Email not confirmed')
-      )) {
+      // If reset succeeds, user exists
+      if (!resetError) {
         setMessage({
           type: 'error',
           text: 'An account with this email already exists. Please try logging in instead.'
@@ -69,7 +66,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         return;
       }
 
-      // If we get here, user doesn't exist, proceed with signup
+      // If reset fails, user likely doesn't exist, proceed with signup
       const { data, error } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -83,7 +80,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
 
       if (error) throw error;
 
-      // New user created successfully
+      // User created successfully
       setMessage({
         type: 'success',
         text: 'Account created successfully! Please check your email to confirm your account.'
