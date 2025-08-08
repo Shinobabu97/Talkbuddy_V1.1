@@ -26,57 +26,7 @@ function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentTestimonial, setCurrentTestimonial] = useState(0);
 
-  useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setUser({
-          id: session.user.id,
-          email: session.user.email!,
-          user_metadata: session.user.user_metadata
-        });
-      }
-      setLoading(false);
-    });
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setUser({
-          id: session.user.id,
-          email: session.user.email!,
-          user_metadata: session.user.user_metadata
-        });
-        setAuthModalOpen(false);
-      } else {
-        setUser(null);
-      }
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const handleAuthModal = (mode: 'login' | 'signup') => {
-    setAuthModalMode(mode);
-    setAuthModalOpen(true);
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 flex items-center justify-center">
-        <div className="text-center">
-          <Mic className="h-12 w-12 text-orange-600 mx-auto mb-4 animate-pulse" />
-          <p className="text-gray-600">Loading TalkBuddy...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (user) {
-    return <Dashboard user={user} />;
-  }
-
+  // Move data arrays and useEffect hooks before any conditional returns
   const benefits = [
     {
       icon: Clock,
@@ -189,6 +139,37 @@ function App() {
   ];
 
   useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setUser({
+          id: session.user.id,
+          email: session.user.email!,
+          user_metadata: session.user.user_metadata
+        });
+      }
+      setLoading(false);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setUser({
+          id: session.user.id,
+          email: session.user.email!,
+          user_metadata: session.user.user_metadata
+        });
+        setAuthModalOpen(false);
+      } else {
+        setUser(null);
+      }
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTestimonial((prev) => (prev + 1) % testimonials.length);
     }, 4000);
@@ -232,9 +213,29 @@ function App() {
     return () => observer.disconnect();
   }, []);
 
+  const handleAuthModal = (mode: 'login' | 'signup') => {
+    setAuthModalMode(mode);
+    setAuthModalOpen(true);
+  };
+
   const toggleFAQ = (index: number) => {
     setOpenFAQ(openFAQ === index ? null : index);
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 flex items-center justify-center">
+        <div className="text-center">
+          <Mic className="h-12 w-12 text-orange-600 mx-auto mb-4 animate-pulse" />
+          <p className="text-gray-600">Loading TalkBuddy...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (user) {
+    return <Dashboard user={user} />;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50">
