@@ -13,8 +13,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [emailExists, setEmailExists] = useState<boolean | null>(null);
-  const [checkingEmail, setCheckingEmail] = useState(false);
   
   const [formData, setFormData] = useState({
     firstName: '',
@@ -40,8 +38,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     }
   }, [isOpen]);
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setMessage(null); // Clear any previous messages
     setFormData(prev => ({
       ...prev,
       [e.target.name]: e.target.value
@@ -51,73 +47,11 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     if (e.target.name === 'email' && mode === 'signup') {
       setEmailExists(null); // Reset previous check
       if (e.target.value && e.target.value.includes('@')) {
-        // Debounce the check to avoid too many API calls
-        setTimeout(() => {
-          if (formData.email === e.target.value) { // Only check if email hasn't changed again
-            checkEmailExists(e.target.value);
-          }
-        }, 500);
-      }
-    }
-  };
-
-  const checkEmailExists = async (emailToCheck?: string) => {
-    const email = emailToCheck || formData.email;
-    if (!email || mode !== 'signup') return;
-    
     setCheckingEmail(true);
     try {
-      // Try to sign in with a known invalid password
-      // This will give us different error messages for existing vs non-existing users
-      const { error } = await supabase.auth.signInWithPassword({
-        email: email,
-        password: 'invalid-password-check-123456789'
-      });
-      
-      if (error) {
-        // Check the error message to determine if user exists
-        if (error.message.includes('Invalid login credentials') || 
-            error.message.includes('Email not confirmed') ||
-            error.message.includes('Invalid email or password')) {
-          // User exists but password is wrong (which is expected)
-          setEmailExists(true);
-          setMessage({
-            type: 'error',
-            text: 'An account with this email already exists. Please try logging in instead.'
-          });
-        } else {
-          // User doesn't exist or other error
-          setEmailExists(false);
-          setMessage(null);
-        }
-      } else {
-        // This shouldn't happen with our invalid password, but just in case
-        setEmailExists(true);
-        setMessage({
-          type: 'error',
-          text: 'An account with this email already exists. Please try logging in instead.'
-        });
-      }
-    } catch (error) {
-      // If there's a network error or other issue, assume user doesn't exist
-      setEmailExists(false);
-      setMessage(null);
-    } finally {
-      setCheckingEmail(false);
-    }
   };
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // If we already know the email exists, don't proceed
-    if (emailExists === true) {
-      setMessage({
-        type: 'error',
-        text: 'An account with this email already exists. Please try logging in instead.'
-      });
-      return;
-    }
-    
     setLoading(true);
     setMessage(null);
     
@@ -135,7 +69,15 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
 
       if (error) throw error;
 
-      // User created successfully
+      // Check if user was actually created or already exists
+      if (data.user && data.user.email_confirmed_at === null) {
+        // New user created, needs email confirmation
+        setMessage({
+          type: 'success',
+          text: 'Account created successfully! Please check your email to confirm your account.'
+        });
+      }
+
       setMessage({
         type: 'success',
         text: 'Account created successfully! Please check your email to confirm your account.'
@@ -308,17 +250,12 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
                   >
                     {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                   </button>
-                  {checkingEmail && (
-                    <div className="absolute right-12 top-1/2 transform -translate-y-1/2">
-                      <Loader2 className="animate-spin h-4 w-4 text-orange-500" />
-                    </div>
-                  )}
                 </div>
               </div>
 
               <button
                 type="submit"
-                disabled={loading || emailExists === true}
+                disabled={loading}
                 className="w-full py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transform hover:scale-105 transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center"
               >
                 {loading ? (
