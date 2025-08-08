@@ -48,50 +48,34 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     setMessage(null);
     
     try {
-      // Try to sign up with a test password
-      const { data, error } = await supabase.auth.signUp({
+      // Try to sign in with dummy password to check if user exists
+      const { error } = await supabase.auth.signInWithPassword({
         email: formData.email,
-        password: 'test-password-123456'
+        password: 'dummy-password-that-wont-work-12345'
       });
 
       if (error) {
-        // Check for specific error messages that indicate user already exists
-        if (error.message.includes('User already registered') || 
-            error.message.includes('already been registered') ||
-            error.message.includes('already registered') ||
-            error.code === 'signup_disabled' ||
-            error.code === 'user_already_exists') {
-          console.log('❌ Email EXISTS in Supabase auth table');
+        console.log('🔍 Sign-in error:', error.message, error.code);
+        
+        // If we get "Invalid login credentials", it means the user exists but password is wrong
+        if (error.message === 'Invalid login credentials') {
+          console.log('❌ Email EXISTS in Supabase auth table (invalid credentials = user exists)');
           setMessage({
             type: 'error',
             text: 'An account with this email already exists. Please try logging in instead.'
           });
         } else {
-          console.log('🔍 Other signup error (treating as available):', error.message, error.code);
-          // For other errors, assume email is available
+          // Any other error (like "User not found") means email is available
+          console.log('✅ Email is AVAILABLE for signup (user not found or other error)');
           setMessage({
             type: 'success',
             text: 'Email is available for signup!'
           });
         }
       } else {
-        // Signup succeeded - email is available
-        console.log('✅ Email is AVAILABLE for signup');
-        setMessage({
-          type: 'success',
-          text: 'Email is available for signup!'
-        });
-        
-        // Clean up the test user immediately
-        if (data.user) {
-          try {
-            // Note: admin.deleteUser requires service role key, so we'll just sign out
-            await supabase.auth.signOut();
-            console.log('🧹 Test user cleaned up');
-          } catch (cleanupError) {
-            console.log('🔍 Cleanup error (not critical):', cleanupError);
-          }
-        }
+        // This shouldn't happen with a dummy password, but if it does, sign out immediately
+        console.log('🔍 Unexpected successful sign-in with dummy password');
+        await supabase.auth.signOut();
       }
     } catch (error) {
       console.log('🔍 Network error during email check:', error);
