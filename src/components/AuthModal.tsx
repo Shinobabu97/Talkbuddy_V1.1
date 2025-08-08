@@ -30,14 +30,16 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
   // Clear messages and form when modal is closed
   React.useEffect(() => {
     if (!isOpen) {
+      // Complete state reset when modal closes
       setMessage(null);
       setFormData({ firstName: '', lastName: '', email: '', password: '' });
       setShowPassword(false);
       setLoading(false);
       setCheckingUser(false);
     } else {
-      // Clear message when modal opens
+      // Force clear message when modal opens (fresh start)
       setMessage(null);
+      setCheckingUser(false);
     }
   }, [isOpen]);
 
@@ -113,6 +115,12 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       [e.target.name]: e.target.value
     }));
   };
+
+  // Force reset when mode changes
+  React.useEffect(() => {
+    setMessage(null);
+    setCheckingUser(false);
+  }, [mode]);
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
