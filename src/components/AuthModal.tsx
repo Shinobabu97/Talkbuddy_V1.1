@@ -40,18 +40,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     }
   }, [isOpen]);
 
-  // Debounced email check
-  React.useEffect(() => {
-    if (mode === 'signup' && formData.email && formData.email.includes('@')) {
-      const timer = setTimeout(() => {
-        checkEmailExists();
-      }, 500);
-      return () => clearTimeout(timer);
-    } else {
-      setEmailExists(null);
-    }
-  }, [formData.email, mode]);
-
   const checkEmailExists = async () => {
     if (!formData.email || !formData.email.includes('@')) return;
     
@@ -84,7 +72,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
   };
 
   const handlePasswordFocus = () => {
-    if (mode === 'signup' && formData.email && formData.email.includes('@') && emailExists === null && !checkingEmail) {
+    if (mode === 'signup' && formData.email && formData.email.includes('@')) {
       checkEmailExists();
     }
   };
