@@ -212,7 +212,6 @@ export default function Dashboard({ user }: DashboardProps) {
               <h3 className="text-lg font-semibold mb-2">
                 Ready for your next session?
               </h3>
-              <p className="text-orange-100 text-sm mb-4">
               <p className="text-indigo-100 text-sm mb-4">
                 Continue building your confidence with personalized conversations.
               </p>
