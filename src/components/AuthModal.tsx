@@ -73,17 +73,14 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         // Sign out immediately to prevent auto-login
         await supabase.auth.signOut();
         
-        // Use setTimeout to ensure the signOut completes before switching modes
-        setTimeout(() => {
-          // Clear form and switch to login mode with success message
-          setFormData({ firstName: '', lastName: '', email: formData.email, password: '' });
-          setMode('login');
-          setShowSignupSuccess(true);
-          setMessage({ 
-            type: 'success', 
-            text: 'Account successfully created. Now login here.' 
-          });
-        }, 100);
+        // Clear form and switch to login mode with success message
+        setFormData({ firstName: '', lastName: '', email: formData.email, password: '' });
+        setShowSignupSuccess(true);
+        setMode('login');
+        setMessage({ 
+          type: 'success', 
+          text: 'Account successfully created. Now login here.' 
+        });
         
       } else if (mode === 'forgot') {
         const { error } = await supabase.auth.resetPasswordForEmail(formData.email);
