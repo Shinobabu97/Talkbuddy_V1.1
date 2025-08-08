@@ -232,9 +232,14 @@ function App() {
     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50">
       <style jsx>{`
         .scroll-animate {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+          transition: all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+        
+        .scroll-animate:not(.animate-in) {
           opacity: 0;
-          transform: translateY(60px) scale(0.95);
-          transition: all 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+          transform: translateY(40px) scale(0.96);
         }
         
         .scroll-animate.animate-in {
@@ -243,9 +248,14 @@ function App() {
         }
         
         .stagger-animate {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+          transition: all 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+        
+        .stagger-animate:not(.animate-in) {
           opacity: 0;
-          transform: translateY(40px) scale(0.9);
-          transition: all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+          transform: translateY(30px) scale(0.95);
         }
         
         .stagger-animate.animate-in {
