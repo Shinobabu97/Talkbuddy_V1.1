@@ -299,7 +299,7 @@ function App() {
 
             <div className="flex items-center space-x-4">
               <button className="hidden md:inline-flex px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transform hover:scale-105 transition-all duration-200 font-medium">
-                Get Started
+                Login
               </button>
 
               <button
