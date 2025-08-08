@@ -40,35 +40,8 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     setMessage(null); // Clear any previous messages
     setFormData(prev => ({
       ...prev,
-      [e.target.name]: e.target.value
-    }));
-  };
-
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setMessage(null);
-
-    try {
-      // First check if user already exists by trying to sign in
-      const { data: existingUser, error: signInError } = await supabase.auth.signInWithPassword({
-        email: formData.email,
-        password: 'dummy-password-check'
-      });
-
-      // If sign in succeeds or gives specific auth errors, user exists
-      if (existingUser?.user || 
-          (signInError && !signInError.message.includes('Invalid login credentials'))) {
-        setMessage({
-          type: 'error',
-          text: 'An account with this email already exists. Please try logging in instead.'
-        });
-        setLoading(false);
-        return;
-      }
-
-      // Now attempt signup
-      const { error } = await supabase.auth.signUp({
+      // Attempt signup directly
+      const { data, error } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
         options: {
@@ -81,15 +54,40 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
 
       if (error) throw error;
 
-      setMessage({
-        type: 'success',
-        text: 'Account created successfully!'
-      });
+      // Check if user was actually created or already exists
+      if (data.user && !data.session) {
+        // User created but needs email confirmation
+        setMessage({
+          type: 'success',
+          text: 'Account created successfully! Please check your email to confirm your account.'
+        });
+      } else if (data.user && data.session) {
+        // User created and signed in immediately
+        setMessage({
+          type: 'success',
+          text: 'Account created successfully!'
+        });
+      } else {
+        // Something unexpected happened
+        setMessage({
+          type: 'success',
+          text: 'Account created successfully!'
+        });
+      }
     } catch (error: any) {
-      if (error.message?.includes('User already registered') || 
-          error.message?.includes('already been registered') ||
-          error.message?.includes('already registered') ||
-          error.message?.includes('email address is already registered')) {
+      console.log('Signup error:', error);
+      
+      // Check for various "user already exists" error patterns
+      const errorMessage = error.message?.toLowerCase() || '';
+      
+      if (errorMessage.includes('user already registered') || 
+          errorMessage.includes('already been registered') ||
+          errorMessage.includes('already registered') ||
+          errorMessage.includes('email address is already registered') ||
+          errorMessage.includes('user with this email already exists') ||
+          errorMessage.includes('email already exists') ||
+          errorMessage.includes('already in use') ||
+          error.status === 422) {
         setMessage({
           type: 'error',
           text: 'An account with this email already exists. Please try logging in instead.'
