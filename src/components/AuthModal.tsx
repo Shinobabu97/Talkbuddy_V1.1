@@ -65,7 +65,12 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
             });
           } else {
             // Clear any existing error messages for this email
-            if (message?.text?.includes('account with this email already exists')) {
+            setMessage(prev => {
+              if (prev?.text?.includes('account with this email already exists')) {
+                return null;
+              }
+              return prev;
+            });
               setMessage(null);
             }
           }
@@ -79,7 +84,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     }, 800); // Debounce for 800ms
     
     return () => clearTimeout(timeoutId);
-  }, [formData.email, mode, message]);
+  }, [formData.email, mode]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData(prev => ({
@@ -88,9 +93,12 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     }));
     
     // Only clear non-duplicate-user messages
-    if (message && !message.text.includes('account with this email already exists')) {
-      setMessage(null);
-    }
+    setMessage(prev => {
+      if (prev && !prev.text.includes('account with this email already exists')) {
+        return null;
+      }
+      return prev;
+    });
   };
 
   const handleSignUp = async (e: React.FormEvent) => {
