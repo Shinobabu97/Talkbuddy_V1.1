@@ -13,7 +13,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [showSignupSuccess, setShowSignupSuccess] = useState(false);
+  const [signupSuccess, setSignupSuccess] = useState(false);
   
   const [formData, setFormData] = useState({
     firstName: '',
@@ -27,16 +27,17 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     setMode(initialMode);
   }, [initialMode]);
 
-  // Clear messages and form when modal is closed
+  // Clear everything when modal is closed
   React.useEffect(() => {
     if (!isOpen) {
       setMessage(null);
-      setShowSignupSuccess(false);
+      setSignupSuccess(false);
       setFormData({ firstName: '', lastName: '', email: '', password: '' });
       setShowPassword(false);
       setLoading(false);
+      setMode(initialMode);
     }
-  }, [isOpen]);
+  }, [isOpen, initialMode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,11 +55,10 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
 
         if (error) throw error;
         
-        // Success - close modal manually since we removed auto-close from App.tsx
+        // Success - close modal
         onClose();
-      } else if (mode === 'signup') {
-        console.log('Starting signup process...', { email: formData.email });
         
+      } else if (mode === 'signup') {
         const { error } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
@@ -70,25 +70,25 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
           }
         });
 
-        console.log('Signup result:', { error });
-        
         if (error) throw error;
 
-        console.log('Signup successful, signing out...');
         // Sign out immediately to prevent auto-login
         await supabase.auth.signOut();
         
-        console.log('Setting success state...');
-        // Clear form and switch to login mode with success message
-        setFormData({ firstName: '', lastName: '', email: formData.email, password: '' });
-        setShowSignupSuccess(true);
+        // Set success state and switch to login
+        setSignupSuccess(true);
         setMode('login');
         setMessage({ 
           type: 'success', 
           text: 'Account successfully created. Now login here.' 
         });
-        
-        console.log('Success state set, should show login form now');
+        // Keep email, clear password and names
+        setFormData(prev => ({ 
+          firstName: '', 
+          lastName: '', 
+          email: prev.email, 
+          password: '' 
+        }));
         
       } else if (mode === 'forgot') {
         const { error } = await supabase.auth.resetPasswordForEmail(formData.email);
@@ -101,7 +101,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         });
       }
     } catch (error: any) {
-      console.error('Auth error:', error);
       setMessage({ 
         type: 'error', 
         text: error.message || 'An error occurred. Please try again.' 
@@ -114,6 +113,13 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const switchMode = (newMode: 'login' | 'signup' | 'forgot') => {
+    setMode(newMode);
+    setMessage(null);
+    setSignupSuccess(false);
+    setFormData({ firstName: '', lastName: '', email: '', password: '' });
   };
 
   if (!isOpen) return null;
@@ -130,11 +136,11 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
 
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            {mode === 'login' ? (showSignupSuccess ? 'Login to Your Account' : 'Welcome Back') : mode === 'signup' ? 'Create Account' : 'Reset Password'}
+            {mode === 'login' ? 'Welcome Back' : mode === 'signup' ? 'Create Account' : 'Reset Password'}
           </h2>
           <p className="text-gray-600">
             {mode === 'login' 
-              ? (showSignupSuccess ? 'Use your new credentials to access TalkBuddy' : 'Sign in to continue your language learning journey')
+              ? 'Sign in to continue your language learning journey'
               : mode === 'signup'
               ? 'Join thousands of learners building speaking confidence'
               : 'Enter your email to receive reset instructions'
@@ -149,14 +155,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
               : 'bg-red-50 text-red-700 border border-red-200'
           }`}>
             {message.text}
-            {message.type === 'success' && mode === 'signup' && (
-              <button
-                onClick={() => setMode('login')}
-                className="ml-2 underline hover:no-underline font-medium"
-              >
-                Go to Login Page
-              </button>
-            )}
           </div>
         )}
 
@@ -259,42 +257,43 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
           </button>
         </form>
 
-        <div className="mt-6 text-center">
-          {mode === 'login' ? (
-            !showSignupSuccess && (
+        {/* Only show mode switching buttons if NOT in signup success state */}
+        {!signupSuccess && (
+          <div className="mt-6 text-center">
+            {mode === 'login' ? (
               <div className="space-y-2">
                 <button
-                  onClick={() => setMode('signup')}
+                  onClick={() => switchMode('signup')}
                   className="text-orange-600 hover:text-orange-700 font-medium"
                 >
                   Don't have an account? Sign up
                 </button>
                 <div>
                   <button
-                    onClick={() => setMode('forgot')}
+                    onClick={() => switchMode('forgot')}
                     className="text-sm text-gray-600 hover:text-gray-800"
                   >
                     Forgot your password?
                   </button>
                 </div>
               </div>
-            )
-          ) : mode === 'signup' ? (
-            <button
-              onClick={() => setMode('login')}
-              className="text-orange-600 hover:text-orange-700 font-medium"
-            >
-              Already have an account? Sign in
-            </button>
-          ) : (
-            <button
-              onClick={() => setMode('login')}
-              className="text-orange-600 hover:text-orange-700 font-medium"
-            >
-              Back to sign in
-            </button>
-          )}
-        </div>
+            ) : mode === 'signup' ? (
+              <button
+                onClick={() => switchMode('login')}
+                className="text-orange-600 hover:text-orange-700 font-medium"
+              >
+                Already have an account? Sign in
+              </button>
+            ) : (
+              <button
+                onClick={() => switchMode('login')}
+                className="text-orange-600 hover:text-orange-700 font-medium"
+              >
+                Back to sign in
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
