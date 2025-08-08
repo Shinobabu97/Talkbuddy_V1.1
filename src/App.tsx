@@ -381,7 +381,7 @@ function App() {
       </section>
 
       {/* Social Proof */}
-      <section className="py-20 bg-gradient-to-b from-orange-50 to-amber-100 border-y border-orange-200/50 shadow-sm scroll-animate">
+      <section className="py-20 bg-gradient-to-b from-orange-50 via-amber-100 to-orange-50 border-y border-orange-200/50 shadow-sm scroll-animate">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-gray-900 mb-4">
