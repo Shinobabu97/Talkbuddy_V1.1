@@ -21,6 +21,20 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     password: ''
   });
 
+  // Update mode when initialMode changes
+  React.useEffect(() => {
+    setMode(initialMode);
+  }, [initialMode]);
+
+  // Clear messages and form when modal is closed
+  React.useEffect(() => {
+    if (!isOpen) {
+      setMessage(null);
+      setFormData({ firstName: '', lastName: '', email: '', password: '' });
+      setShowPassword(false);
+      setLoading(false);
+    }
+  }, [isOpen]);
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData(prev => ({
       ...prev,
