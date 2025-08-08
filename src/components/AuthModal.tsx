@@ -50,7 +50,26 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     setMessage(null);
     
     try {
-      // Attempt signup directly
+      // First check if user exists by trying to send a password reset
+      console.log('Checking if user exists with email:', formData.email);
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(formData.email, {
+        redirectTo: 'https://example.com/fake-redirect'
+      });
+      
+      // If no error on password reset, user likely exists
+      if (!resetError) {
+        console.log('User exists - password reset succeeded');
+        setMessage({
+          type: 'error',
+          text: 'An account with this email already exists. Please try logging in instead.'
+        });
+        return;
+      }
+      
+      console.log('Password reset error (user might not exist):', resetError);
+      
+      // Now attempt signup
+      console.log('Attempting signup for:', formData.email);
       const { data, error } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -65,14 +84,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       console.log('Signup response:', { data, error });
       if (error) throw error;
 
-      // Check if this is actually a new user or existing user
-      if (data.user && data.user.email_confirmed_at) {
-        // User already existed and is confirmed - this shouldn't happen for new signups
-        setMessage({
-          type: 'error',
-          text: 'An account with this email already exists. Please try logging in instead.'
-        });
-      } else if (data.user && !data.session) {
+      if (data.user && !data.session) {
         // New user created but needs email confirmation
         setMessage({
           type: 'success',
