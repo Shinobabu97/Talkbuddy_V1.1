@@ -458,19 +458,15 @@ function App() {
             {steps.map((step, index) => (
               <div 
                 key={index}
-                className="bg-white/90 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 border border-orange-200 hover:border-orange-300 group hover:bg-orange-50/80 stagger-animate"
-                className="bg-white/95 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 border border-slate-200 hover:border-indigo-300 group hover:bg-indigo-50/50 stagger-animate"
                 className="bg-white/95 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 border border-slate-200 hover:border-indigo-300 group hover:bg-indigo-50/50 stagger-animate"
               >
                 <div className="flex flex-col lg:flex-row items-center gap-8">
                   <div className="flex-shrink-0">
-                    <div className="w-16 h-16 bg-orange-600 text-white rounded-full flex items-center justify-center text-2xl font-bold group-hover:scale-110 group-hover:bg-orange-700 transition-all duration-300">
                     <div className="w-16 h-16 bg-indigo-600 text-white rounded-full flex items-center justify-center text-2xl font-bold group-hover:scale-110 group-hover:bg-indigo-700 transition-all duration-300">
                       {step.number}
                     </div>
                   </div>
                   <div className="flex-1 text-center lg:text-left">
-                    <h3 className="text-2xl font-semibold text-gray-900 mb-2 group-hover:text-orange-700 transition-colors duration-300">
                     <h3 className="text-2xl font-semibold text-gray-900 mb-2 group-hover:text-indigo-700 transition-colors duration-300">
                       {step.title}
                     </h3>
@@ -565,11 +561,9 @@ function App() {
 
           <div className="space-y-4">
             {faqs.map((faq, index) => (
-              <div key={index} className="bg-white/90 backdrop-blur-sm rounded-lg shadow-md border border-orange-200 hover:border-orange-300 transition-colors duration-200">
               <div key={index} className="bg-white/95 backdrop-blur-sm rounded-lg shadow-md border border-slate-200 hover:border-indigo-300 transition-colors duration-200">
                 <button
                   onClick={() => toggleFAQ(index)}
-                  className="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-orange-50 transition-colors duration-200"
                   className="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-indigo-50/50 transition-colors duration-200"
                 >
                   <span className="font-semibold text-gray-900 pr-4">
