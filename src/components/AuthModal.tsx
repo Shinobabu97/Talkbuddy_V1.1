@@ -50,6 +50,24 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     setMessage(null);
 
     try {
+      // First check if user already exists by trying to sign in
+      const { data: existingUser, error: signInError } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: 'dummy-password-check'
+      });
+
+      // If sign in succeeds or gives specific auth errors, user exists
+      if (existingUser?.user || 
+          (signInError && !signInError.message.includes('Invalid login credentials'))) {
+        setMessage({
+          type: 'error',
+          text: 'An account with this email already exists. Please try logging in instead.'
+        });
+        setLoading(false);
+        return;
+      }
+
+      // Now attempt signup
       const { error } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -69,7 +87,9 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       });
     } catch (error: any) {
       if (error.message?.includes('User already registered') || 
-          error.message?.includes('already been registered')) {
+          error.message?.includes('already been registered') ||
+          error.message?.includes('already registered') ||
+          error.message?.includes('email address is already registered')) {
         setMessage({
           type: 'error',
           text: 'An account with this email already exists. Please try logging in instead.'
