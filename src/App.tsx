@@ -168,6 +168,7 @@ function App() {
       
       setLoading(false);
     });
+    });
 
     return () => subscription.unsubscribe();
   }, []);
