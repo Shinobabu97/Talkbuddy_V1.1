@@ -40,7 +40,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
 
   // Check if user exists when email field loses focus (onBlur)
   const handleEmailBlur = async () => {
-    if (!formData.email || mode !== 'signup' || loading) {
+    if (!formData.email || mode !== 'signup' || loading || checkingUser) {
       return;
     }
     
@@ -50,40 +50,47 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       setMessage(null);
       
       try {
-        // Simple check: try to sign in with wrong password
-        // If user exists = "Invalid login credentials"
-        // If user doesn't exist = "User not found" or similar
-        console.log('🔍 Checking email in auth table:', formData.email);
-        
         const { error } = await supabase.auth.signInWithPassword({
           email: formData.email,
           password: 'wrong-password-check-123'
         });
 
-        if (error?.message === 'Invalid login credentials') {
-          // User exists in auth table
-          console.log('❌ Email EXISTS in auth table');
+        // If we get "Invalid login credentials", the user exists
+        if (error && error.message === 'Invalid login credentials') {
+          console.log('❌ Email EXISTS in Supabase auth table');
           setMessage({
             type: 'error',
             text: 'An account with this email already exists. Please try logging in instead.'
           });
-        } else {
-          // User doesn't exist in auth table (available for signup)
-          console.log('✅ Email AVAILABLE for signup');
+        } else if (error && (error.message.includes('User not found') || error.message.includes('Invalid'))) {
+          // User doesn't exist - email is available
+          console.log('✅ Email is AVAILABLE for signup');
           setMessage({
             type: 'success',
             text: 'Email is available for signup!'
           });
+        } else if (error) {
+          // Some other error - don't show it to user, just log it
+          console.log('🔍 Other auth error (email likely available):', error.message);
+          setMessage({
+            type: 'success',
+            text: 'Email is available for signup!'
+          });
+        } else {
+          // No error means successful login (shouldn't happen with wrong password)
+          console.log('🔍 Unexpected: No error with wrong password');
+          setMessage({
+            type: 'error',
+            text: 'An account with this email already exists. Please try logging in instead.'
+          });
         }
       } catch (error) {
-        console.log('Network error:', error);
-        setMessage(null);
+        // Catch any network or other errors - don't show to user
+        console.log('🔍 Network or system error during email check:', error);
+        // Don't set any message - just silently fail the check
       }
       
       setCheckingUser(false);
-    } else {
-      // Invalid email format
-      setMessage(null);
     }
   };
 
