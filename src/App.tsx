@@ -717,6 +717,271 @@ function App() {
           </div>
         </div>
       </footer>
+      {/* Social Proof */}
+      <section className="py-12 bg-white/80 backdrop-blur-sm section-transition">
+        <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
+          <p className="text-center text-gray-600 mb-8">
+            More than 5,500+ language learners trust TalkBuddy
+          </p>
+          <div className="flex flex-wrap justify-center items-center gap-8 opacity-60">
+            <div className="text-2xl font-bold text-gray-700">Working Professionals</div>
+            <div className="text-2xl font-bold text-gray-700">University Students</div>
+            <div className="text-2xl font-bold text-gray-700">Language Enthusiasts</div>
+            <div className="text-2xl font-bold text-gray-700">International Teams</div>
+            
+          </div>
+        </div>
+      </section>
+
+      {/* Benefits Section */}
+      <section id="benefits" className="py-20 section-transition relative subtle-bg-shift">
+        <div className="absolute inset-0 opacity-5">
+          <div className="absolute inset-0" style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23f97316' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+          }}></div>
+        </div>
+        <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
+              Why TalkBuddy Works
+            </h2>
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+              Experience personalized language learning that adapts to your needs and builds real confidence
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {benefits.map((benefit, index) => {
+              const Icon = benefit.icon;
+              return (
+                <div 
+                  key={index}
+                  className="bg-white/90 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 border border-orange-200 hover:border-orange-300 group hover:bg-orange-50/80 stagger-item section-transition"
+                >
+                  <div className="mb-4">
+                    <Icon className="h-10 w-10 text-orange-600 mb-3 group-hover:text-orange-700 transition-colors duration-300" />
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2 group-hover:text-gray-900 transition-colors duration-300">
+                      {benefit.title}
+                    </h3>
+                  </div>
+                  <p className="text-gray-600 leading-relaxed group-hover:text-gray-700 transition-colors duration-300">
+                    {benefit.description}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* How It Works */}
+      <section id="how-it-works" className="py-20 bg-white/90 backdrop-blur-sm section-transition relative">
+        <div className="absolute inset-0 opacity-5">
+          <div className="absolute inset-0" style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23f97316' fill-opacity='0.1' fill-rule='evenodd'%3E%3Cpath d='m0 40l40-40h-40v40zm40 0v-40h-40l40 40z'/%3E%3C/g%3E%3C/svg%3E")`,
+          }}></div>
+        </div>
+        <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
+              How It Works
+            </h2>
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+              Get started in minutes and begin building your speaking confidence today
+            </p>
+          </div>
+
+          <div className="space-y-8">
+            {steps.map((step, index) => (
+              <div 
+                key={index}
+                className="bg-white/90 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 border border-orange-200 hover:border-orange-300 group hover:bg-orange-50/80 stagger-item section-transition"
+              >
+                <div className="flex flex-col lg:flex-row items-center gap-8">
+                  <div className="flex-shrink-0">
+                    <div className="w-16 h-16 bg-orange-600 text-white rounded-full flex items-center justify-center text-2xl font-bold group-hover:scale-110 group-hover:bg-orange-700 transition-all duration-300">
+                      {step.number}
+                    </div>
+                  </div>
+                  <div className="flex-1 text-center lg:text-left">
+                    <h3 className="text-2xl font-semibold text-gray-900 mb-2 group-hover:text-orange-700 transition-colors duration-300">
+                      {step.title}
+                    </h3>
+                    <p className="text-gray-600 text-lg leading-relaxed group-hover:text-gray-700 transition-colors duration-300">
+                      {step.description}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Testimonials */}
+      <section id="testimonials" className="py-20 section-transition bg-gradient-to-b from-amber-25 to-orange-25 relative">
+        <div className="absolute inset-0 opacity-5">
+          <div className="absolute inset-0" style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23f97316' fill-opacity='0.1'%3E%3Cpath d='M0 0h40v40H0V0zm40 40h40v40H40V40z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+          }}></div>
+        </div>
+        <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
+              What Our Users Say
+            </h2>
+            <p className="text-xl text-gray-600">
+              Real stories from people who transformed their speaking confidence
+            </p>
+          </div>
+
+          <div className="relative overflow-hidden">
+            <div 
+              className="flex transition-transform duration-500 ease-in-out"
+              style={{ transform: `translateX(-${currentTestimonial * 100}%)` }}
+            >
+              {testimonials.map((testimonial, index) => (
+                <div key={index} className="w-full flex-shrink-0 px-4">
+                  <div className="bg-white/90 backdrop-blur-sm rounded-xl p-8 shadow-lg max-w-2xl mx-auto border border-orange-200">
+                    <div className="flex mb-4">
+                      {[...Array(testimonial.rating)].map((_, i) => (
+                        <Star key={i} className="h-5 w-5 text-yellow-400 fill-current" />
+                      ))}
+                    </div>
+                    <blockquote className="text-lg text-gray-700 mb-6 italic">
+                      "{testimonial.text}"
+                    </blockquote>
+                    <div>
+                      <cite className="text-gray-900 font-semibold">
+                        {testimonial.name}
+                      </cite>
+                      <p className="text-gray-600 text-sm">
+                        {testimonial.role}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <div className="flex justify-center mt-8 space-x-2">
+              {testimonials.map((_, index) => (
+                <button
+                  key={index}
+                  onClick={() => setCurrentTestimonial(index)}
+                  className={`w-3 h-3 rounded-full transition-colors duration-200 ${
+                    index === currentTestimonial ? 'bg-orange-600' : 'bg-orange-200'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ Section */}
+      <section id="faq" className="py-20 bg-white/90 backdrop-blur-sm section-transition relative">
+        <div className="absolute inset-0 opacity-5">
+          <div className="absolute inset-0" style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23f97316' fill-opacity='0.1' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='3'/%3E%3Ccircle cx='13' cy='13' r='3'/%3E%3C/g%3E%3C/svg%3E")`,
+          }}></div>
+        </div>
+        <div className="max-w-4xl mx-auto px-2 sm:px-4 lg:px-6">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
+              Frequently Asked Questions
+            </h2>
+            <p className="text-xl text-gray-600">
+              Everything you need to know about TalkBuddy
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            {faqs.map((faq, index) => (
+              <div key={index} className="bg-white/90 backdrop-blur-sm rounded-lg shadow-md border border-orange-200 hover:border-orange-300 transition-colors duration-200">
+                <button
+                  onClick={() => toggleFAQ(index)}
+                  className="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-orange-50 transition-colors duration-200"
+                >
+                  <span className="font-semibold text-gray-900 pr-4">
+                    {faq.question}
+                  </span>
+                  <ChevronDown 
+                    className={`h-5 w-5 text-gray-500 transition-transform duration-200 ${
+                      openFAQ === index ? 'transform rotate-180' : ''
+                    }`}
+                  />
+                </button>
+                {openFAQ === index && (
+                  <div className="px-6 pb-4">
+                    <p className="text-gray-600 leading-relaxed">
+                      {faq.answer}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="bg-gray-900 text-white py-16">
+        <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold mb-4">
+              Ready to Start Speaking with Confidence?
+            </h2>
+            <p className="text-xl text-gray-300 mb-8">
+              Join thousands of learners who've transformed their speaking skills with TalkBuddy
+            </p>
+            <button 
+              onClick={() => handleAuthModal('signup')}
+              className="px-8 py-4 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transform hover:scale-105 transition-all duration-200 font-medium text-lg shadow-lg"
+            >
+              Try Your First Conversation
+            </button>
+          </div>
+
+          <div className="border-t border-gray-800 pt-8">
+            <div className="grid md:grid-cols-4 gap-8">
+              <div className="md:col-span-2">
+                <div className="flex items-center space-x-2 mb-4">
+                  <Mic className="h-8 w-8 text-orange-400" />
+                  <span className="text-2xl font-bold">TalkBuddy</span>
+                </div>
+                <p className="text-gray-400 leading-relaxed">
+                  Your AI-powered language partner that helps you build real speaking confidence through personalized, judgment-free conversations.
+                </p>
+              </div>
+              
+              <div>
+                <h3 className="font-semibold mb-4">Product</h3>
+                <ul className="space-y-2 text-gray-400">
+                  <li><a href="#" className="hover:text-white transition-colors">Features</a></li>
+                  <li><a href="#" className="hover:text-white transition-colors">Pricing</a></li>
+                  <li><a href="#" className="hover:text-white transition-colors">How It Works</a></li>
+                  <li><a href="#" className="hover:text-white transition-colors">Reviews</a></li>
+                </ul>
+              </div>
+              
+              <div>
+                <h3 className="font-semibold mb-4">Legal</h3>
+                <ul className="space-y-2 text-gray-400">
+                  <li><a href="#" className="hover:text-white transition-colors">Privacy Policy</a></li>
+                  <li><a href="#" className="hover:text-white transition-colors">Terms of Service</a></li>
+                  <li><a href="#" className="hover:text-white transition-colors">Cookie Policy</a></li>
+                  <li><a href="#" className="hover:text-white transition-colors">Contact Us</a></li>
+                </ul>
+              </div>
+            </div>
+            
+            <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
+              <p>&copy; 2025 TalkBuddy. All rights reserved. Built for language learners who want to speak with confidence.</p>
+            </div>
+          </div>
+        </div>
+      </footer>
 
       <AuthModal 
         isOpen={authModalOpen}
