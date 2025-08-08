@@ -178,36 +178,27 @@ function App() {
 
   useEffect(() => {
     const observerOptions = {
-      threshold: 0.15,
-      rootMargin: '100px 0px 100px 0px'
+      threshold: 0.1,
+      rootMargin: '50px 0px -100px 0px'
     };
 
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (entry.isIntersecting) {
-          entry.target.classList.add('section-visible');
+          entry.target.classList.add('animate-in');
           
-          // Add staggered animation to child elements
-          const staggerElements = entry.target.querySelectorAll('.stagger-item');
+          // Add staggered animation to child elements with delay
+          const staggerElements = entry.target.querySelectorAll('.stagger-animate');
           staggerElements.forEach((element, index) => {
             setTimeout(() => {
-              element.classList.add('section-visible');
-            }, index * 150);
-          });
-        } else {
-          // Remove visibility when scrolling away (for smooth reverse transitions)
-          entry.target.classList.remove('section-visible');
-          
-          // Remove staggered animations from child elements
-          const staggerElements = entry.target.querySelectorAll('.stagger-item');
-          staggerElements.forEach((element) => {
-            element.classList.remove('section-visible');
+              element.classList.add('animate-in');
+            }, index * 200);
           });
         }
       });
     }, observerOptions);
 
-    const sections = document.querySelectorAll('.section-transition');
+    const sections = document.querySelectorAll('.scroll-animate');
     sections.forEach((section) => observer.observe(section));
 
     return () => observer.disconnect();
@@ -242,13 +233,24 @@ function App() {
       <style jsx>{`
         .scroll-animate {
           opacity: 0;
-          transform: translateY(30px);
-          transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+          transform: translateY(60px) scale(0.95);
+          transition: all 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
         }
         
-        .animate-fade-in-up {
+        .scroll-animate.animate-in {
           opacity: 1;
-          transform: translateY(0);
+          transform: translateY(0) scale(1);
+        }
+        
+        .stagger-animate {
+          opacity: 0;
+          transform: translateY(40px) scale(0.9);
+          transition: all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+        
+        .stagger-animate.animate-in {
+          opacity: 1;
+          transform: translateY(0) scale(1);
         }
         
         .float-animation {
@@ -271,29 +273,6 @@ function App() {
         
         .soft-glow {
           animation: softGlow 4s ease-in-out infinite;
-        }
-        
-        .section-transition {
-          opacity: 0;
-          transform: translateY(60px) scale(0.95);
-          transition: all 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-        }
-        
-        .section-visible {
-          opacity: 1;
-          transform: translateY(0) scale(1);
-        }
-        
-        .section-stagger-1 {
-          transition-delay: 0.1s;
-        }
-        
-        .section-stagger-2 {
-          transition-delay: 0.2s;
-        }
-        
-        .section-stagger-3 {
-          transition-delay: 0.3s;
         }
         
         @keyframes float {
@@ -395,7 +374,7 @@ function App() {
       </header>
 
       {/* Hero Section */}
-      <section id="home" className="relative overflow-hidden py-20 lg:py-28 section-transition section-visible subtle-bg-shift">
+      <section id="home" className="relative overflow-hidden py-20 lg:py-28 scroll-animate subtle-bg-shift">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className="space-y-8">
@@ -453,7 +432,7 @@ function App() {
       </section>
 
       {/* Social Proof */}
-      <section className="py-12 bg-white/80 backdrop-blur-sm section-transition section-visible">
+      <section className="py-12 bg-white/80 backdrop-blur-sm scroll-animate">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <p className="text-center text-gray-600 mb-8">
             More than 5,500+ language learners trust TalkBuddy
@@ -469,7 +448,7 @@ function App() {
       </section>
 
       {/* Benefits Section */}
-      <section id="benefits" className="py-20 section-transition section-visible relative subtle-bg-shift">
+      <section id="benefits" className="py-20 scroll-animate relative subtle-bg-shift">
         <div className="absolute inset-0 opacity-5">
           <div className="absolute inset-0" style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23f97316' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
@@ -491,7 +470,7 @@ function App() {
               return (
                 <div 
                   key={index}
-                  className="bg-white/90 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 border border-orange-200 hover:border-orange-300 group hover:bg-orange-50/80 stagger-item section-transition section-visible"
+                  className="bg-white/90 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 border border-orange-200 hover:border-orange-300 group hover:bg-orange-50/80 stagger-animate"
                 >
                   <div className="mb-4">
                     <Icon className="h-10 w-10 text-orange-600 mb-3 group-hover:text-orange-700 transition-colors duration-300" />
@@ -510,7 +489,7 @@ function App() {
       </section>
 
       {/* How It Works */}
-      <section id="how-it-works" className="py-20 bg-white/90 backdrop-blur-sm section-transition section-visible relative">
+      <section id="how-it-works" className="py-20 bg-white/90 backdrop-blur-sm scroll-animate relative">
         <div className="absolute inset-0 opacity-5">
           <div className="absolute inset-0" style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23f97316' fill-opacity='0.1' fill-rule='evenodd'%3E%3Cpath d='m0 40l40-40h-40v40zm40 0v-40h-40l40 40z'/%3E%3C/g%3E%3C/svg%3E")`,
@@ -530,7 +509,7 @@ function App() {
             {steps.map((step, index) => (
               <div 
                 key={index}
-                className="bg-white/90 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 border border-orange-200 hover:border-orange-300 group hover:bg-orange-50/80 stagger-item section-transition section-visible"
+                className="bg-white/90 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 border border-orange-200 hover:border-orange-300 group hover:bg-orange-50/80 stagger-animate"
               >
                 <div className="flex flex-col lg:flex-row items-center gap-8">
                   <div className="flex-shrink-0">
@@ -554,7 +533,7 @@ function App() {
       </section>
 
       {/* Testimonials */}
-      <section id="testimonials" className="py-20 section-transition section-visible bg-gradient-to-b from-amber-50 to-orange-50 relative">
+      <section id="testimonials" className="py-20 scroll-animate bg-gradient-to-b from-amber-50 to-orange-50 relative">
         <div className="absolute inset-0 opacity-5">
           <div className="absolute inset-0" style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23f97316' fill-opacity='0.1'%3E%3Cpath d='M0 0h40v40H0V0zm40 40h40v40H40V40z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
@@ -615,7 +594,7 @@ function App() {
       </section>
 
       {/* FAQ Section */}
-      <section id="faq" className="py-20 bg-white/90 backdrop-blur-sm section-transition section-visible relative">
+      <section id="faq" className="py-20 bg-white/90 backdrop-blur-sm scroll-animate relative">
         <div className="absolute inset-0 opacity-5">
           <div className="absolute inset-0" style={{
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23f97316' fill-opacity='0.1' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='3'/%3E%3Ccircle cx='13' cy='13' r='3'/%3E%3C/g%3E%3C/svg%3E")`,
