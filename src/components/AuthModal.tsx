@@ -50,10 +50,10 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     setMessage(null);
     
     try {
-      // First check if user exists by trying to send a password reset
+      // Always do a fresh check if user exists by trying to send a password reset
       console.log('Checking if user exists with email:', formData.email);
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(formData.email, {
-        redirectTo: 'https://example.com/fake-redirect'
+        redirectTo: `${window.location.origin}/fake-redirect-${Date.now()}`
       });
       
       // If no error on password reset, user likely exists
@@ -63,6 +63,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
           type: 'error',
           text: 'An account with this email already exists. Please try logging in instead.'
         });
+        setLoading(false);
         return;
       }
       
