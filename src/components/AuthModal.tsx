@@ -56,20 +56,29 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
           password: 'dummy-password-check-123'
         });
         
-        // If we get invalid_credentials, it means the user exists but password is wrong
-        // If we get other errors, it means user doesn't exist
-        if (error?.message === 'Invalid login credentials') {
-          // User exists (email found but password wrong)
+        if (error) {
+          // Check if the error indicates user exists
+          if (error.message === 'Invalid login credentials') {
+            // User exists (email found but password wrong)
+            setMessage({
+              type: 'error',
+              text: 'An account with this email already exists. Please try logging in instead.'
+            });
+          } else {
+            // User doesn't exist or other errors - allow signup
+            setMessage(null);
+          }
+        } else {
+          // No error means successful login (shouldn't happen with dummy password)
+          // But just in case, treat as user exists
           setMessage({
             type: 'error',
             text: 'An account with this email already exists. Please try logging in instead.'
           });
-        } else {
-          // User doesn't exist or other errors - allow signup
-          // Message is already cleared above
         }
       } catch (error) {
-        // Network or other errors - allow signup
+        // Network or other errors - clear any existing error and allow signup
+        setMessage(null);
         console.warn('Error checking user existence:', error);
       } finally {
         setCheckingUser(false);
