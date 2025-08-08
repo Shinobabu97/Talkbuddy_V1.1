@@ -204,15 +204,28 @@ function App() {
       });
     }, observerOptions);
 
+    // Wait for React to fully render all components
     const initializeObserver = () => {
-      const sections = document.querySelectorAll('.scroll-animate');
-      sections.forEach((section) => observer.observe(section));
+      // Use requestAnimationFrame to ensure DOM is fully painted
+      requestAnimationFrame(() => {
+        const sections = document.querySelectorAll('.scroll-animate');
+        if (sections.length > 0) {
+          sections.forEach((section) => observer.observe(section));
+        } else {
+          // If sections not found, try again after a short delay
+          setTimeout(initializeObserver, 200);
+        }
+      });
     };
 
+    // Multiple fallbacks to ensure initialization
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', initializeObserver);
-    } else {
+    } else if (document.readyState === 'interactive') {
       setTimeout(initializeObserver, 100);
+    } else {
+      // Document is already complete
+      initializeObserver();
     }
 
     return () => observer.disconnect();
