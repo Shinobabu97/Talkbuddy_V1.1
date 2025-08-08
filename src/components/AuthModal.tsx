@@ -48,11 +48,10 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       setMessage(null); // Clear any existing messages
       
       try {
-        // Try to sign up with the email to check if it already exists
-        // This won't actually create an account because we'll catch the error
-        const { data, error } = await supabase.auth.signUp({
+        // Try to sign in with a dummy password to check if user exists
+        const { data, error } = await supabase.auth.signInWithPassword({
           email: formData.email,
-          password: 'temporary-check-password-123456', // Temporary password just for checking
+          password: 'dummy-password-for-checking-123456', // Wrong password on purpose
         });
         
         if (error) {
@@ -60,31 +59,32 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
           
           const errorMessage = error.message.toLowerCase();
           
-          // Check for various "user already exists" error messages
-          if (errorMessage.includes('user already registered') || 
-              errorMessage.includes('already been registered') ||
-              errorMessage.includes('email address is already registered') ||
-              errorMessage.includes('user with this email already exists') ||
-              errorMessage.includes('email already exists') ||
-              errorMessage.includes('already registered')) {
-            // Email already exists - show error
-            console.log('Email already exists in auth table'); // Debug log
+          // If we get "Invalid login credentials", it means the user exists but password is wrong
+          if (errorMessage.includes('invalid login credentials') || 
+              errorMessage.includes('invalid credentials')) {
+            // Email exists in auth table - show error
+            console.log('Email already exists in auth table - user found'); // Debug log
             setMessage({
               type: 'error',
               text: 'An account with this email already exists. Please try logging in instead.'
             });
+          } else if (errorMessage.includes('user not found') || 
+                     errorMessage.includes('email not found')) {
+            // Email doesn't exist - clear any errors
+            console.log('Email is available for signup - user not found'); // Debug log
+            setMessage(null);
           } else {
-            // Other errors (rate limiting, network, etc.) - don't block signup
-            console.log('Email check - Other error (not blocking):', error.message);
+            // Other errors (rate limiting, network, etc.) - don't block signup but log them
+            console.log('Email check - Other error (not blocking signup):', error.message);
             setMessage(null);
           }
         } else {
-          // No error means signup would succeed - email is available
-          console.log('Email is available for signup'); // Debug log
+          // No error means login succeeded - this shouldn't happen with dummy password
+          console.log('Unexpected: Login succeeded with dummy password'); // Debug log
           setMessage(null);
         }
       } catch (error) {
-        // Network or other unexpected errors - don't block signup  
+        // Network or other unexpected errors - don't block signup
         console.log('Network/unexpected error during email check:', error);
         setMessage(null);
       } finally {
