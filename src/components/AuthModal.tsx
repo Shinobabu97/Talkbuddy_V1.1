@@ -62,30 +62,37 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         }
       });
 
+      console.log('Signup response:', { data, error });
       if (error) throw error;
 
-      // Check if user was actually created or already exists
-      if (data.user && !data.session) {
-        // User created but needs email confirmation
+      // Check if this is actually a new user or existing user
+      if (data.user && data.user.email_confirmed_at) {
+        // User already existed and is confirmed - this shouldn't happen for new signups
+        setMessage({
+          type: 'error',
+          text: 'An account with this email already exists. Please try logging in instead.'
+        });
+      } else if (data.user && !data.session) {
+        // New user created but needs email confirmation
         setMessage({
           type: 'success',
           text: 'Account created successfully! Please check your email to confirm your account.'
         });
       } else if (data.user && data.session) {
-        // User created and signed in immediately
+        // New user created and signed in immediately
         setMessage({
           type: 'success',
           text: 'Account created successfully!'
         });
       } else {
-        // Something unexpected happened
+        // Fallback
         setMessage({
           type: 'success',
           text: 'Account created successfully!'
         });
       }
     } catch (error: any) {
-      console.log('Signup error:', error);
+      console.log('Signup error:', error, 'Status:', error.status, 'Message:', error.message);
       
       // Check for various "user already exists" error patterns
       const errorMessage = error.message?.toLowerCase() || '';
@@ -97,6 +104,8 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
           errorMessage.includes('user with this email already exists') ||
           errorMessage.includes('email already exists') ||
           errorMessage.includes('already in use') ||
+          errorMessage.includes('email rate limit exceeded') ||
+          errorMessage.includes('signup is disabled') ||
           error.status === 422) {
         setMessage({
           type: 'error',
