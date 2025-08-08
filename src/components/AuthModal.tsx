@@ -40,6 +40,16 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     setMessage(null); // Clear any previous messages
     setFormData(prev => ({
       ...prev,
+      [e.target.name]: e.target.value
+    }));
+  };
+
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage(null);
+    
+    try {
       // Attempt signup directly
       const { data, error } = await supabase.auth.signUp({
         email: formData.email,
@@ -102,7 +112,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       setLoading(false);
     }
   };
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
