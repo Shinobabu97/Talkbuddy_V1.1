@@ -38,9 +38,9 @@ export default function Dashboard({ user }: DashboardProps) {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50">
+    <div className="min-h-screen bg-gradient-to-br from-orange-100 via-amber-100 to-yellow-100">
       {/* Header */}
-      <header className="bg-white/90 backdrop-blur-sm border-b border-amber-200">
+      <header className="bg-white/95 backdrop-blur-sm border-b border-orange-300 shadow-sm">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center space-x-2">
