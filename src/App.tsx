@@ -289,9 +289,34 @@ function App() {
           animation: softGlow 4s ease-in-out infinite;
         }
         
+        .hero-text-animate {
+          opacity: 0;
+          transform: translateY(30px);
+          animation: heroFadeIn 1.2s ease-out 0.3s forwards;
+        }
+        
+        .hero-image-animate {
+          opacity: 0;
+          transform: translateY(30px);
+          animation: heroFadeIn 1.2s ease-out 0.6s forwards;
+        }
+        
+        .social-proof-animate {
+          opacity: 0;
+          transform: translateY(20px);
+          animation: heroFadeIn 1s ease-out 1.2s forwards;
+        }
+        
         @keyframes float {
           0%, 100% { transform: translateY(0px); }
           50% { transform: translateY(-10px); }
+        }
+        
+        @keyframes heroFadeIn {
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
         
         @keyframes pulseGlow {
@@ -391,7 +416,7 @@ function App() {
       <section id="home" className="relative overflow-hidden py-20 lg:py-28 subtle-bg-shift">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <div className="space-y-8">
+            <div className="space-y-8 hero-text-animate">
               <div className="space-y-4">
                 <p className="text-orange-600 font-medium uppercase tracking-wide">
                   Introducing Your Personal AI Language Coach
@@ -422,7 +447,7 @@ function App() {
               </div>
             </div>
 
-            <div className="relative">
+            <div className="relative hero-image-animate">
               <div className="absolute inset-0 bg-gradient-to-r from-orange-200 to-orange-300 rounded-full transform scale-110 soft-glow"></div>
               <div className="relative bg-white rounded-2xl p-8 shadow-2xl">
                 <img 
@@ -446,7 +471,7 @@ function App() {
       </section>
 
       {/* Social Proof */}
-      <section className="py-16 bg-white/80 backdrop-blur-sm mb-0">
+      <section className="py-16 bg-white/80 backdrop-blur-sm mb-0 social-proof-animate">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <p className="text-center text-gray-600 mb-8">
             More than 5,500+ language learners trust TalkBuddy
