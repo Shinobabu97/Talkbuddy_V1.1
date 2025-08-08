@@ -7,14 +7,14 @@ interface AuthModalProps {
   onClose: () => void;
   initialMode?: 'login' | 'signup';
   showSuccessMessage: boolean;
+  onSignUpStart?: () => void;
 }
 
-export default function AuthModal({ isOpen, onClose, initialMode = 'login', showSuccessMessage }: AuthModalProps) {
+export default function AuthModal({ isOpen, onClose, initialMode = 'login', showSuccessMessage, onSignUpStart }: AuthModalProps) {
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot' | 'signup-success'>(initialMode);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [justCreatedAccount, setJustCreatedAccount] = useState(false);
   
   const [formData, setFormData] = useState({
     firstName: '',
@@ -67,7 +67,8 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
         // Modal will close automatically via auth state change
         
       } else if (mode === 'signup') {
-        const { data, error } = await supabase.auth.signUp({
+        onSignUpStart?.();
+        const { error } = await supabase.auth.signUp({
           email: formData.email,
           password: formData.password,
           options: {
@@ -79,13 +80,12 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
         });
 
         if (error) throw error;
-        
+
         // Show success message and switch to login
-        setJustCreatedAccount(true);
         setMode('login');
-        setMessage({ 
-          type: 'success', 
-          text: 'Account created successfully! Now sign in with your credentials.' 
+        setMessage({
+          type: 'success',
+          text: 'Account created successfully! Now sign in with your credentials.'
         });
         setFormData({ firstName: '', lastName: '', email: formData.email, password: '' });
         
@@ -99,10 +99,11 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
           text: 'Password reset email sent! Check your inbox for instructions.' 
         });
       }
-    } catch (error: any) {
-      setMessage({ 
-        type: 'error', 
-        text: error.message || 'An error occurred. Please try again.' 
+    } catch (error) {
+      const err = error as Error;
+      setMessage({
+        type: 'error',
+        text: err.message || 'An error occurred. Please try again.'
       });
     } finally {
       setLoading(false);
@@ -117,7 +118,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
   const switchMode = (newMode: 'login' | 'signup' | 'forgot') => {
     setMode(newMode);
     setMessage(null);
-    setJustCreatedAccount(false);
     setFormData({ firstName: '', lastName: '', email: '', password: '' });
   };
 
