@@ -70,30 +70,32 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
             data: {
               first_name: formData.firstName,
               last_name: formData.lastName
-            }
+            },
+            emailRedirectTo: undefined // Prevent auto-login
           }
         });
 
-        console.log('Signup response:', { data, error });
-        if (error) throw error;
-
-        // If user is automatically logged in, the modal will close via auth state change
-        // If email confirmation is required, show success message
-        if (!data.session) {
-          setSignupSuccess(true);
-          setMode('login');
-          setMessage({ 
-            type: 'success', 
-            text: 'Account successfully created. Now login here.' 
-          });
-          // Keep email, clear password and names
-          setFormData(prev => ({ 
-            firstName: '', 
-            lastName: '', 
-            email: prev.email, 
-            password: '' 
-          }));
+        // Always show login page with success message after signup
+        console.log('Account created, showing login page');
+        
+        // Sign out if user was auto-logged in
+        if (data.session) {
+          await supabase.auth.signOut();
         }
+        
+        setSignupSuccess(true);
+        setMode('login');
+        setMessage({ 
+          type: 'success', 
+          text: 'Account created successfully! Please log in now.' 
+        });
+        // Keep email, clear password and names
+        setFormData(prev => ({ 
+          firstName: '', 
+          lastName: '', 
+          email: prev.email, 
+          password: '' 
+        }));
         // If session exists, user will be automatically logged in and modal will close
         
       } else if (mode === 'forgot') {
