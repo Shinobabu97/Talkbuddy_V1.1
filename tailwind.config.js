@@ -7,6 +7,12 @@ export default {
         'cream': {
           50: '#fefdf8',
           100: '#fdf9f0',
+        },
+        'amber': {
+          25: '#fffef7',
+        },
+        'orange': {
+          25: '#fffdf7',
         }
       }
     },
