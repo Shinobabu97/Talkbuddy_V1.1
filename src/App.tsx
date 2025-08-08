@@ -177,6 +177,9 @@ function App() {
   }, [testimonials.length]);
 
   useEffect(() => {
+    // Only initialize scroll animations when user is null (on landing page)
+    if (user) return;
+
     const observerOptions = {
       threshold: 0.1,
       rootMargin: '0px 0px -50px 0px'
@@ -228,8 +231,11 @@ function App() {
       initializeObserver();
     }
 
-    return () => observer.disconnect();
-  }, []);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener('DOMContentLoaded', initializeObserver);
+    };
+  }, [user]); // Add user as dependency to reinitialize when logging out
 
   const handleAuthModal = (mode: 'login' | 'signup') => {
     setAuthModalMode(mode);
