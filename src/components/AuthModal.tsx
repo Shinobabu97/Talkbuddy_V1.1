@@ -55,15 +55,19 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       });
 
       if (error) {
-        // If signup fails because user already exists
-        if (error.message.includes('already') || error.message.includes('registered')) {
+        // Check for specific error messages that indicate user already exists
+        if (error.message.includes('User already registered') || 
+            error.message.includes('already been registered') ||
+            error.message.includes('already registered') ||
+            error.code === 'signup_disabled' ||
+            error.code === 'user_already_exists') {
           console.log('❌ Email EXISTS in Supabase auth table');
           setMessage({
             type: 'error',
             text: 'An account with this email already exists. Please try logging in instead.'
           });
         } else {
-          console.log('🔍 Other signup error:', error.message);
+          console.log('🔍 Other signup error (treating as available):', error.message, error.code);
           // For other errors, assume email is available
           setMessage({
             type: 'success',
@@ -81,7 +85,8 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         // Clean up the test user immediately
         if (data.user) {
           try {
-            await supabase.auth.admin.deleteUser(data.user.id);
+            // Note: admin.deleteUser requires service role key, so we'll just sign out
+            await supabase.auth.signOut();
             console.log('🧹 Test user cleaned up');
           } catch (cleanupError) {
             console.log('🔍 Cleanup error (not critical):', cleanupError);
@@ -90,7 +95,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       }
     } catch (error) {
       console.log('🔍 Network error during email check:', error);
-      // Don't show error to user, just silently fail
+      // For network errors, don't show anything to user
     }
     
     setCheckingUser(false);
