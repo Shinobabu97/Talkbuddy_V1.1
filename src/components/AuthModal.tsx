@@ -50,23 +50,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     setMessage(null);
     
     try {
-      // First, check if user already exists by attempting to sign in
-      const { data: existingUser, error: signInError } = await supabase.auth.signInWithPassword({
-        email: formData.email,
-        password: 'dummy-password' // This will fail but tell us if user exists
-      });
-
-      // If we get a "Invalid login credentials" error, it could mean:
-      // 1. User doesn't exist, OR 2. User exists but wrong password
-      // If we get "Email not confirmed", user exists but not confirmed
-      if (signInError && signInError.message.includes('Email not confirmed')) {
-        setMessage({
-          type: 'error',
-          text: 'An account with this email already exists but is not confirmed. Please check your email for the confirmation link.'
-        });
-        return;
-      }
-
       // First, check if user exists by attempting to sign in with a dummy password
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: formData.email,
