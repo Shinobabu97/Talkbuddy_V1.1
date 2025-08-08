@@ -42,23 +42,34 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setMessage(null); // Clear any previous messages
-    if (e.target.name === 'email') {
-      setEmailExists(null); // Reset email existence check when email changes
-    }
     setFormData(prev => ({
       ...prev,
       [e.target.name]: e.target.value
     }));
+    
+    // Check email existence when email changes (only in signup mode)
+    if (e.target.name === 'email' && mode === 'signup') {
+      setEmailExists(null); // Reset previous check
+      if (e.target.value && e.target.value.includes('@')) {
+        // Debounce the check to avoid too many API calls
+        setTimeout(() => {
+          if (formData.email === e.target.value) { // Only check if email hasn't changed again
+            checkEmailExists(e.target.value);
+          }
+        }, 500);
+      }
+    }
   };
 
-  const checkEmailExists = async () => {
-    if (!formData.email || mode !== 'signup') return;
+  const checkEmailExists = async (emailToCheck?: string) => {
+    const email = emailToCheck || formData.email;
+    if (!email || mode !== 'signup') return;
     
     setCheckingEmail(true);
     try {
       // Try to initiate password reset - this only works if user exists
       const { error } = await supabase.auth.resetPasswordForEmail(
-        formData.email,
+        email,
         { redirectTo: 'https://example.com/dummy' } // Dummy redirect
       );
       
@@ -271,7 +282,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
                     name="password"
                     value={formData.password}
                     onChange={handleInputChange}
-                    onFocus={checkEmailExists}
+                    onFocus={() => checkEmailExists()}
                     className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors"
                     placeholder="••••••••"
                     required
