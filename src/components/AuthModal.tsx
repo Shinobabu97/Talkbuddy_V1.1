@@ -62,34 +62,34 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         console.log('🔍 Error message:', error.message);
         console.log('🔍 Error code:', error.code);
         
-        // Check for different error messages that indicate user exists
+        // Check for different error messages that indicate user does NOT exist
         if (error.message === 'Invalid login credentials' || 
             error.message.includes('Invalid login credentials') ||
             error.code === 'invalid_credentials') {
-          console.log('❌ Email EXISTS - User found but wrong password');
-          setMessage({
-            type: 'error',
-            text: 'An account with this email already exists. Please try logging in instead.'
-          });
-        } else if (error.message.includes('User not found') || 
-                   error.message.includes('not found') ||
-                   error.message.includes('does not exist')) {
           console.log('✅ Email is AVAILABLE - User not found');
           setMessage({
             type: 'success',
             text: 'Email is available for signup!'
+          });
+        } else if (error.message.includes('User not found') || 
+                   error.message.includes('not found') ||
+                   error.message.includes('does not exist')) {
+          console.log('❌ Email EXISTS - User found');
+          setMessage({
+            type: 'error',
+            text: 'An account with this email already exists. Please try logging in instead.'
           });
         } else {
           // For any other error, don't show a message - could be network issue
           console.log('🔍 Other error (treating as network issue):', error.message);
         }
       } else {
-        // This shouldn't happen with dummy password, but if it does, user exists
+        // This shouldn't happen with dummy password, but if it does, user doesn't exist
         console.log('🔍 Unexpected success - user exists, signing out');
         await supabase.auth.signOut();
         setMessage({
-          type: 'error',
-          text: 'An account with this email already exists. Please try logging in instead.'
+          type: 'success',
+          text: 'Email is available for signup!'
         });
       }
     } catch (error) {
