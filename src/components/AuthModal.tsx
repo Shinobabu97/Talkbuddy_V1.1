@@ -6,9 +6,11 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialMode?: 'login' | 'signup';
+  onSignupStart?: () => void;
+  onSignupComplete?: () => void;
 }
 
-export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: AuthModalProps) {
+export default function AuthModal({ isOpen, onClose, initialMode = 'login', onSignupStart, onSignupComplete }: AuthModalProps) {
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot'>(initialMode);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -62,6 +64,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         
       } else if (mode === 'signup') {
         console.log('Starting signup process...');
+        onSignupStart?.();
         
         const { data, error } = await supabase.auth.signUp({
           email: formData.email,
@@ -75,6 +78,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
             shouldCreateUser: true
           }
         });
+          onSignupComplete?.();
 
         if (error) throw error;
 
@@ -98,6 +102,8 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
           email: prev.email,
           password: ''
         }));
+        
+        onSignupComplete?.();
         
       } else if (mode === 'forgot') {
         const { error } = await supabase.auth.resetPasswordForEmail(formData.email);

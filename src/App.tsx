@@ -22,6 +22,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
+  const [isSigningUp, setIsSigningUp] = useState(false);
   const [openFAQ, setOpenFAQ] = useState<number | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentTestimonial, setCurrentTestimonial] = useState(0);
@@ -159,8 +160,10 @@ function App() {
           email: session.user.email!,
           user_metadata: session.user.user_metadata
         });
-        // Close modal when user is authenticated
-        setAuthModalOpen(false);
+        // Only close modal when user is authenticated and not in signup process
+        if (!isSigningUp) {
+          setAuthModalOpen(false);
+        }
       } else {
         setUser(null);
       }
@@ -735,6 +738,8 @@ function App() {
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
         initialMode={authModalMode}
+        onSignupStart={() => setIsSigningUp(true)}
+        onSignupComplete={() => setIsSigningUp(false)}
       />
     </div>
   );
