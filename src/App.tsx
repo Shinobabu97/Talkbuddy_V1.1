@@ -265,10 +265,10 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-100 via-amber-100 to-yellow-100">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
 
       {/* Header */}
-      <header className="relative z-50 bg-white/95 backdrop-blur-sm border-b border-orange-300 shadow-sm">
+      <header className="relative z-50 bg-white/90 backdrop-blur-sm border-b border-slate-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center space-x-2">
@@ -323,7 +323,7 @@ function App() {
       </header>
 
       {/* Hero Section */}
-      <section id="home" className="relative overflow-hidden py-20 lg:py-28 subtle-bg-shift">
+      <section id="home" className="relative overflow-hidden py-20 lg:py-28">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className="space-y-8">
@@ -381,7 +381,7 @@ function App() {
       </section>
 
       {/* Social Proof */}
-      <section className="py-16 bg-white/85 backdrop-blur-sm mb-0 scroll-animate">
+      <section className="py-16 bg-white/80 backdrop-blur-sm mb-0 scroll-animate">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <p className="text-center text-gray-600 mb-8 stagger-animate">
             More than 5,500+ language learners trust TalkBuddy
@@ -397,10 +397,10 @@ function App() {
       </section>
 
       {/* Benefits Section */}
-      <section id="benefits" className="py-20 relative subtle-bg-shift scroll-animate" style={{ marginTop: '0', paddingTop: '5rem' }}>
+      <section id="benefits" className="py-20 relative scroll-animate" style={{ marginTop: '0', paddingTop: '5rem' }}>
         <div className="absolute inset-0 opacity-5 pointer-events-none">
           <div className="absolute inset-0" style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23f97316' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%236366f1' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
           }}></div>
         </div>
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
@@ -438,10 +438,10 @@ function App() {
       </section>
 
       {/* How It Works */}
-      <section id="how-it-works" className="py-20 bg-white/85 backdrop-blur-sm relative scroll-animate">
+      <section id="how-it-works" className="py-20 bg-white/80 backdrop-blur-sm relative scroll-animate">
         <div className="absolute inset-0 opacity-5 pointer-events-none">
           <div className="absolute inset-0" style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23f97316' fill-opacity='0.1' fill-rule='evenodd'%3E%3Cpath d='m0 40l40-40h-40v40zm40 0v-40h-40l40 40z'/%3E%3C/g%3E%3C/svg%3E")`,
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%236366f1' fill-opacity='0.1' fill-rule='evenodd'%3E%3Cpath d='m0 40l40-40h-40v40zm40 0v-40h-40l40 40z'/%3E%3C/g%3E%3C/svg%3E")`,
           }}></div>
         </div>
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
@@ -459,15 +459,19 @@ function App() {
               <div 
                 key={index}
                 className="bg-white/90 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 border border-orange-200 hover:border-orange-300 group hover:bg-orange-50/80 stagger-animate"
+                className="bg-white/95 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 border border-slate-200 hover:border-indigo-300 group hover:bg-indigo-50/50 stagger-animate"
+                className="bg-white/95 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 border border-slate-200 hover:border-indigo-300 group hover:bg-indigo-50/50 stagger-animate"
               >
                 <div className="flex flex-col lg:flex-row items-center gap-8">
                   <div className="flex-shrink-0">
                     <div className="w-16 h-16 bg-orange-600 text-white rounded-full flex items-center justify-center text-2xl font-bold group-hover:scale-110 group-hover:bg-orange-700 transition-all duration-300">
+                    <div className="w-16 h-16 bg-indigo-600 text-white rounded-full flex items-center justify-center text-2xl font-bold group-hover:scale-110 group-hover:bg-indigo-700 transition-all duration-300">
                       {step.number}
                     </div>
                   </div>
                   <div className="flex-1 text-center lg:text-left">
                     <h3 className="text-2xl font-semibold text-gray-900 mb-2 group-hover:text-orange-700 transition-colors duration-300">
+                    <h3 className="text-2xl font-semibold text-gray-900 mb-2 group-hover:text-indigo-700 transition-colors duration-300">
                       {step.title}
                     </h3>
                     <p className="text-gray-600 text-lg leading-relaxed group-hover:text-gray-700 transition-colors duration-300">
@@ -482,10 +486,10 @@ function App() {
       </section>
 
       {/* Testimonials */}
-      <section id="testimonials" className="py-20 bg-gradient-to-b from-orange-200/60 to-amber-200/60 relative scroll-animate">
+      <section id="testimonials" className="py-20 bg-gradient-to-b from-indigo-100/40 to-blue-100/40 relative scroll-animate">
         <div className="absolute inset-0 opacity-5 pointer-events-none">
           <div className="absolute inset-0" style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23f97316' fill-opacity='0.1'%3E%3Cpath d='M0 0h40v40H0V0zm40 40h40v40H40V40z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%236366f1' fill-opacity='0.1'%3E%3Cpath d='M0 0h40v40H0V0zm40 40h40v40H40V40z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
           }}></div>
         </div>
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
@@ -505,7 +509,7 @@ function App() {
             >
               {testimonials.map((testimonial, index) => (
                 <div key={index} className="w-full flex-shrink-0 px-4">
-                  <div className="bg-white/90 backdrop-blur-sm rounded-xl p-8 shadow-lg max-w-2xl mx-auto border border-orange-200">
+                  <div className="bg-white/95 backdrop-blur-sm rounded-xl p-8 shadow-lg max-w-2xl mx-auto border border-slate-200">
                     <div className="flex mb-4">
                       {[...Array(testimonial.rating)].map((_, i) => (
                         <Star key={i} className="h-5 w-5 text-yellow-400 fill-current" />
@@ -533,7 +537,7 @@ function App() {
                   key={index}
                   onClick={() => setCurrentTestimonial(index)}
                   className={`w-3 h-3 rounded-full transition-colors duration-200 ${
-                    index === currentTestimonial ? 'bg-orange-600' : 'bg-orange-200'
+                    index === currentTestimonial ? 'bg-indigo-600' : 'bg-slate-300'
                   }`}
                 />
               ))}
@@ -543,10 +547,10 @@ function App() {
       </section>
 
       {/* FAQ Section */}
-      <section id="faq" className="py-20 bg-white/85 backdrop-blur-sm relative scroll-animate">
+      <section id="faq" className="py-20 bg-white/80 backdrop-blur-sm relative scroll-animate">
         <div className="absolute inset-0 opacity-5 pointer-events-none">
           <div className="absolute inset-0" style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23f97316' fill-opacity='0.1' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='3'/%3E%3Ccircle cx='13' cy='13' r='3'/%3E%3C/g%3E%3C/svg%3E")`,
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%236366f1' fill-opacity='0.1' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='3'/%3E%3Ccircle cx='13' cy='13' r='3'/%3E%3C/g%3E%3C/svg%3E")`,
           }}></div>
         </div>
         <div className="max-w-4xl mx-auto px-2 sm:px-4 lg:px-6">
@@ -562,9 +566,11 @@ function App() {
           <div className="space-y-4">
             {faqs.map((faq, index) => (
               <div key={index} className="bg-white/90 backdrop-blur-sm rounded-lg shadow-md border border-orange-200 hover:border-orange-300 transition-colors duration-200">
+              <div key={index} className="bg-white/95 backdrop-blur-sm rounded-lg shadow-md border border-slate-200 hover:border-indigo-300 transition-colors duration-200">
                 <button
                   onClick={() => toggleFAQ(index)}
                   className="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-orange-50 transition-colors duration-200"
+                  className="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-indigo-50/50 transition-colors duration-200"
                 >
                   <span className="font-semibold text-gray-900 pr-4">
                     {faq.question}
