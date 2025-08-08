@@ -71,8 +71,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
               }
               return prev;
             });
-              setMessage(null);
-            }
           }
         } catch (error) {
           // Network or other errors - don't block signup
