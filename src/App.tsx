@@ -22,6 +22,7 @@ function App() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [justSignedUp, setJustSignedUp] = useState(false);
   const [openFAQ, setOpenFAQ] = useState<number | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentTestimonial, setCurrentTestimonial] = useState(0);
@@ -156,6 +157,7 @@ function App() {
       
       if (event === 'SIGNED_UP' && session?.user) {
         // User just signed up - show dashboard briefly then switch to login
+        setJustSignedUp(true);
         setUser({
           id: session.user.id,
           email: session.user.email!,
@@ -166,6 +168,7 @@ function App() {
         setTimeout(async () => {
           await supabase.auth.signOut();
           setUser(null);
+          setJustSignedUp(false);
           setAuthModalMode('login');
           setShowSuccessMessage(true);
           setAuthModalOpen(true);
@@ -173,6 +176,7 @@ function App() {
         
       } else if (event === 'SIGNED_IN' && session?.user) {
         // Normal login - go to dashboard
+        setJustSignedUp(false);
         setUser({
           id: session.user.id,
           email: session.user.email!,
@@ -184,6 +188,7 @@ function App() {
       } else if (event === 'SIGNED_OUT') {
         // User signed out
         setUser(null);
+        setJustSignedUp(false);
         setShowSuccessMessage(false);
       }
       
@@ -276,7 +281,7 @@ function App() {
     );
   }
 
-  if (user) {
+  if (user && !justSignedUp) {
     return <Dashboard user={user} />;
   }
 
