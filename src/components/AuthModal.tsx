@@ -40,7 +40,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
 
   // Check if user exists when email field loses focus (onBlur)
   const handleEmailBlur = async () => {
-    if (!formData.email || mode !== 'signup' || checkingUser || loading) {
+    if (!formData.email || mode !== 'signup' || loading) {
       return;
     }
     
@@ -50,52 +50,33 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       setMessage(null);
       
       try {
-        // Try to sign up with a temporary password to check if email exists
-        const { data, error } = await supabase.auth.signUp({
+        // Simple check: try to sign in with wrong password
+        // If user exists = "Invalid login credentials"
+        // If user doesn't exist = "User not found" or similar
+        console.log('🔍 Checking email in auth table:', formData.email);
+        
+        const { error } = await supabase.auth.signInWithPassword({
           email: formData.email,
-          password: 'temp-password-for-checking-123456'
+          password: 'wrong-password-check-123'
         });
 
-        console.log('Signup check result:', { data, error });
-
-        if (error) {
-          // Check if error indicates user already exists
-          if (error.message.includes('User already registered') || 
-              error.message.includes('already been registered') ||
-              error.message.includes('already exists')) {
-            console.log('✅ User EXISTS in Supabase auth table');
-            setMessage({
-              type: 'error',
-              text: 'An account with this email already exists. Please try logging in instead.'
-            });
-          } else {
-            // Other error - don't block signup
-            console.log('❓ Other signup error (not blocking):', error.message);
-            setMessage(null);
-          }
-        } else if (data.user) {
-          // User was created successfully, which means email was available
-          // But we need to delete this test user immediately
-          console.log('✅ Email is AVAILABLE for signup - cleaning up test user');
+        if (error?.message === 'Invalid login credentials') {
+          // User exists in auth table
+          console.log('❌ Email EXISTS in auth table');
+          setMessage({
+            type: 'error',
+            text: 'An account with this email already exists. Please try logging in instead.'
+          });
+        } else {
+          // User doesn't exist in auth table (available for signup)
+          console.log('✅ Email AVAILABLE for signup');
           setMessage({
             type: 'success',
-            text: 'Email is available!'
+            text: 'Email is available for signup!'
           });
-          
-          // Clean up the test user we just created
-          try {
-            // Sign out the test user
-            await supabase.auth.signOut();
-          } catch (cleanupError) {
-            console.log('Cleanup error (not critical):', cleanupError);
-          }
-        } else {
-          // Unexpected case
-          console.log('❓ Unexpected signup result');
-          setMessage(null);
         }
       } catch (error) {
-        console.log('❌ Network error during email check:', error);
+        console.log('Network error:', error);
         setMessage(null);
       }
       
