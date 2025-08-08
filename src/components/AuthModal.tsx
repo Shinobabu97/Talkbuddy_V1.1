@@ -48,11 +48,10 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
       setMessage(null); // Clear any existing messages
       
       try {
-        // Try to sign up with the email to check if it already exists
-        // This is the proper way to check - signup will fail if user exists
+        // Try to sign up with a temporary password to check if email exists
         const { data, error } = await supabase.auth.signUp({
           email: formData.email,
-          password: 'temp-check-password-123', // Temporary password just for checking
+          password: 'TempCheck123!@#', // Strong temporary password for checking
           options: {
             data: {
               first_name: 'temp',
@@ -62,31 +61,34 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         });
         
         if (error) {
-          // Check for specific error messages that indicate user already exists
-          if (error.message.includes('User already registered') || 
-              error.message.includes('already been registered') ||
-              error.message.includes('Email address is already registered')) {
+          console.log('Email check error:', error.message); // Debug log
+          
+          // Check for various error messages that indicate user already exists
+          const errorMessage = error.message.toLowerCase();
+          if (errorMessage.includes('user already registered') || 
+              errorMessage.includes('already been registered') ||
+              errorMessage.includes('email address is already registered') ||
+              errorMessage.includes('user with this email already exists') ||
+              errorMessage.includes('email already exists') ||
+              errorMessage.includes('already registered') ||
+              errorMessage.includes('duplicate') ||
+              error.status === 422) { // Unprocessable Entity - often used for duplicate emails
             setMessage({
               type: 'error',
               text: 'An account with this email already exists. Please try logging in instead.'
             });
           } else {
-            // Other errors (invalid email format, etc.) - don't block signup
-            console.log('Email check error (not blocking):', error.message);
+            // Other errors (invalid email format, network issues, etc.) - don't block signup
+            console.log('Email check error (not blocking signup):', error.message);
             setMessage(null);
           }
         } else {
-          // No error means the signup would succeed - email is available
-          // But we don't want to actually create the account, so we need to clean up
-          if (data.user && !data.user.email_confirmed_at) {
-            // If a user was created but not confirmed, we should clean it up
-            // But since we can't delete users via client, we'll just proceed
-            // The actual signup later will handle this properly
-          }
+          // No error means the email is available for signup
+          console.log('Email is available for signup'); // Debug log
           setMessage(null); // Email is available
         }
       } catch (error) {
-        // Network or other unexpected errors - don't block signup
+        // Network or other unexpected errors - don't block signup  
         console.log('Network/unexpected error during email check:', error);
         setMessage(null);
       } finally {
