@@ -45,52 +45,60 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
 
   // Check if user exists when email field loses focus (onBlur)
   const handleEmailBlur = async () => {
-    if (!formData.email || mode !== 'signup' || loading || checkingUser || !formData.email.includes('@')) {
+    if (!formData.email || mode !== 'signup' || loading || !formData.email.includes('@')) {
       return;
     }
     
+    // Always start fresh - clear everything
     setCheckingUser(true);
     setMessage(null);
     
     try {
-      // Try to sign up with a dummy password to check if user exists
+      console.log('🔍 Checking email:', formData.email);
+      
       const { data, error } = await supabase.auth.signUp({
         email: formData.email,
-        password: 'dummy-password-12345',
+        password: 'temp-check-password-123456',
         options: {
           data: {
-            first_name: 'Test',
-            last_name: 'User',
+            first_name: 'Temp',
+            last_name: 'Check',
           }
         }
       });
 
       if (error) {
-        console.log('🔍 Testing email:', formData.email);
-        console.log('🔍 Error message:', error.message);
+        console.log('❌ Signup error:', error.message);
         
-        // Check for user already exists errors
-        if (error.message.includes('User already registered') || 
-            error.message.includes('already been registered') ||
-            error.message.includes('already exists')) {
-          console.log('❌ Email EXISTS - User already registered');
+        // Check for various "user exists" error messages
+        const userExistsErrors = [
+          'User already registered',
+          'already been registered', 
+          'already exists',
+          'Email address already in use'
+        ];
+        
+        const emailExists = userExistsErrors.some(errorText => 
+          error.message.toLowerCase().includes(errorText.toLowerCase())
+        );
+        
+        if (emailExists) {
+          console.log('❌ Email EXISTS');
           setMessage({
             type: 'error',
             text: 'An account with this email already exists. Please try logging in instead.'
           });
         } else {
-          // For any other error, assume email is available
-          console.log('✅ Email is AVAILABLE - Other error:', error.message);
+          console.log('✅ Email AVAILABLE (other error)');
           setMessage({
             type: 'success',
             text: 'Email is available for signup!'
           });
         }
       } else {
-        // Success means user was created (but we need to clean up)
-        console.log('✅ Email is AVAILABLE - Signup succeeded, cleaning up');
+        console.log('✅ Email AVAILABLE (signup succeeded)');
         
-        // Immediately sign out to clean up the test user
+        // Clean up the temporary user
         if (data.user) {
           await supabase.auth.signOut();
         }
@@ -101,8 +109,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         });
       }
     } catch (error) {
-      console.log('🔍 Network error:', error);
-      // Assume available on network errors
+      console.log('🔍 Network/other error:', error);
       setMessage({
         type: 'success',
         text: 'Email is available for signup!'
@@ -114,20 +121,24 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
 
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Clear message and checking state when email changes
+    const { name, value } = e.target;
+    
+    // Always clear message when email changes
     if (e.target.name === 'email') {
       setMessage(null);
       setCheckingUser(false);
+      console.log('🔄 Email changed, clearing states');
     }
     
     setFormData(prev => ({
       ...prev,
-      [e.target.name]: e.target.value
+      [name]: value
     }));
   };
 
-  // Force reset when mode changes
+  // Clear states when mode changes
   React.useEffect(() => {
+    console.log('🔄 Mode changed to:', mode);
     setMessage(null);
     setCheckingUser(false);
   }, [mode]);
