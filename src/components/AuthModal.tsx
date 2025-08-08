@@ -6,10 +6,10 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialMode?: 'login' | 'signup';
-  showSuccessMessage?: boolean;
+  showSuccessMessage: boolean;
 }
 
-export default function AuthModal({ isOpen, onClose, initialMode = 'login', showSuccessMessage = false }: AuthModalProps) {
+export default function AuthModal({ isOpen, onClose, initialMode = 'login', showSuccessMessage }: AuthModalProps) {
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot' | 'signup-success'>(initialMode);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -25,24 +25,28 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
   // Update mode when initialMode changes
   React.useEffect(() => {
     setMode(initialMode);
-    if (showSuccessMessage && initialMode === 'login') {
+  }, [initialMode]);
+
+  // Show success message when needed
+  React.useEffect(() => {
+    if (showSuccessMessage) {
       setMessage({ 
         type: 'success', 
         text: 'Account created successfully! Please log in now.' 
       });
+    } else {
+      setMessage(null);
     }
-  }, [initialMode]);
+  }, [showSuccessMessage]);
 
   // Clear everything when modal is closed
   React.useEffect(() => {
     if (!isOpen) {
-      setMessage(null);
       setFormData({ firstName: '', lastName: '', email: '', password: '' });
       setShowPassword(false);
       setLoading(false);
-      setMode(initialMode);
     }
-  }, [isOpen, initialMode]);
+  }, [isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

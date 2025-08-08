@@ -21,8 +21,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
-  const [showSuccessLogin, setShowSuccessLogin] = useState(false);
-  const [justSignedUp, setJustSignedUp] = useState(false);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [openFAQ, setOpenFAQ] = useState<number | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentTestimonial, setCurrentTestimonial] = useState(0);
@@ -152,39 +151,42 @@ function App() {
     });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session?.user) {
-        if (event === 'SIGNED_UP') {
-          // Set user first (dashboard loads briefly)
-          setUser({
-            id: session.user.id,
-            email: session.user.email!,
-            user_metadata: session.user.user_metadata
-          });
-          
-          // After brief moment, clear user and show login modal
-          setTimeout(() => {
-            setUser(null); // This will show hero page
-            setAuthModalMode('login');
-            setAuthModalOpen(true);
-            setShowSuccessLogin(true);
-            supabase.auth.signOut();
-          }, 10); // 10 milliseconds
-        } else if (event === 'SIGNED_IN') {
-          // Only set user for normal login (not signup)
-          setUser({
-            id: session.user.id,
-            email: session.user.email!,
-            user_metadata: session.user.user_metadata
-          });
-          setAuthModalOpen(false);
-          setShowSuccessLogin(false);
-        }
-      } else {
-        // User signed out or no session
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth event:', event, session?.user?.email);
+      
+      if (event === 'SIGNED_UP' && session?.user) {
+        // User just signed up - show dashboard briefly then switch to login
+        setUser({
+          id: session.user.id,
+          email: session.user.email!,
+          user_metadata: session.user.user_metadata
+        });
+        
+        // After 10ms, sign out and show login modal
+        setTimeout(async () => {
+          await supabase.auth.signOut();
+          setUser(null);
+          setAuthModalMode('login');
+          setShowSuccessMessage(true);
+          setAuthModalOpen(true);
+        }, 10);
+        
+      } else if (event === 'SIGNED_IN' && session?.user) {
+        // Normal login - go to dashboard
+        setUser({
+          id: session.user.id,
+          email: session.user.email!,
+          user_metadata: session.user.user_metadata
+        });
+        setAuthModalOpen(false);
+        setShowSuccessMessage(false);
+        
+      } else if (event === 'SIGNED_OUT') {
+        // User signed out
         setUser(null);
-        setShowSuccessLogin(false);
+        setShowSuccessMessage(false);
       }
+      
       setLoading(false);
     });
 
@@ -255,6 +257,7 @@ function App() {
 
   const handleAuthModal = (mode: 'login' | 'signup') => {
     setAuthModalMode(mode);
+    setShowSuccessMessage(false);
     setAuthModalOpen(true);
   };
 
@@ -750,7 +753,7 @@ function App() {
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
         initialMode={authModalMode}
-        showSuccessMessage={showSuccessLogin}
+        showSuccessMessage={showSuccessMessage}
       />
     </div>
   );
