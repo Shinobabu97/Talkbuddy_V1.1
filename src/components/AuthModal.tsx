@@ -330,7 +330,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
 
               <button
                 type="submit"
-                disabled={loading || checkingUser || message?.text?.includes('account with this email already exists')}
+                disabled={loading || checkingUser || (message?.text?.includes('account with this email already exists') && message?.type === 'error')}
                 className="w-full py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transform hover:scale-105 transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center"
               >
                 {loading || checkingUser ? (
