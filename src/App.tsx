@@ -21,6 +21,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
+  const [showSuccessLogin, setShowSuccessLogin] = useState(false);
   const [openFAQ, setOpenFAQ] = useState<number | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentTestimonial, setCurrentTestimonial] = useState(0);
@@ -152,18 +153,36 @@ function App() {
     // Listen for auth changes - ONLY close modal for successful login
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
-        setUser({
-          id: session.user.id,
-          email: session.user.email!,
-          user_metadata: session.user.user_metadata
-        });
-        
-        // Only close modal on SIGN_IN event (not SIGN_UP)
-        if (event === 'SIGNED_IN') {
+        // If this is from signup, show success modal instead of dashboard
+        if (event === 'SIGNED_UP') {
+          // Don't set user - keep them on hero page
+          // Show login modal with success message
+          setShowSuccessLogin(true);
+          setAuthModalMode('login');
+          setAuthModalOpen(true);
+          // Sign out the user so they need to login properly
+          supabase.auth.signOut();
+        } else if (event === 'SIGNED_IN' && !showSuccessLogin) {
+          // Normal login - go to dashboard
+          setUser({
+            id: session.user.id,
+            email: session.user.email!,
+            user_metadata: session.user.user_metadata
+          });
           setAuthModalOpen(false);
+        } else if (event === 'SIGNED_IN' && showSuccessLogin) {
+          // Login after signup success - go to dashboard
+          setUser({
+            id: session.user.id,
+            email: session.user.email!,
+            user_metadata: session.user.user_metadata
+          });
+          setAuthModalOpen(false);
+          setShowSuccessLogin(false);
         }
       } else {
         setUser(null);
+        setShowSuccessLogin(false);
       }
       setLoading(false);
     });
@@ -730,6 +749,7 @@ function App() {
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
         initialMode={authModalMode}
+        showSuccessMessage={showSuccessLogin}
       />
     </div>
   );

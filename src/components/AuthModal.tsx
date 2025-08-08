@@ -6,13 +6,15 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialMode?: 'login' | 'signup';
+  showSuccessMessage?: boolean;
 }
 
-export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: AuthModalProps) {
+export default function AuthModal({ isOpen, onClose, initialMode = 'login', showSuccessMessage = false }: AuthModalProps) {
   const [mode, setMode] = useState<'login' | 'signup' | 'forgot' | 'signup-success'>(initialMode);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [signupEmail, setSignupEmail] = useState('');
   
   const [formData, setFormData] = useState({
     firstName: '',
@@ -24,6 +26,12 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
   // Update mode when initialMode changes
   React.useEffect(() => {
     setMode(initialMode);
+    if (showSuccessMessage && initialMode === 'login') {
+      setMessage({ 
+        type: 'success', 
+        text: 'Account created successfully! Please log in now.' 
+      });
+    }
   }, [initialMode]);
 
   // Clear everything when modal is closed
@@ -31,6 +39,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     if (!isOpen) {
       setMessage(null);
       setFormData({ firstName: '', lastName: '', email: '', password: '' });
+      setSignupEmail('');
       setShowPassword(false);
       setLoading(false);
       setMode(initialMode);
@@ -55,6 +64,9 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         // Modal will close automatically via auth state change
         
       } else if (mode === 'signup') {
+        // Store email for success state
+        setSignupEmail(formData.email);
+        
         // Create user account
         const { data, error } = await supabase.auth.signUp({
           email: formData.email,
@@ -68,18 +80,8 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
         });
 
         if (error) throw error;
-
-        // Immediately sign out to prevent auto-login
-        await supabase.auth.signOut();
-
-        // Switch to success mode with pre-filled email
-        setMode('signup-success');
-        setFormData(prev => ({
-          firstName: '',
-          lastName: '',
-          email: prev.email, // Keep email
-          password: '' // Clear password
-        }));
+        
+        // Don't do anything here - let the auth state change handle it
         
       } else if (mode === 'forgot') {
         const { error } = await supabase.auth.resetPasswordForEmail(formData.email);
@@ -106,6 +108,13 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+  // Pre-fill email if we have it from signup
+  React.useEffect(() => {
+    if (showSuccessMessage && signupEmail && mode === 'login') {
+      setFormData(prev => ({ ...prev, email: signupEmail, password: '' }));
+    }
+  }, [showSuccessMessage, signupEmail, mode]);
+
   const switchMode = (newMode: 'login' | 'signup' | 'forgot') => {
     setMode(newMode);
     setMessage(null);
@@ -113,101 +122,6 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login' }: Au
   };
 
   if (!isOpen) return null;
-
-  // Show signup success state
-  if (mode === 'signup-success') {
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div className="bg-white rounded-xl max-w-md w-full p-6 relative">
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
-          >
-            <X className="h-6 w-6" />
-          </button>
-
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome Back</h2>
-            <p className="text-gray-600">Sign in to continue your language learning journey</p>
-          </div>
-
-          {/* Success Message */}
-          <div className="mb-4 p-3 rounded-lg bg-green-50 text-green-700 border border-green-200">
-            Account created successfully! Please log in now.
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                  placeholder="your@email.com"
-                  required
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  name="password"
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  className="w-full pl-10 pr-12 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                  placeholder="••••••••"
-                  required
-                  minLength={6}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                </button>
-              </div>
-            </div>
-
-            {message && (
-              <div className={`p-3 rounded-lg ${
-                message.type === 'success' 
-                  ? 'bg-green-50 text-green-700 border border-green-200' 
-                  : 'bg-red-50 text-red-700 border border-red-200'
-              }`}>
-                {message.text}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-2 px-4 bg-orange-600 text-white rounded-lg hover:bg-orange-700 focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
-            >
-              {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Sign In'}
-            </button>
-          </form>
-
-          <div className="mt-6 text-center">
-            <button
-              onClick={() => switchMode('forgot')}
-              className="text-sm text-gray-600 hover:text-gray-800"
-            >
-              Forgot your password?
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
