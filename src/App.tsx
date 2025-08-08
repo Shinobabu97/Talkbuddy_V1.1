@@ -22,7 +22,7 @@ function App() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
-  const [justSignedUp, setJustSignedUp] = useState(false);
+  const [preventDashboard, setPreventDashboard] = useState(false);
   const [openFAQ, setOpenFAQ] = useState<number | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentTestimonial, setCurrentTestimonial] = useState(0);
@@ -155,40 +155,31 @@ function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Auth event:', event, session?.user?.email);
       
-      if (event === 'SIGNED_UP' && session?.user) {
-        // User just signed up - show dashboard briefly then switch to login
-        setJustSignedUp(true);
-        setUser({
-          id: session.user.id,
-          email: session.user.email!,
-          user_metadata: session.user.user_metadata
-        });
+      if (event === 'SIGNED_UP') {
+        console.log('User signed up - preventing dashboard and showing login modal');
+        setPreventDashboard(true);
+        setUser(null);
+        setAuthModalMode('login');
+        setShowSuccessMessage(true);
+        setAuthModalOpen(true);
         
-        // After 10ms, sign out and show login modal
-        setTimeout(async () => {
-          await supabase.auth.signOut();
-          setUser(null);
-          setJustSignedUp(false);
-          setAuthModalMode('login');
-          setShowSuccessMessage(true);
-          setAuthModalOpen(true);
-        }, 10);
+        // Sign out the user immediately
+        await supabase.auth.signOut();
         
       } else if (event === 'SIGNED_IN' && session?.user) {
-        // Normal login - go to dashboard
-        setJustSignedUp(false);
+        console.log('User signed in normally');
+        setPreventDashboard(false);
         setUser({
           id: session.user.id,
           email: session.user.email!,
           user_metadata: session.user.user_metadata
-        });
         setAuthModalOpen(false);
         setShowSuccessMessage(false);
         
       } else if (event === 'SIGNED_OUT') {
         // User signed out
         setUser(null);
-        setJustSignedUp(false);
+        setPreventDashboard(false);
         setShowSuccessMessage(false);
       }
       
@@ -281,7 +272,7 @@ function App() {
     );
   }
 
-  if (user && !justSignedUp) {
+  if (user && !preventDashboard) {
     return <Dashboard user={user} />;
   }
 
