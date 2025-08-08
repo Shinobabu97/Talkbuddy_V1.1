@@ -14,6 +14,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [justCreatedAccount, setJustCreatedAccount] = useState(false);
   
   const [formData, setFormData] = useState({
     firstName: '',
@@ -78,7 +79,15 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
         });
 
         if (error) throw error;
-        // Let auth state change handle showing success modal
+        
+        // Show success message and switch to login
+        setJustCreatedAccount(true);
+        setMode('login');
+        setMessage({ 
+          type: 'success', 
+          text: 'Account created successfully! Now sign in with your credentials.' 
+        });
+        setFormData({ firstName: '', lastName: '', email: formData.email, password: '' });
         
       } else if (mode === 'forgot') {
         const { error } = await supabase.auth.resetPasswordForEmail(formData.email);
@@ -108,6 +117,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
   const switchMode = (newMode: 'login' | 'signup' | 'forgot') => {
     setMode(newMode);
     setMessage(null);
+    setJustCreatedAccount(false);
     setFormData({ firstName: '', lastName: '', email: '', password: '' });
   };
 

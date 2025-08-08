@@ -149,39 +149,15 @@ function App() {
           user_metadata: session.user.user_metadata
         });
       }
-      setLoading(false);
-    });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth event:', event, session?.user?.email);
       
-      if (event === 'SIGNED_UP') {
-        console.log('User signed up - preventing dashboard and showing login modal');
-        setIsSigningUp(true);
-        setUser(null);
-        setAuthModalMode('login');
-        setShowSuccessMessage(true);
-        setAuthModalOpen(true);
-        
-        // Sign out the user immediately
-        await supabase.auth.signOut();
-        
-      } else if (event === 'SIGNED_IN' && session?.user) {
-        if (isSigningUp) {
-          console.log('User signed in after signup - ignoring');
-          // Don't set user, keep them on hero page
-        } else {
-          console.log('User signed in normally');
-          setUser({
-            id: session.user.id,
             email: session.user.email!,
             user_metadata: session.user.user_metadata
           });
           setAuthModalOpen(false);
           setShowSuccessMessage(false);
         }
-        
       } else if (event === 'SIGNED_OUT') {
         // User signed out
         setUser(null);
