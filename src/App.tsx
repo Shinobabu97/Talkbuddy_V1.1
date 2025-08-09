@@ -144,7 +144,9 @@ function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
         if (signingUpRef.current) {
-          await supabase.auth.signOut();
+          signingUpRef.current = false;
+          setShowSuccessMessage(true);
+          setAuthModalOpen(true);
         } else {
           setUser({
             id: session.user.id,
