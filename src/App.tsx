@@ -252,10 +252,9 @@ function App() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 flex items-center justify-center">
-        <div className="min-h-screen bg-professional flex items-center justify-center">
+        <div className="text-center">
           <Mic className="h-12 w-12 text-orange-600 mx-auto mb-4 animate-pulse" />
-          <Mic className="h-12 w-12 text-white mx-auto mb-4 animate-pulse" />
-          <p className="text-white">Loading TalkBuddy...</p>
+          <p className="text-gray-600">Loading TalkBuddy...</p>
         </div>
       </div>
     );
@@ -266,36 +265,36 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-professional">
+    <div className="min-h-screen bg-gradient-to-br from-amber-100 to-orange-100">
 
       {/* Header */}
-      <header className="relative z-50 glass-header">
+      <header className="relative z-50 bg-amber-50/95 backdrop-blur-sm border-b border-amber-300">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center space-x-2">
-              <Mic className="h-8 w-8 text-white" />
-              <span className="text-2xl font-bold text-white">TalkBuddy</span>
+              <Mic className="h-8 w-8 text-orange-600" />
+              <span className="text-2xl font-bold text-gray-900">TalkBuddy</span>
             </div>
             
             <nav className="hidden md:flex items-center space-x-8">
-              <a href="#home" className="text-white/90 hover:text-white transition-colors">Home</a>
-              <a href="#benefits" className="text-white/90 hover:text-white transition-colors">Benefits</a>
-              <a href="#how-it-works" className="text-white/90 hover:text-white transition-colors">How It Works</a>
-              <a href="#testimonials" className="text-white/90 hover:text-white transition-colors">Reviews</a>
-              <a href="#faq" className="text-white/90 hover:text-white transition-colors">FAQ</a>
+              <a href="#home" className="text-gray-700 hover:text-blue-600 transition-colors">Home</a>
+              <a href="#benefits" className="text-gray-700 hover:text-blue-600 transition-colors">Benefits</a>
+              <a href="#how-it-works" className="text-gray-700 hover:text-blue-600 transition-colors">How It Works</a>
+              <a href="#testimonials" className="text-gray-700 hover:text-blue-600 transition-colors">Reviews</a>
+              <a href="#faq" className="text-gray-700 hover:text-blue-600 transition-colors">FAQ</a>
             </nav>
 
             <div className="flex items-center space-x-4">
               <button 
                 onClick={() => handleAuthModal('login')}
-                className="hidden md:inline-flex px-6 py-2 btn-professional rounded-lg transform hover:scale-105 transition-all duration-200 font-medium"
+                className="hidden md:inline-flex px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transform hover:scale-105 transition-all duration-200 font-medium"
               >
                 Login
               </button>
 
               <button
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="md:hidden p-2 rounded-lg glass-button text-white transition-colors"
+                className="md:hidden p-2 rounded-lg bg-orange-100 hover:bg-orange-200 transition-colors"
               >
                 {isMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               </button>
@@ -305,16 +304,16 @@ function App() {
 
         {/* Mobile Menu */}
         {isMenuOpen && (
-          <div className="md:hidden glass-card border-t border-white/20">
+          <div className="md:hidden bg-amber-50 border-t border-orange-300">
             <div className="px-2 py-2 space-y-2">
-              <a href="#home" className="block py-2 text-white/90 hover:text-white">Home</a>
-              <a href="#benefits" className="block py-2 text-white/90 hover:text-white">Benefits</a>
-              <a href="#how-it-works" className="block py-2 text-white/90 hover:text-white">How It Works</a>
-              <a href="#testimonials" className="block py-2 text-white/90 hover:text-white">Reviews</a>
-              <a href="#faq" className="block py-2 text-white/90 hover:text-white">FAQ</a>
+              <a href="#home" className="block py-2 text-gray-700 hover:text-blue-600">Home</a>
+              <a href="#benefits" className="block py-2 text-gray-700 hover:text-blue-600">Benefits</a>
+              <a href="#how-it-works" className="block py-2 text-gray-700 hover:text-blue-600">How It Works</a>
+              <a href="#testimonials" className="block py-2 text-gray-700 hover:text-blue-600">Reviews</a>
+              <a href="#faq" className="block py-2 text-gray-700 hover:text-blue-600">FAQ</a>
               <button 
                 onClick={() => handleAuthModal('login')}
-                className="w-full mt-2 px-6 py-2 btn-professional rounded-lg transition-colors"
+                className="w-full mt-2 px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
               >
                 Login
               </button>
@@ -324,18 +323,18 @@ function App() {
       </header>
 
       {/* Hero Section */}
-      <section id="home" className="relative overflow-hidden py-20 lg:py-28">
+      <section id="home" className="relative overflow-hidden py-20 lg:py-28 bg-gradient-to-br from-amber-100 to-orange-100">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className="space-y-8">
               <div className="space-y-4">
-                <p className="text-white/80 font-medium uppercase tracking-wide">
+                <p className="text-orange-600 font-medium uppercase tracking-wide">
                   Introducing Your Personal AI Language Coach
                 </p>
-                <h1 className="text-4xl lg:text-6xl font-bold text-white leading-tight">
+                <h1 className="text-4xl lg:text-6xl font-bold text-gray-900 leading-tight">
                   The Language Partner Who Actually Listens
                 </h1>
-                <p className="text-xl text-white/90 leading-relaxed">
+                <p className="text-xl text-gray-600 leading-relaxed">
                   Talk to an AI friend with infinite patience for your 'um's and 'uh's— one that adapts to your pace, cheers you on, and helps you build confidence before facing real conversations.
                 </p>
               </div>
@@ -343,11 +342,11 @@ function App() {
               <div className="flex flex-col sm:flex-row gap-4">
                 <button 
                   onClick={() => handleAuthModal('signup')}
-                  className="px-8 py-4 btn-professional rounded-lg transform hover:scale-105 transition-all duration-200 font-medium text-lg"
+                  className="px-8 py-4 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transform hover:scale-105 transition-all duration-200 font-medium text-lg shadow-lg"
                 >
                   Try Your First Conversation
                 </button>
-                <div className="flex items-center space-x-2 text-white/80">
+                <div className="flex items-center space-x-2 text-gray-600">
                   <div className="flex">
                     {[...Array(5)].map((_, i) => (
                       <Star key={i} className="h-5 w-5 text-yellow-400 fill-current" />
@@ -359,8 +358,8 @@ function App() {
             </div>
 
             <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-400/30 to-purple-400/30 rounded-full transform scale-110 soft-glow"></div>
-              <div className="relative glossy-card rounded-2xl p-8 shadow-2xl">
+              <div className="absolute inset-0 bg-gradient-to-r from-orange-200 to-orange-300 rounded-full transform scale-110 soft-glow"></div>
+              <div className="relative bg-cream-50 rounded-2xl p-8 shadow-2xl border border-orange-200">
                 <img 
                   src="https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg?auto=compress&cs=tinysrgb&w=500&h=500&fit=crop" 
                   alt="Person practicing language with TalkBuddy" 
@@ -368,11 +367,11 @@ function App() {
                 />
                 <div className="space-y-3">
                   <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
-                    <span className="text-sm text-slate-700">AI Language Partner Active</span>
+                    <div className="w-3 h-3 bg-orange-400 rounded-full animate-pulse"></div>
+                    <span className="text-sm text-gray-600">AI Language Partner Active</span>
                   </div>
-                  <div className="glass-card rounded-lg p-3">
-                    <p className="text-sm text-slate-700">"Let's practice ordering at a restaurant. I'll be the waiter, and you're the customer..."</p>
+                  <div className="bg-orange-100 rounded-lg p-3 border border-orange-200">
+                    <p className="text-sm text-gray-600">"Let's practice ordering at a restaurant. I'll be the waiter, and you're the customer..."</p>
                   </div>
                 </div>
               </div>
@@ -382,61 +381,66 @@ function App() {
       </section>
 
       {/* Social Proof */}
-      <section className="py-20 glass-card border-y border-white/20 shadow-sm scroll-animate">
+      <section className="py-20 bg-amber-50/95 backdrop-blur-sm border-y border-orange-200/30 shadow-sm scroll-animate">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-white mb-4">
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">
               Trusted by Language Learners Worldwide
             </h2>
-            <p className="text-lg text-white/90 max-w-2xl mx-auto">
+            <p className="text-lg text-gray-600 max-w-2xl mx-auto">
               Join a community of over 5,500+ professionals, students, and language enthusiasts
             </p>
           </div>
           
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
             <div className="text-center stagger-animate">
-              <div className="glass-button rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
-                <Users className="h-8 w-8 text-white" />
+              <div className="bg-orange-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-orange-200 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
+                <Users className="h-8 w-8 text-orange-600" />
               </div>
-              <h3 className="text-xl font-semibold text-white mb-2 hover:text-blue-200 transition-colors duration-300">Working Professionals</h3>
-              <p className="text-white/80 text-sm hover:text-white/90 transition-colors duration-300">Building confidence for meetings and presentations</p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-orange-700 transition-colors duration-300">Working Professionals</h3>
+              <p className="text-gray-600 text-sm hover:text-gray-700 transition-colors duration-300">Building confidence for meetings and presentations</p>
             </div>
             
             <div className="text-center stagger-animate">
-              <div className="glass-button rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
-                <Target className="h-8 w-8 text-white" />
+              <div className="bg-blue-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-blue-200 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
+                <Target className="h-8 w-8 text-blue-600" />
               </div>
-              <h3 className="text-xl font-semibold text-white mb-2 hover:text-blue-200 transition-colors duration-300">University Students</h3>
-              <p className="text-white/80 text-sm hover:text-white/90 transition-colors duration-300">Preparing for academic discussions and social interactions</p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-blue-700 transition-colors duration-300">University Students</h3>
+              <p className="text-gray-600 text-sm hover:text-gray-700 transition-colors duration-300">Preparing for academic discussions and social interactions</p>
             </div>
             
             <div className="text-center stagger-animate">
-              <div className="glass-button rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
-                <Star className="h-8 w-8 text-white" />
+              <div className="bg-green-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-green-200 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
+                <Star className="h-8 w-8 text-green-600" />
               </div>
-              <h3 className="text-xl font-semibold text-white mb-2 hover:text-blue-200 transition-colors duration-300">Language Enthusiasts</h3>
-              <p className="text-white/80 text-sm hover:text-white/90 transition-colors duration-300">Passionate learners perfecting their speaking skills</p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-green-700 transition-colors duration-300">Language Enthusiasts</h3>
+              <p className="text-gray-600 text-sm hover:text-gray-700 transition-colors duration-300">Passionate learners perfecting their speaking skills</p>
             </div>
             
             <div className="text-center stagger-animate">
-              <div className="glass-button rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
-                <Shield className="h-8 w-8 text-white" />
+              <div className="bg-purple-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-purple-200 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
+                <Shield className="h-8 w-8 text-purple-600" />
               </div>
-              <h3 className="text-xl font-semibold text-white mb-2 hover:text-blue-200 transition-colors duration-300">International Teams</h3>
-              <p className="text-white/80 text-sm hover:text-white/90 transition-colors duration-300">Improving cross-cultural communication</p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-purple-700 transition-colors duration-300">International Teams</h3>
+              <p className="text-gray-600 text-sm hover:text-gray-700 transition-colors duration-300">Improving cross-cultural communication</p>
             </div>
           </div>
         </div>
       </section>
 
       {/* Benefits Section */}
-      <section id="benefits" className="py-20 relative scroll-animate" style={{ marginTop: '0', paddingTop: '5rem' }}>
+      <section id="benefits" className="py-20 relative bg-gradient-to-br from-amber-100 to-orange-100 scroll-animate" style={{ marginTop: '0', paddingTop: '5rem' }}>
+        <div className="absolute inset-0 opacity-5 pointer-events-none">
+          <div className="absolute inset-0" style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23f97316' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+          }}></div>
+        </div>
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-white mb-4">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
               Why TalkBuddy Works
             </h2>
-            <p className="text-xl text-white/90 max-w-3xl mx-auto">
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
               Experience personalized language learning that adapts to your needs and builds real confidence
             </p>
           </div>
@@ -447,15 +451,15 @@ function App() {
               return (
                 <div 
                   key={index}
-                  className="glossy-card rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 group stagger-animate"
+                  className="bg-orange-50/95 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 border border-orange-300 hover:border-orange-400 group hover:bg-orange-100/90 stagger-animate"
                 >
                   <div className="mb-4">
-                    <Icon className="h-10 w-10 text-indigo-600 mb-3 group-hover:text-indigo-700 transition-colors duration-300" />
-                    <h3 className="text-xl font-semibold text-slate-800 mb-2 group-hover:text-slate-900 transition-colors duration-300">
+                    <Icon className="h-10 w-10 text-orange-600 mb-3 group-hover:text-orange-700 transition-colors duration-300" />
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2 group-hover:text-gray-900 transition-colors duration-300">
                       {benefit.title}
                     </h3>
                   </div>
-                  <p className="text-slate-600 leading-relaxed group-hover:text-slate-700 transition-colors duration-300">
+                  <p className="text-gray-600 leading-relaxed group-hover:text-gray-700 transition-colors duration-300">
                     {benefit.description}
                   </p>
                 </div>
@@ -466,13 +470,18 @@ function App() {
       </section>
 
       {/* How It Works */}
-      <section id="how-it-works" className="py-20 glass-card relative scroll-animate">
+      <section id="how-it-works" className="py-20 bg-amber-50/95 backdrop-blur-sm relative scroll-animate">
+        <div className="absolute inset-0 opacity-5 pointer-events-none">
+          <div className="absolute inset-0" style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23f97316' fill-opacity='0.1' fill-rule='evenodd'%3E%3Cpath d='m0 40l40-40h-40v40zm40 0v-40h-40l40 40z'/%3E%3C/g%3E%3C/svg%3E")`,
+          }}></div>
+        </div>
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-white mb-4">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
               How It Works
             </h2>
-            <p className="text-xl text-white/90 max-w-3xl mx-auto">
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
               Get started in minutes and begin building your speaking confidence today
             </p>
           </div>
@@ -481,19 +490,19 @@ function App() {
             {steps.map((step, index) => (
               <div 
                 key={index}
-                className="glossy-card rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 group stagger-animate"
+                className="bg-orange-50/95 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 border border-orange-300 hover:border-orange-400 group hover:bg-orange-100/90 stagger-animate"
               >
                 <div className="flex flex-col lg:flex-row items-center gap-8">
                   <div className="flex-shrink-0">
-                    <div className="w-16 h-16 btn-professional text-white rounded-full flex items-center justify-center text-2xl font-bold group-hover:scale-110 transition-all duration-300">
+                    <div className="w-16 h-16 bg-orange-600 text-white rounded-full flex items-center justify-center text-2xl font-bold group-hover:scale-110 group-hover:bg-orange-700 transition-all duration-300">
                       {step.number}
                     </div>
                   </div>
                   <div className="flex-1 text-center lg:text-left">
-                    <h3 className="text-2xl font-semibold text-slate-800 mb-2 group-hover:text-indigo-700 transition-colors duration-300">
+                    <h3 className="text-2xl font-semibold text-gray-900 mb-2 group-hover:text-orange-700 transition-colors duration-300">
                       {step.title}
                     </h3>
-                    <p className="text-slate-600 text-lg leading-relaxed group-hover:text-slate-700 transition-colors duration-300">
+                    <p className="text-gray-600 text-lg leading-relaxed group-hover:text-gray-700 transition-colors duration-300">
                       {step.description}
                     </p>
                   </div>
@@ -505,13 +514,18 @@ function App() {
       </section>
 
       {/* Testimonials */}
-      <section id="testimonials" className="py-20 relative scroll-animate">
+      <section id="testimonials" className="py-20 bg-gradient-to-b from-amber-100 to-orange-100 relative scroll-animate">
+        <div className="absolute inset-0 opacity-5 pointer-events-none">
+          <div className="absolute inset-0" style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23f97316' fill-opacity='0.1'%3E%3Cpath d='M0 0h40v40H0V0zm40 40h40v40H40V40z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+          }}></div>
+        </div>
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-white mb-4">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
               What Our Users Say
             </h2>
-            <p className="text-xl text-white/90">
+            <p className="text-xl text-gray-600">
               Real stories from people who transformed their speaking confidence
             </p>
           </div>
@@ -523,20 +537,20 @@ function App() {
             >
               {testimonials.map((testimonial, index) => (
                 <div key={index} className="w-full flex-shrink-0 px-4">
-                  <div className="glossy-card rounded-xl p-8 shadow-lg max-w-2xl mx-auto">
+                  <div className="bg-orange-50/95 backdrop-blur-sm rounded-xl p-8 shadow-lg max-w-2xl mx-auto border border-orange-300">
                     <div className="flex mb-4">
                       {[...Array(testimonial.rating)].map((_, i) => (
                         <Star key={i} className="h-5 w-5 text-yellow-400 fill-current" />
                       ))}
                     </div>
-                    <blockquote className="text-lg text-slate-700 mb-6 italic">
+                    <blockquote className="text-lg text-gray-700 mb-6 italic">
                       "{testimonial.text}"
                     </blockquote>
                     <div>
-                      <cite className="text-slate-900 font-semibold">
+                      <cite className="text-gray-900 font-semibold">
                         {testimonial.name}
                       </cite>
-                      <p className="text-slate-600 text-sm">
+                      <p className="text-gray-600 text-sm">
                         {testimonial.role}
                       </p>
                     </div>
@@ -550,8 +564,8 @@ function App() {
                 <button
                   key={index}
                   onClick={() => setCurrentTestimonial(index)}
-                  className={`w-3 h-3 rounded-full transition-colors duration-200 glass-button ${
-                    index === currentTestimonial ? 'bg-white' : 'bg-white/50'
+                  className={`w-3 h-3 rounded-full transition-colors duration-200 ${
+                    index === currentTestimonial ? 'bg-orange-600' : 'bg-orange-200'
                   }`}
                 />
               ))}
@@ -561,36 +575,41 @@ function App() {
       </section>
 
       {/* FAQ Section */}
-      <section id="faq" className="py-20 glass-card relative scroll-animate">
+      <section id="faq" className="py-20 bg-amber-50/95 backdrop-blur-sm relative scroll-animate">
+        <div className="absolute inset-0 opacity-5 pointer-events-none">
+          <div className="absolute inset-0" style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23f97316' fill-opacity='0.1' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='3'/%3E%3Ccircle cx='13' cy='13' r='3'/%3E%3C/g%3E%3C/svg%3E")`,
+          }}></div>
+        </div>
         <div className="max-w-4xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-white mb-4">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
               Frequently Asked Questions
             </h2>
-            <p className="text-xl text-white/90">
+            <p className="text-xl text-gray-600">
               Everything you need to know about TalkBuddy
             </p>
           </div>
 
           <div className="space-y-4">
             {faqs.map((faq, index) => (
-              <div key={index} className="glossy-card rounded-lg shadow-md hover:shadow-lg transition-all duration-200">
+              <div key={index} className="bg-orange-50/95 backdrop-blur-sm rounded-lg shadow-md border border-orange-300 hover:border-orange-400 transition-colors duration-200">
                 <button
                   onClick={() => toggleFAQ(index)}
-                  className="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-white/10 transition-colors duration-200 rounded-lg"
+                  className="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-orange-100/80 transition-colors duration-200"
                 >
-                  <span className="font-semibold text-slate-800 pr-4">
+                  <span className="font-semibold text-gray-900 pr-4">
                     {faq.question}
                   </span>
                   <ChevronDown 
-                    className={`h-5 w-5 text-slate-600 transition-transform duration-200 ${
+                    className={`h-5 w-5 text-gray-500 transition-transform duration-200 ${
                       openFAQ === index ? 'transform rotate-180' : ''
                     }`}
                   />
                 </button>
                 {openFAQ === index && (
                   <div className="px-6 pb-4">
-                    <p className="text-slate-600 leading-relaxed">
+                    <p className="text-gray-600 leading-relaxed">
                       {faq.answer}
                     </p>
                   </div>
@@ -602,38 +621,38 @@ function App() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-slate-900/95 backdrop-blur-sm text-white py-16 border-t border-white/10">
+      <footer className="bg-gray-900 text-white py-16">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold mb-4">
               Ready to Start Speaking with Confidence?
             </h2>
-            <p className="text-xl text-white/80 mb-8">
+            <p className="text-xl text-gray-300 mb-8">
               Join thousands of learners who've transformed their speaking skills with TalkBuddy
             </p>
             <button 
               onClick={() => handleAuthModal('signup')}
-              className="px-8 py-4 btn-professional rounded-lg transform hover:scale-105 transition-all duration-200 font-medium text-lg"
+              className="px-8 py-4 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transform hover:scale-105 transition-all duration-200 font-medium text-lg shadow-lg"
             >
               Try Your First Conversation
             </button>
           </div>
 
-          <div className="border-t border-white/20 pt-8">
+          <div className="border-t border-gray-800 pt-8">
             <div className="grid md:grid-cols-4 gap-8">
               <div className="md:col-span-2">
                 <div className="flex items-center space-x-2 mb-4">
-                  <Mic className="h-8 w-8 text-white" />
+                  <Mic className="h-8 w-8 text-orange-400" />
                   <span className="text-2xl font-bold">TalkBuddy</span>
                 </div>
-                <p className="text-white/70 leading-relaxed">
+                <p className="text-gray-400 leading-relaxed">
                   Your AI-powered language partner that helps you build real speaking confidence through personalized, judgment-free conversations.
                 </p>
               </div>
               
               <div>
                 <h3 className="font-semibold mb-4">Product</h3>
-                <ul className="space-y-2 text-white/70">
+                <ul className="space-y-2 text-gray-400">
                   <li><a href="#" className="hover:text-white transition-colors">Features</a></li>
                   <li><a href="#" className="hover:text-white transition-colors">Pricing</a></li>
                   <li><a href="#" className="hover:text-white transition-colors">How It Works</a></li>
@@ -643,7 +662,7 @@ function App() {
               
               <div>
                 <h3 className="font-semibold mb-4">Legal</h3>
-                <ul className="space-y-2 text-white/70">
+                <ul className="space-y-2 text-gray-400">
                   <li><a href="#" className="hover:text-white transition-colors">Privacy Policy</a></li>
                   <li><a href="#" className="hover:text-white transition-colors">Terms of Service</a></li>
                   <li><a href="#" className="hover:text-white transition-colors">Cookie Policy</a></li>
@@ -652,11 +671,11 @@ function App() {
               </div>
             </div>
             
-            <div className="border-t border-white/20 mt-8 pt-8 text-center text-white/70">
+            <div className="border-t border-gray-600 mt-8 pt-8 text-center text-gray-400">
               <p>&copy; 2025 TalkBuddy. All rights reserved. Built for language learners who want to speak with confidence.</p>
             </div>
           </div>
-        </div>
+          </div>
       </footer>
 
       <AuthModal
