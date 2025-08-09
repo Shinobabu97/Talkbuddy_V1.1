@@ -381,7 +381,7 @@ function App() {
       </section>
 
       {/* Social Proof */}
-      <section className="py-20 scroll-animate bg-hero-consistent">
+      <section className="py-20 scroll-animate bg-hero-consistent relative section-bottom-divider">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-gray-900 mb-4 text-glass">
@@ -429,7 +429,7 @@ function App() {
       </section>
 
       {/* Benefits Section */}
-      <section id="benefits" className="py-20 relative scroll-animate bg-hero-consistent" style={{ marginTop: '0', paddingTop: '5rem' }}>
+      <section id="benefits" className="py-20 relative scroll-animate bg-hero-consistent section-top-divider section-bottom-divider" style={{ marginTop: '0', paddingTop: '5rem' }}>
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-900 mb-4 text-glass">
@@ -465,7 +465,7 @@ function App() {
       </section>
 
       {/* How It Works */}
-      <section id="how-it-works" className="py-20 scroll-animate bg-hero-consistent">
+      <section id="how-it-works" className="py-20 scroll-animate bg-hero-consistent relative section-top-divider section-bottom-divider">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-900 mb-4 text-glass">
@@ -504,7 +504,7 @@ function App() {
       </section>
 
       {/* Testimonials */}
-      <section id="testimonials" className="py-20 relative scroll-animate bg-hero-consistent">
+      <section id="testimonials" className="py-20 relative scroll-animate bg-hero-consistent section-top-divider section-bottom-divider">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-900 mb-4 text-glass">
@@ -560,7 +560,7 @@ function App() {
       </section>
 
       {/* FAQ Section */}
-      <section id="faq" className="py-20 scroll-animate bg-hero-consistent">
+      <section id="faq" className="py-20 scroll-animate bg-hero-consistent relative section-top-divider section-bottom-divider">
         <div className="max-w-4xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-900 mb-4 text-glass">
@@ -601,7 +601,7 @@ function App() {
       </section>
 
       {/* Footer */}
-      <footer className="py-16 relative bg-hero-consistent">
+      <footer className="py-16 relative bg-hero-consistent section-top-divider">
         <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
         <div className="relative">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
