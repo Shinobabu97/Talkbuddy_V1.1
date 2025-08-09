@@ -358,7 +358,7 @@ function App() {
             </div>
 
             <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-orange-200 to-orange-300 rounded-full transform scale-110 soft-glow opacity-30"></div>
+              <div className="absolute inset-0 bg-gradient-to-r from-amber-200/60 to-orange-200/60 rounded-full transform scale-110 soft-glow opacity-40"></div>
               <div className="relative card-glass rounded-2xl p-8 shadow-glass-xl">
                 <img 
                   src="https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg?auto=compress&cs=tinysrgb&w=500&h=500&fit=crop" 
@@ -381,7 +381,7 @@ function App() {
       </section>
 
       {/* Social Proof */}
-      <section className="py-20 glass-subtle border-y border-white/20 shadow-glass scroll-animate">
+      <section className="py-20 glass-subtle section-divider scroll-animate">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-gray-900 mb-4 text-glass">
@@ -465,7 +465,7 @@ function App() {
       </section>
 
       {/* How It Works */}
-      <section id="how-it-works" className="py-20 glass-subtle relative scroll-animate">
+      <section id="how-it-works" className="py-20 glass-subtle section-divider scroll-animate">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-900 mb-4 text-glass">
@@ -560,7 +560,7 @@ function App() {
       </section>
 
       {/* FAQ Section */}
-      <section id="faq" className="py-20 glass-subtle relative scroll-animate">
+      <section id="faq" className="py-20 glass-subtle section-divider scroll-animate">
         <div className="max-w-4xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-900 mb-4 text-glass">
