@@ -212,6 +212,10 @@
   position: relative;
 }
 
+.bg-hero-consistent {
+  background: rgba(254, 215, 170, 0.9);
+  position: relative;
+}
 .bg-gradient-glass::before {
   content: '';
   position: absolute;
