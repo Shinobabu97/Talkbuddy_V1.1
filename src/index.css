@@ -59,11 +59,11 @@
 
 @keyframes pulseGlow {
   0%, 100% { 
-    box-shadow: 0 0 20px rgba(251, 146, 60, 0.3);
+    box-shadow: 0 0 20px rgba(214, 169, 157, 0.3);
     transform: scale(1);
   }
   50% { 
-    box-shadow: 0 0 30px rgba(251, 146, 60, 0.5);
+    box-shadow: 0 0 30px rgba(214, 169, 157, 0.5);
     transform: scale(1.02);
   }
 }
@@ -81,11 +81,11 @@
 
 @keyframes softGlow {
   0%, 100% { 
-    box-shadow: 0 0 40px rgba(251, 146, 60, 0.25);
+    box-shadow: 0 0 40px rgba(214, 169, 157, 0.25);
     opacity: 0.4;
   }
   50% { 
-    box-shadow: 0 0 70px rgba(251, 146, 60, 0.4);
+    box-shadow: 0 0 70px rgba(214, 169, 157, 0.4);
     opacity: 0.6;
   }
 }

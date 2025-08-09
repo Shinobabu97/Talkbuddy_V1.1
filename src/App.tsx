@@ -265,36 +265,36 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-100 to-orange-100">
+    <div className="min-h-screen bg-gradient-to-br from-cream-light-200 to-rose-dust-200">
 
       {/* Header */}
-      <header className="relative z-50 bg-amber-50/95 backdrop-blur-sm border-b border-amber-300">
+      <header className="relative z-50 bg-cream-light-200/95 backdrop-blur-sm border-b border-sage-light-300">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center space-x-2">
-              <Mic className="h-8 w-8 text-orange-600" />
+              <Mic className="h-8 w-8 text-sage-dark-600" />
               <span className="text-2xl font-bold text-gray-900">TalkBuddy</span>
             </div>
             
             <nav className="hidden md:flex items-center space-x-8">
-              <a href="#home" className="text-gray-700 hover:text-blue-600 transition-colors">Home</a>
-              <a href="#benefits" className="text-gray-700 hover:text-blue-600 transition-colors">Benefits</a>
-              <a href="#how-it-works" className="text-gray-700 hover:text-blue-600 transition-colors">How It Works</a>
-              <a href="#testimonials" className="text-gray-700 hover:text-blue-600 transition-colors">Reviews</a>
-              <a href="#faq" className="text-gray-700 hover:text-blue-600 transition-colors">FAQ</a>
+              <a href="#home" className="text-gray-700 hover:text-sage-dark-600 transition-colors">Home</a>
+              <a href="#benefits" className="text-gray-700 hover:text-sage-dark-600 transition-colors">Benefits</a>
+              <a href="#how-it-works" className="text-gray-700 hover:text-sage-dark-600 transition-colors">How It Works</a>
+              <a href="#testimonials" className="text-gray-700 hover:text-sage-dark-600 transition-colors">Reviews</a>
+              <a href="#faq" className="text-gray-700 hover:text-sage-dark-600 transition-colors">FAQ</a>
             </nav>
 
             <div className="flex items-center space-x-4">
               <button 
                 onClick={() => handleAuthModal('login')}
-                className="hidden md:inline-flex px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transform hover:scale-105 transition-all duration-200 font-medium"
+                className="hidden md:inline-flex px-6 py-2 bg-rose-dust-400 text-white rounded-lg hover:bg-rose-dust-500 transform hover:scale-105 transition-all duration-200 font-medium"
               >
                 Login
               </button>
 
               <button
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="md:hidden p-2 rounded-lg bg-orange-100 hover:bg-orange-200 transition-colors"
+                className="md:hidden p-2 rounded-lg bg-rose-dust-100 hover:bg-rose-dust-200 transition-colors"
               >
                 {isMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               </button>
@@ -304,16 +304,16 @@ function App() {
 
         {/* Mobile Menu */}
         {isMenuOpen && (
-          <div className="md:hidden bg-amber-50 border-t border-orange-300">
+          <div className="md:hidden bg-cream-light-200 border-t border-sage-light-300">
             <div className="px-2 py-2 space-y-2">
-              <a href="#home" className="block py-2 text-gray-700 hover:text-blue-600">Home</a>
-              <a href="#benefits" className="block py-2 text-gray-700 hover:text-blue-600">Benefits</a>
-              <a href="#how-it-works" className="block py-2 text-gray-700 hover:text-blue-600">How It Works</a>
-              <a href="#testimonials" className="block py-2 text-gray-700 hover:text-blue-600">Reviews</a>
-              <a href="#faq" className="block py-2 text-gray-700 hover:text-blue-600">FAQ</a>
+              <a href="#home" className="block py-2 text-gray-700 hover:text-sage-dark-600">Home</a>
+              <a href="#benefits" className="block py-2 text-gray-700 hover:text-sage-dark-600">Benefits</a>
+              <a href="#how-it-works" className="block py-2 text-gray-700 hover:text-sage-dark-600">How It Works</a>
+              <a href="#testimonials" className="block py-2 text-gray-700 hover:text-sage-dark-600">Reviews</a>
+              <a href="#faq" className="block py-2 text-gray-700 hover:text-sage-dark-600">FAQ</a>
               <button 
                 onClick={() => handleAuthModal('login')}
-                className="w-full mt-2 px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+                className="w-full mt-2 px-6 py-2 bg-rose-dust-400 text-white rounded-lg hover:bg-rose-dust-500 transition-colors"
               >
                 Login
               </button>
@@ -323,12 +323,12 @@ function App() {
       </header>
 
       {/* Hero Section */}
-      <section id="home" className="relative overflow-hidden py-20 lg:py-28 bg-gradient-to-br from-amber-100 to-orange-100">
+      <section id="home" className="relative overflow-hidden py-20 lg:py-28 bg-gradient-to-br from-cream-light-200 to-rose-dust-200">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className="space-y-8">
               <div className="space-y-4">
-                <p className="text-orange-600 font-medium uppercase tracking-wide">
+                <p className="text-rose-dust-400 font-medium uppercase tracking-wide">
                   Introducing Your Personal AI Language Coach
                 </p>
                 <h1 className="text-4xl lg:text-6xl font-bold text-gray-900 leading-tight">
@@ -342,7 +342,7 @@ function App() {
               <div className="flex flex-col sm:flex-row gap-4">
                 <button 
                   onClick={() => handleAuthModal('signup')}
-                  className="px-8 py-4 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transform hover:scale-105 transition-all duration-200 font-medium text-lg shadow-lg"
+                  className="px-8 py-4 bg-rose-dust-400 text-white rounded-lg hover:bg-rose-dust-500 transform hover:scale-105 transition-all duration-200 font-medium text-lg shadow-lg"
                 >
                   Try Your First Conversation
                 </button>
@@ -358,8 +358,8 @@ function App() {
             </div>
 
             <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-orange-200 to-orange-300 rounded-full transform scale-110 soft-glow"></div>
-              <div className="relative bg-cream-50 rounded-2xl p-8 shadow-2xl border border-orange-200">
+              <div className="absolute inset-0 bg-gradient-to-r from-rose-dust-200 to-rose-dust-300 rounded-full transform scale-110 soft-glow"></div>
+              <div className="relative bg-cream-light-100 rounded-2xl p-8 shadow-2xl border border-sage-light-300">
                 <img 
                   src="https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg?auto=compress&cs=tinysrgb&w=500&h=500&fit=crop" 
                   alt="Person practicing language with TalkBuddy" 
@@ -367,10 +367,10 @@ function App() {
                 />
                 <div className="space-y-3">
                   <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 bg-orange-400 rounded-full animate-pulse"></div>
+                    <div className="w-3 h-3 bg-rose-dust-400 rounded-full animate-pulse"></div>
                     <span className="text-sm text-gray-600">AI Language Partner Active</span>
                   </div>
-                  <div className="bg-orange-100 rounded-lg p-3 border border-orange-200">
+                  <div className="bg-cream-light-200 rounded-lg p-3 border border-sage-light-300">
                     <p className="text-sm text-gray-600">"Let's practice ordering at a restaurant. I'll be the waiter, and you're the customer..."</p>
                   </div>
                 </div>
@@ -381,7 +381,7 @@ function App() {
       </section>
 
       {/* Social Proof */}
-      <section className="py-20 bg-amber-50/95 backdrop-blur-sm border-y border-orange-200/30 shadow-sm scroll-animate">
+      <section className="py-20 bg-cream-light-200/95 backdrop-blur-sm border-y border-sage-light-300/30 shadow-sm scroll-animate">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-gray-900 mb-4">
@@ -394,34 +394,34 @@ function App() {
           
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
             <div className="text-center stagger-animate">
-              <div className="bg-orange-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-orange-200 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
-                <Users className="h-8 w-8 text-orange-600" />
+              <div className="bg-rose-dust-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-rose-dust-200 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
+                <Users className="h-8 w-8 text-rose-dust-500" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-orange-700 transition-colors duration-300">Working Professionals</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-rose-dust-600 transition-colors duration-300">Working Professionals</h3>
               <p className="text-gray-600 text-sm hover:text-gray-700 transition-colors duration-300">Building confidence for meetings and presentations</p>
             </div>
             
             <div className="text-center stagger-animate">
-              <div className="bg-blue-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-blue-200 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
-                <Target className="h-8 w-8 text-blue-600" />
+              <div className="bg-sage-light-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-sage-light-200 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
+                <Target className="h-8 w-8 text-sage-dark-600" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-blue-700 transition-colors duration-300">University Students</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-sage-dark-600 transition-colors duration-300">University Students</h3>
               <p className="text-gray-600 text-sm hover:text-gray-700 transition-colors duration-300">Preparing for academic discussions and social interactions</p>
             </div>
             
             <div className="text-center stagger-animate">
-              <div className="bg-green-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-green-200 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
-                <Star className="h-8 w-8 text-green-600" />
+              <div className="bg-sage-dark-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-sage-dark-200 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
+                <Star className="h-8 w-8 text-sage-dark-600" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-green-700 transition-colors duration-300">Language Enthusiasts</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-sage-dark-700 transition-colors duration-300">Language Enthusiasts</h3>
               <p className="text-gray-600 text-sm hover:text-gray-700 transition-colors duration-300">Passionate learners perfecting their speaking skills</p>
             </div>
             
             <div className="text-center stagger-animate">
-              <div className="bg-purple-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-purple-200 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
-                <Shield className="h-8 w-8 text-purple-600" />
+              <div className="bg-cream-light-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-cream-light-200 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl border border-sage-light-300">
+                <Shield className="h-8 w-8 text-sage-dark-600" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-purple-700 transition-colors duration-300">International Teams</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-sage-dark-700 transition-colors duration-300">International Teams</h3>
               <p className="text-gray-600 text-sm hover:text-gray-700 transition-colors duration-300">Improving cross-cultural communication</p>
             </div>
           </div>
@@ -429,10 +429,10 @@ function App() {
       </section>
 
       {/* Benefits Section */}
-      <section id="benefits" className="py-20 relative bg-gradient-to-br from-amber-100 to-orange-100 scroll-animate" style={{ marginTop: '0', paddingTop: '5rem' }}>
+      <section id="benefits" className="py-20 relative bg-gradient-to-br from-cream-light-200 to-rose-dust-200 scroll-animate" style={{ marginTop: '0', paddingTop: '5rem' }}>
         <div className="absolute inset-0 opacity-5 pointer-events-none">
           <div className="absolute inset-0" style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23f97316' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23d6a99d' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
           }}></div>
         </div>
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
@@ -451,10 +451,10 @@ function App() {
               return (
                 <div 
                   key={index}
-                  className="bg-orange-50/95 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 border border-orange-300 hover:border-orange-400 group hover:bg-orange-100/90 stagger-animate"
+                  className="bg-cream-light-200/95 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 border border-sage-light-300 hover:border-rose-dust-400 group hover:bg-rose-dust-100/90 stagger-animate"
                 >
                   <div className="mb-4">
-                    <Icon className="h-10 w-10 text-orange-600 mb-3 group-hover:text-orange-700 transition-colors duration-300" />
+                    <Icon className="h-10 w-10 text-rose-dust-500 mb-3 group-hover:text-rose-dust-600 transition-colors duration-300" />
                     <h3 className="text-xl font-semibold text-gray-900 mb-2 group-hover:text-gray-900 transition-colors duration-300">
                       {benefit.title}
                     </h3>
@@ -470,10 +470,10 @@ function App() {
       </section>
 
       {/* How It Works */}
-      <section id="how-it-works" className="py-20 bg-amber-50/95 backdrop-blur-sm relative scroll-animate">
+      <section id="how-it-works" className="py-20 bg-cream-light-200/95 backdrop-blur-sm relative scroll-animate">
         <div className="absolute inset-0 opacity-5 pointer-events-none">
           <div className="absolute inset-0" style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23f97316' fill-opacity='0.1' fill-rule='evenodd'%3E%3Cpath d='m0 40l40-40h-40v40zm40 0v-40h-40l40 40z'/%3E%3C/g%3E%3C/svg%3E")`,
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23d6a99d' fill-opacity='0.1' fill-rule='evenodd'%3E%3Cpath d='m0 40l40-40h-40v40zm40 0v-40h-40l40 40z'/%3E%3C/g%3E%3C/svg%3E")`,
           }}></div>
         </div>
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
@@ -490,16 +490,16 @@ function App() {
             {steps.map((step, index) => (
               <div 
                 key={index}
-                className="bg-orange-50/95 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 border border-orange-300 hover:border-orange-400 group hover:bg-orange-100/90 stagger-animate"
+                className="bg-cream-light-200/95 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 border border-sage-light-300 hover:border-rose-dust-400 group hover:bg-rose-dust-100/90 stagger-animate"
               >
                 <div className="flex flex-col lg:flex-row items-center gap-8">
                   <div className="flex-shrink-0">
-                    <div className="w-16 h-16 bg-orange-600 text-white rounded-full flex items-center justify-center text-2xl font-bold group-hover:scale-110 group-hover:bg-orange-700 transition-all duration-300">
+                    <div className="w-16 h-16 bg-rose-dust-400 text-white rounded-full flex items-center justify-center text-2xl font-bold group-hover:scale-110 group-hover:bg-rose-dust-500 transition-all duration-300">
                       {step.number}
                     </div>
                   </div>
                   <div className="flex-1 text-center lg:text-left">
-                    <h3 className="text-2xl font-semibold text-gray-900 mb-2 group-hover:text-orange-700 transition-colors duration-300">
+                    <h3 className="text-2xl font-semibold text-gray-900 mb-2 group-hover:text-rose-dust-600 transition-colors duration-300">
                       {step.title}
                     </h3>
                     <p className="text-gray-600 text-lg leading-relaxed group-hover:text-gray-700 transition-colors duration-300">
@@ -514,10 +514,10 @@ function App() {
       </section>
 
       {/* Testimonials */}
-      <section id="testimonials" className="py-20 bg-gradient-to-b from-amber-100 to-orange-100 relative scroll-animate">
+      <section id="testimonials" className="py-20 bg-gradient-to-b from-cream-light-200 to-rose-dust-200 relative scroll-animate">
         <div className="absolute inset-0 opacity-5 pointer-events-none">
           <div className="absolute inset-0" style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23f97316' fill-opacity='0.1'%3E%3Cpath d='M0 0h40v40H0V0zm40 40h40v40H40V40z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23d6a99d' fill-opacity='0.1'%3E%3Cpath d='M0 0h40v40H0V0zm40 40h40v40H40V40z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
           }}></div>
         </div>
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
@@ -537,7 +537,7 @@ function App() {
             >
               {testimonials.map((testimonial, index) => (
                 <div key={index} className="w-full flex-shrink-0 px-4">
-                  <div className="bg-orange-50/95 backdrop-blur-sm rounded-xl p-8 shadow-lg max-w-2xl mx-auto border border-orange-300">
+                  <div className="bg-cream-light-200/95 backdrop-blur-sm rounded-xl p-8 shadow-lg max-w-2xl mx-auto border border-sage-light-300">
                     <div className="flex mb-4">
                       {[...Array(testimonial.rating)].map((_, i) => (
                         <Star key={i} className="h-5 w-5 text-yellow-400 fill-current" />
@@ -565,7 +565,7 @@ function App() {
                   key={index}
                   onClick={() => setCurrentTestimonial(index)}
                   className={`w-3 h-3 rounded-full transition-colors duration-200 ${
-                    index === currentTestimonial ? 'bg-orange-600' : 'bg-orange-200'
+                    index === currentTestimonial ? 'bg-rose-dust-400' : 'bg-rose-dust-200'
                   }`}
                 />
               ))}
@@ -575,10 +575,10 @@ function App() {
       </section>
 
       {/* FAQ Section */}
-      <section id="faq" className="py-20 bg-amber-50/95 backdrop-blur-sm relative scroll-animate">
+      <section id="faq" className="py-20 bg-cream-light-200/95 backdrop-blur-sm relative scroll-animate">
         <div className="absolute inset-0 opacity-5 pointer-events-none">
           <div className="absolute inset-0" style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23f97316' fill-opacity='0.1' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='3'/%3E%3Ccircle cx='13' cy='13' r='3'/%3E%3C/g%3E%3C/svg%3E")`,
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23d6a99d' fill-opacity='0.1' fill-rule='evenodd'%3E%3Ccircle cx='3' cy='3' r='3'/%3E%3Ccircle cx='13' cy='13' r='3'/%3E%3C/g%3E%3C/svg%3E")`,
           }}></div>
         </div>
         <div className="max-w-4xl mx-auto px-2 sm:px-4 lg:px-6">
@@ -593,10 +593,10 @@ function App() {
 
           <div className="space-y-4">
             {faqs.map((faq, index) => (
-              <div key={index} className="bg-orange-50/95 backdrop-blur-sm rounded-lg shadow-md border border-orange-300 hover:border-orange-400 transition-colors duration-200">
+              <div key={index} className="bg-cream-light-200/95 backdrop-blur-sm rounded-lg shadow-md border border-sage-light-300 hover:border-rose-dust-400 transition-colors duration-200">
                 <button
                   onClick={() => toggleFAQ(index)}
-                  className="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-orange-100/80 transition-colors duration-200"
+                  className="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-rose-dust-100/80 transition-colors duration-200"
                 >
                   <span className="font-semibold text-gray-900 pr-4">
                     {faq.question}
@@ -632,7 +632,7 @@ function App() {
             </p>
             <button 
               onClick={() => handleAuthModal('signup')}
-              className="px-8 py-4 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transform hover:scale-105 transition-all duration-200 font-medium text-lg shadow-lg"
+              className="px-8 py-4 bg-rose-dust-400 text-white rounded-lg hover:bg-rose-dust-500 transform hover:scale-105 transition-all duration-200 font-medium text-lg shadow-lg"
             >
               Try Your First Conversation
             </button>
@@ -642,7 +642,7 @@ function App() {
             <div className="grid md:grid-cols-4 gap-8">
               <div className="md:col-span-2">
                 <div className="flex items-center space-x-2 mb-4">
-                  <Mic className="h-8 w-8 text-orange-400" />
+                  <Mic className="h-8 w-8 text-rose-dust-400" />
                   <span className="text-2xl font-bold">TalkBuddy</span>
                 </div>
                 <p className="text-gray-400 leading-relaxed">
