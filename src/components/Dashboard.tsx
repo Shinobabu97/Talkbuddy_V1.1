@@ -40,16 +40,16 @@ export default function Dashboard({ user }: DashboardProps) {
   return (
     <div className="min-h-screen bg-gradient-glass-light">
       {/* Header */}
-      <header className="header-glass-light">
+      <header className="header-glossy-light sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center space-x-2">
               <Mic className="h-8 w-8 text-orange-600" />
-              <span className="text-2xl font-bold text-glass-light">TalkBuddy</span>
+              <span className="text-2xl font-bold text-gray-900" style={{ textShadow: '0 2px 4px rgba(255, 255, 255, 0.5)' }}>TalkBuddy</span>
             </div>
             
             <div className="flex items-center space-x-4">
-              <span className="text-gray-700-light font-medium">Hi, {firstName}!</span>
+              <span className="text-gray-800 font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>Hi, {firstName}!</span>
               <button
                 onClick={handleLogout}
                 className="flex items-center space-x-2 px-4 py-2 btn-glossy-secondary rounded-lg"
