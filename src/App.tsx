@@ -10,10 +10,7 @@ import {
   Star,
   ChevronDown,
   Menu,
-  X,
-  Moon,
-  Sun,
-  Globe
+  X
 } from 'lucide-react';
 import { supabase, AuthUser } from './lib/supabase';
 import AuthModal from './components/AuthModal';
@@ -29,21 +26,8 @@ function App() {
   const [openFAQ, setOpenFAQ] = useState<number | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentTestimonial, setCurrentTestimonial] = useState(0);
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const [selectedLanguage, setSelectedLanguage] = useState('English');
-  const [isLanguageDropdownOpen, setIsLanguageDropdownOpen] = useState(false);
   const signingUpRef = useRef(false);
 
-  const languages = [
-    { code: 'en', name: 'English', flag: '🇺🇸' },
-    { code: 'es', name: 'Spanish', flag: '🇪🇸' },
-    { code: 'fr', name: 'French', flag: '🇫🇷' },
-    { code: 'de', name: 'German', flag: '🇩🇪' },
-    { code: 'it', name: 'Italian', flag: '🇮🇹' },
-    { code: 'pt', name: 'Portuguese', flag: '🇵🇹' },
-    { code: 'zh', name: 'Chinese', flag: '🇨🇳' },
-    { code: 'ja', name: 'Japanese', flag: '🇯🇵' }
-  ];
   const benefits = [
     {
       icon: Clock,
@@ -156,18 +140,6 @@ function App() {
   ];
 
   useEffect(() => {
-    // Initialize dark mode from localStorage
-    const savedDarkMode = localStorage.getItem('darkMode');
-    if (savedDarkMode) {
-      setIsDarkMode(JSON.parse(savedDarkMode));
-    }
-
-    // Initialize language from localStorage
-    const savedLanguage = localStorage.getItem('selectedLanguage');
-    if (savedLanguage) {
-      setSelectedLanguage(savedLanguage);
-    }
-
     // Set up auth state listener first
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
@@ -203,21 +175,6 @@ function App() {
 
     return () => subscription.unsubscribe();
   }, []);
-
-  // Apply dark mode to document
-  useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-    localStorage.setItem('darkMode', JSON.stringify(isDarkMode));
-  }, [isDarkMode]);
-
-  // Save language preference
-  useEffect(() => {
-    localStorage.setItem('selectedLanguage', selectedLanguage);
-  }, [selectedLanguage]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -292,15 +249,6 @@ function App() {
     setOpenFAQ(openFAQ === index ? null : index);
   };
 
-  const toggleDarkMode = () => {
-    setIsDarkMode(!isDarkMode);
-  };
-
-  const handleLanguageSelect = (language: string) => {
-    setSelectedLanguage(language);
-    setIsLanguageDropdownOpen(false);
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 flex items-center justify-center">
@@ -317,106 +265,26 @@ function App() {
   }
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${
-      isDarkMode 
-        ? 'bg-gradient-to-br from-gray-900 to-gray-800' 
-        : 'bg-gradient-to-br from-amber-100 to-orange-100'
-    }`}>
+    <div className="min-h-screen bg-gradient-to-br from-amber-100 to-orange-100">
 
       {/* Header */}
-      <header className={`relative z-50 backdrop-blur-sm border-b transition-colors duration-300 ${
-        isDarkMode 
-          ? 'bg-gray-800/95 border-gray-700' 
-          : 'bg-amber-50/95 border-amber-300'
-      }`}>
+      <header className="relative z-50 bg-amber-50/95 backdrop-blur-sm border-b border-amber-300">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center space-x-2">
               <Mic className="h-8 w-8 text-orange-600" />
-              <span className={`text-2xl font-bold transition-colors duration-300 ${
-                isDarkMode ? 'text-white' : 'text-gray-900'
-              }`}>TalkBuddy</span>
+              <span className="text-2xl font-bold text-gray-900">TalkBuddy</span>
             </div>
             
             <nav className="hidden md:flex items-center space-x-8">
-              <a href="#home" className={`transition-colors ${
-                isDarkMode ? 'text-gray-300 hover:text-orange-400' : 'text-gray-700 hover:text-blue-600'
-              }`}>Home</a>
-              <a href="#benefits" className={`transition-colors ${
-                isDarkMode ? 'text-gray-300 hover:text-orange-400' : 'text-gray-700 hover:text-blue-600'
-              }`}>Benefits</a>
-              <a href="#how-it-works" className={`transition-colors ${
-                isDarkMode ? 'text-gray-300 hover:text-orange-400' : 'text-gray-700 hover:text-blue-600'
-              }`}>How It Works</a>
-              <a href="#testimonials" className={`transition-colors ${
-                isDarkMode ? 'text-gray-300 hover:text-orange-400' : 'text-gray-700 hover:text-blue-600'
-              }`}>Reviews</a>
-              <a href="#faq" className={`transition-colors ${
-                isDarkMode ? 'text-gray-300 hover:text-orange-400' : 'text-gray-700 hover:text-blue-600'
-              }`}>FAQ</a>
+              <a href="#home" className="text-gray-700 hover:text-blue-600 transition-colors">Home</a>
+              <a href="#benefits" className="text-gray-700 hover:text-blue-600 transition-colors">Benefits</a>
+              <a href="#how-it-works" className="text-gray-700 hover:text-blue-600 transition-colors">How It Works</a>
+              <a href="#testimonials" className="text-gray-700 hover:text-blue-600 transition-colors">Reviews</a>
+              <a href="#faq" className="text-gray-700 hover:text-blue-600 transition-colors">FAQ</a>
             </nav>
 
             <div className="flex items-center space-x-4">
-              {/* Language Selector */}
-              <div className="relative hidden md:block">
-                <button
-                  onClick={() => setIsLanguageDropdownOpen(!isLanguageDropdownOpen)}
-                  className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors ${
-                    isDarkMode 
-                      ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' 
-                      : 'bg-orange-100 hover:bg-orange-200 text-gray-700'
-                  }`}
-                >
-                  <Globe className="h-4 w-4" />
-                  <span className="text-sm">{selectedLanguage}</span>
-                  <ChevronDown className={`h-4 w-4 transition-transform ${
-                    isLanguageDropdownOpen ? 'rotate-180' : ''
-                  }`} />
-                </button>
-                
-                {isLanguageDropdownOpen && (
-                  <div className={`absolute right-0 mt-2 w-48 rounded-lg shadow-lg border z-50 ${
-                    isDarkMode 
-                      ? 'bg-gray-800 border-gray-700' 
-                      : 'bg-white border-gray-200'
-                  }`}>
-                    <div className="py-1">
-                      {languages.map((lang) => (
-                        <button
-                          key={lang.code}
-                          onClick={() => handleLanguageSelect(lang.name)}
-                          className={`w-full text-left px-4 py-2 text-sm flex items-center space-x-3 transition-colors ${
-                            selectedLanguage === lang.name
-                              ? isDarkMode 
-                                ? 'bg-orange-600 text-white' 
-                                : 'bg-orange-100 text-orange-800'
-                              : isDarkMode 
-                                ? 'text-gray-300 hover:bg-gray-700' 
-                                : 'text-gray-700 hover:bg-gray-100'
-                          }`}
-                        >
-                          <span className="text-lg">{lang.flag}</span>
-                          <span>{lang.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Dark Mode Toggle */}
-              <button
-                onClick={toggleDarkMode}
-                className={`p-2 rounded-lg transition-colors ${
-                  isDarkMode 
-                    ? 'bg-gray-700 hover:bg-gray-600 text-yellow-400' 
-                    : 'bg-orange-100 hover:bg-orange-200 text-gray-700'
-                }`}
-                title={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
-              >
-                {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-              </button>
-
               <button 
                 onClick={() => handleAuthModal('login')}
                 className="hidden md:inline-flex px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transform hover:scale-105 transition-all duration-200 font-medium"
@@ -426,11 +294,7 @@ function App() {
 
               <button
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className={`md:hidden p-2 rounded-lg transition-colors ${
-                  isDarkMode 
-                    ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' 
-                    : 'bg-orange-100 hover:bg-orange-200 text-gray-700'
-                }`}
+                className="md:hidden p-2 rounded-lg bg-orange-100 hover:bg-orange-200 transition-colors"
               >
                 {isMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               </button>
@@ -440,70 +304,13 @@ function App() {
 
         {/* Mobile Menu */}
         {isMenuOpen && (
-          <div className={`md:hidden border-t transition-colors duration-300 ${
-            isDarkMode 
-              ? 'bg-gray-800 border-gray-700' 
-              : 'bg-amber-50 border-orange-300'
-          }`}>
+          <div className="md:hidden bg-amber-50 border-t border-orange-300">
             <div className="px-2 py-2 space-y-2">
-              <a href="#home" className={`block py-2 transition-colors ${
-                isDarkMode ? 'text-gray-300 hover:text-orange-400' : 'text-gray-700 hover:text-blue-600'
-              }`}>Home</a>
-              <a href="#benefits" className={`block py-2 transition-colors ${
-                isDarkMode ? 'text-gray-300 hover:text-orange-400' : 'text-gray-700 hover:text-blue-600'
-              }`}>Benefits</a>
-              <a href="#how-it-works" className={`block py-2 transition-colors ${
-                isDarkMode ? 'text-gray-300 hover:text-orange-400' : 'text-gray-700 hover:text-blue-600'
-              }`}>How It Works</a>
-              <a href="#testimonials" className={`block py-2 transition-colors ${
-                isDarkMode ? 'text-gray-300 hover:text-orange-400' : 'text-gray-700 hover:text-blue-600'
-              }`}>Reviews</a>
-              <a href="#faq" className={`block py-2 transition-colors ${
-                isDarkMode ? 'text-gray-300 hover:text-orange-400' : 'text-gray-700 hover:text-blue-600'
-              }`}>FAQ</a>
-              
-              {/* Mobile Language Selector */}
-              <div className="py-2">
-                <div className={`text-sm font-medium mb-2 ${
-                  isDarkMode ? 'text-gray-300' : 'text-gray-700'
-                }`}>Language</div>
-                <div className="grid grid-cols-2 gap-2">
-                  {languages.slice(0, 4).map((lang) => (
-                    <button
-                      key={lang.code}
-                      onClick={() => handleLanguageSelect(lang.name)}
-                      className={`text-left px-3 py-2 text-sm rounded-lg flex items-center space-x-2 transition-colors ${
-                        selectedLanguage === lang.name
-                          ? isDarkMode 
-                            ? 'bg-orange-600 text-white' 
-                            : 'bg-orange-100 text-orange-800'
-                          : isDarkMode 
-                            ? 'text-gray-300 hover:bg-gray-700' 
-                            : 'text-gray-700 hover:bg-gray-100'
-                      }`}
-                    >
-                      <span>{lang.flag}</span>
-                      <span>{lang.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              
-              {/* Mobile Dark Mode Toggle */}
-              <div className="py-2">
-                <button
-                  onClick={toggleDarkMode}
-                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
-                    isDarkMode 
-                      ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' 
-                      : 'bg-orange-100 hover:bg-orange-200 text-gray-700'
-                  }`}
-                >
-                  {isDarkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-                  <span>{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
-                </button>
-              </div>
-              
+              <a href="#home" className="block py-2 text-gray-700 hover:text-blue-600">Home</a>
+              <a href="#benefits" className="block py-2 text-gray-700 hover:text-blue-600">Benefits</a>
+              <a href="#how-it-works" className="block py-2 text-gray-700 hover:text-blue-600">How It Works</a>
+              <a href="#testimonials" className="block py-2 text-gray-700 hover:text-blue-600">Reviews</a>
+              <a href="#faq" className="block py-2 text-gray-700 hover:text-blue-600">FAQ</a>
               <button 
                 onClick={() => handleAuthModal('login')}
                 className="w-full mt-2 px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
@@ -516,28 +323,18 @@ function App() {
       </header>
 
       {/* Hero Section */}
-      <section id="home" className={`relative overflow-hidden py-20 lg:py-28 transition-colors duration-300 ${
-        isDarkMode 
-          ? 'bg-gradient-to-br from-gray-900 to-gray-800' 
-          : 'bg-gradient-to-br from-amber-100 to-orange-100'
-      }`}>
+      <section id="home" className="relative overflow-hidden py-20 lg:py-28 bg-gradient-to-br from-amber-100 to-orange-100">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className="space-y-8">
               <div className="space-y-4">
-                <p className={`font-medium uppercase tracking-wide transition-colors duration-300 ${
-                  isDarkMode ? 'text-orange-400' : 'text-orange-600'
-                }`}>
+                <p className="text-orange-600 font-medium uppercase tracking-wide">
                   Introducing Your Personal AI Language Coach
                 </p>
-                <h1 className={`text-4xl lg:text-6xl font-bold leading-tight transition-colors duration-300 ${
-                  isDarkMode ? 'text-white' : 'text-gray-900'
-                }`}>
+                <h1 className="text-4xl lg:text-6xl font-bold text-gray-900 leading-tight">
                   The Language Partner Who Actually Listens
                 </h1>
-                <p className={`text-xl leading-relaxed transition-colors duration-300 ${
-                  isDarkMode ? 'text-gray-300' : 'text-gray-600'
-                }`}>
+                <p className="text-xl text-gray-600 leading-relaxed">
                   Talk to an AI friend with infinite patience for your 'um's and 'uh's— one that adapts to your pace, cheers you on, and helps you build confidence before facing real conversations.
                 </p>
               </div>
@@ -549,9 +346,7 @@ function App() {
                 >
                   Try Your First Conversation
                 </button>
-                <div className={`flex items-center space-x-2 transition-colors duration-300 ${
-                  isDarkMode ? 'text-gray-400' : 'text-gray-600'
-                }`}>
+                <div className="flex items-center space-x-2 text-gray-600">
                   <div className="flex">
                     {[...Array(5)].map((_, i) => (
                       <Star key={i} className="h-5 w-5 text-yellow-400 fill-current" />
@@ -564,11 +359,7 @@ function App() {
 
             <div className="relative">
               <div className="absolute inset-0 bg-gradient-to-r from-orange-200 to-orange-300 rounded-full transform scale-110 soft-glow"></div>
-              <div className={`relative rounded-2xl p-8 shadow-2xl border transition-colors duration-300 ${
-                isDarkMode 
-                  ? 'bg-gray-800 border-gray-700' 
-                  : 'bg-cream-50 border-orange-200'
-              }`}>
+              <div className="relative bg-cream-50 rounded-2xl p-8 shadow-2xl border border-orange-200">
                 <img 
                   src="https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg?auto=compress&cs=tinysrgb&w=500&h=500&fit=crop" 
                   alt="Person practicing language with TalkBuddy" 
@@ -577,18 +368,10 @@ function App() {
                 <div className="space-y-3">
                   <div className="flex items-center space-x-2">
                     <div className="w-3 h-3 bg-orange-400 rounded-full animate-pulse"></div>
-                    <span className={`text-sm transition-colors duration-300 ${
-                      isDarkMode ? 'text-gray-400' : 'text-gray-600'
-                    }`}>AI Language Partner Active</span>
+                    <span className="text-sm text-gray-600">AI Language Partner Active</span>
                   </div>
-                  <div className={`rounded-lg p-3 border transition-colors duration-300 ${
-                    isDarkMode 
-                      ? 'bg-gray-700 border-gray-600' 
-                      : 'bg-orange-100 border-orange-200'
-                  }`}>
-                    <p className={`text-sm transition-colors duration-300 ${
-                      isDarkMode ? 'text-gray-300' : 'text-gray-600'
-                    }`}>"Let's practice ordering at a restaurant. I'll be the waiter, and you're the customer..."</p>
+                  <div className="bg-orange-100 rounded-lg p-3 border border-orange-200">
+                    <p className="text-sm text-gray-600">"Let's practice ordering at a restaurant. I'll be the waiter, and you're the customer..."</p>
                   </div>
                 </div>
               </div>
