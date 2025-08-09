@@ -125,7 +125,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-orange-50 rounded-xl max-w-md w-full p-6 relative border border-orange-200 shadow-2xl">
+      <div className="bg-white rounded-xl max-w-md w-full p-6 relative border border-gray-200 shadow-2xl">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
@@ -150,8 +150,8 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
         {message && (
           <div className={`mb-4 p-3 rounded-lg ${
             message.type === 'success' 
-              ? 'bg-green-100 text-green-800 border border-green-300' 
-              : 'bg-red-100 text-red-800 border border-red-300'
+              ? 'bg-green-50 text-green-800 border border-green-200' 
+              : 'bg-red-50 text-red-800 border border-red-200'
           }`}>
             {message.text}
           </div>
@@ -171,7 +171,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
                     name="firstName"
                     value={formData.firstName}
                     onChange={handleInputChange}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="John"
                     required
                   />
@@ -188,7 +188,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
                     name="lastName"
                     value={formData.lastName}
                     onChange={handleInputChange}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Doe"
                     required
                   />
@@ -208,7 +208,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
                 name="email"
                 value={formData.email}
                 onChange={handleInputChange}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="your@email.com"
                 required
               />
@@ -227,7 +227,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
                   name="password"
                   value={formData.password}
                   onChange={handleInputChange}
-                  className="w-full pl-10 pr-12 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  className="w-full pl-10 pr-12 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="••••••••"
                   required
                   minLength={6}
@@ -246,7 +246,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2 px-4 bg-orange-600 text-white rounded-lg hover:bg-orange-700 focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+            className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
           >
             {loading ? (
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -261,7 +261,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
             <div className="space-y-2">
               <button
                 onClick={() => switchMode('signup')}
-                className="text-orange-600 hover:text-orange-700 font-medium"
+                className="text-blue-600 hover:text-blue-700 font-medium"
               >
                 Don't have an account? Sign up
               </button>
@@ -277,14 +277,14 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
           ) : mode === 'signup' ? (
             <button
               onClick={() => switchMode('login')}
-              className="text-orange-600 hover:text-orange-700 font-medium"
+              className="text-blue-600 hover:text-blue-700 font-medium"
             >
               Already have an account? Sign in
             </button>
           ) : (
             <button
               onClick={() => switchMode('login')}
-              className="text-orange-600 hover:text-orange-700 font-medium"
+              className="text-blue-600 hover:text-blue-700 font-medium"
             >
               Back to sign in
             </button>
