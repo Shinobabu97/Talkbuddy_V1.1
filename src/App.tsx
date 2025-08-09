@@ -381,7 +381,7 @@ function App() {
       </section>
 
       {/* Social Proof */}
-      <section className="py-20 glass-subtle section-divider scroll-animate">
+      <section className="py-20 scroll-animate">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-gray-900 mb-4 text-glass">
@@ -465,7 +465,7 @@ function App() {
       </section>
 
       {/* How It Works */}
-      <section id="how-it-works" className="py-20 glass-subtle section-divider scroll-animate">
+      <section id="how-it-works" className="py-20 scroll-animate">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-900 mb-4 text-glass">
@@ -560,7 +560,7 @@ function App() {
       </section>
 
       {/* FAQ Section */}
-      <section id="faq" className="py-20 glass-subtle section-divider scroll-animate">
+      <section id="faq" className="py-20 scroll-animate">
         <div className="max-w-4xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-900 mb-4 text-glass">
@@ -601,13 +601,15 @@ function App() {
       </section>
 
       {/* Footer */}
-      <footer className="glass-dark text-white py-16 shadow-glass-xl">
+      <footer className="py-16 relative">
+        <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
+        <div className="relative">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold mb-4 text-glow">
+            <h2 className="text-3xl font-bold mb-4 text-gray-900 text-glass">
               Ready to Start Speaking with Confidence?
             </h2>
-            <p className="text-xl text-gray-200 mb-8">
+            <p className="text-xl text-gray-700 mb-8 text-glass">
               Join thousands of learners who've transformed their speaking skills with TalkBuddy
             </p>
             <button 
@@ -618,43 +620,44 @@ function App() {
             </button>
           </div>
 
-          <div className="border-t border-white/20 pt-8">
+          <div className="border-t border-gray-300/30 pt-8">
             <div className="grid md:grid-cols-4 gap-8">
               <div className="md:col-span-2">
                 <div className="flex items-center space-x-2 mb-4">
-                  <Mic className="h-8 w-8 text-orange-400" />
-                  <span className="text-2xl font-bold text-glow">TalkBuddy</span>
+                  <Mic className="h-8 w-8 text-orange-600" />
+                  <span className="text-2xl font-bold text-gray-900 text-glass">TalkBuddy</span>
                 </div>
-                <p className="text-gray-300 leading-relaxed">
+                <p className="text-gray-700 leading-relaxed">
                   Your AI-powered language partner that helps you build real speaking confidence through personalized, judgment-free conversations.
                 </p>
               </div>
               
               <div>
-                <h3 className="font-semibold mb-4 text-glass">Product</h3>
-                <ul className="space-y-2 text-gray-300">
-                  <li><a href="#" className="hover:text-white transition-colors">Features</a></li>
-                  <li><a href="#" className="hover:text-white transition-colors">Pricing</a></li>
-                  <li><a href="#" className="hover:text-white transition-colors">How It Works</a></li>
-                  <li><a href="#" className="hover:text-white transition-colors">Reviews</a></li>
+                <h3 className="font-semibold mb-4 text-gray-900 text-glass">Product</h3>
+                <ul className="space-y-2 text-gray-700">
+                  <li><a href="#" className="hover:text-gray-900 transition-colors">Features</a></li>
+                  <li><a href="#" className="hover:text-gray-900 transition-colors">Pricing</a></li>
+                  <li><a href="#" className="hover:text-gray-900 transition-colors">How It Works</a></li>
+                  <li><a href="#" className="hover:text-gray-900 transition-colors">Reviews</a></li>
                 </ul>
               </div>
               
               <div>
-                <h3 className="font-semibold mb-4 text-glass">Legal</h3>
-                <ul className="space-y-2 text-gray-300">
-                  <li><a href="#" className="hover:text-white transition-colors">Privacy Policy</a></li>
-                  <li><a href="#" className="hover:text-white transition-colors">Terms of Service</a></li>
-                  <li><a href="#" className="hover:text-white transition-colors">Cookie Policy</a></li>
-                  <li><a href="#" className="hover:text-white transition-colors">Contact Us</a></li>
+                <h3 className="font-semibold mb-4 text-gray-900 text-glass">Legal</h3>
+                <ul className="space-y-2 text-gray-700">
+                  <li><a href="#" className="hover:text-gray-900 transition-colors">Privacy Policy</a></li>
+                  <li><a href="#" className="hover:text-gray-900 transition-colors">Terms of Service</a></li>
+                  <li><a href="#" className="hover:text-gray-900 transition-colors">Cookie Policy</a></li>
+                  <li><a href="#" className="hover:text-gray-900 transition-colors">Contact Us</a></li>
                 </ul>
               </div>
             </div>
             
-            <div className="border-t border-white/20 mt-8 pt-8 text-center text-gray-300">
+            <div className="border-t border-gray-300/30 mt-8 pt-8 text-center text-gray-700">
               <p>&copy; 2025 TalkBuddy. All rights reserved. Built for language learners who want to speak with confidence.</p>
             </div>
           </div>
+        </div>
           </div>
       </footer>
 
