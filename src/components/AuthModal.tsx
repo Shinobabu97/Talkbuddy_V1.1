@@ -125,19 +125,19 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-orange-50 rounded-xl max-w-md w-full p-6 relative border border-orange-200 shadow-2xl">
+      <div className="glossy-card rounded-xl max-w-md w-full p-6 relative shadow-2xl">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+          className="absolute top-4 right-4 text-slate-500 hover:text-slate-700"
         >
           <X className="h-6 w-6" />
         </button>
 
         <div className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+          <h2 className="text-2xl font-bold text-slate-800 mb-2">
             {mode === 'login' ? 'Welcome Back' : mode === 'signup' ? 'Create Account' : 'Reset Password'}
           </h2>
-          <p className="text-gray-600">
+          <p className="text-slate-600">
             {mode === 'login' 
               ? 'Sign in to continue your language learning journey'
               : mode === 'signup'
@@ -150,8 +150,8 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
         {message && (
           <div className={`mb-4 p-3 rounded-lg ${
             message.type === 'success' 
-              ? 'bg-green-100 text-green-800 border border-green-300' 
-              : 'bg-red-100 text-red-800 border border-red-300'
+              ? 'bg-green-100/90 text-green-800 border border-green-300/50 backdrop-blur-sm' 
+              : 'bg-red-100/90 text-red-800 border border-red-300/50 backdrop-blur-sm'
           }`}>
             {message.text}
           </div>
@@ -161,34 +161,34 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
           {mode === 'signup' && (
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-slate-700 mb-1">
                   First Name
                 </label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-slate-400" />
                   <input
                     type="text"
                     name="firstName"
                     value={formData.firstName}
                     onChange={handleInputChange}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                    className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white/80 backdrop-blur-sm"
                     placeholder="John"
                     required
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-slate-700 mb-1">
                   Last Name
                 </label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                  <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-slate-400" />
                   <input
                     type="text"
                     name="lastName"
                     value={formData.lastName}
                     onChange={handleInputChange}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                    className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white/80 backdrop-blur-sm"
                     placeholder="Doe"
                     required
                   />
@@ -198,17 +198,17 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-slate-700 mb-1">
               Email
             </label>
             <div className="relative">
-              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-slate-400" />
               <input
                 type="email"
                 name="email"
                 value={formData.email}
                 onChange={handleInputChange}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white/80 backdrop-blur-sm"
                 placeholder="your@email.com"
                 required
               />
@@ -217,17 +217,17 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
 
           {mode !== 'forgot' && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-slate-700 mb-1">
                 Password
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-slate-400" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   name="password"
                   value={formData.password}
                   onChange={handleInputChange}
-                  className="w-full pl-10 pr-12 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  className="w-full pl-10 pr-12 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white/80 backdrop-blur-sm"
                   placeholder="••••••••"
                   required
                   minLength={6}
@@ -235,7 +235,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
                   {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
@@ -246,7 +246,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2 px-4 bg-orange-600 text-white rounded-lg hover:bg-orange-700 focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+            className="w-full py-2 px-4 btn-professional rounded-lg focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
           >
             {loading ? (
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -261,14 +261,14 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
             <div className="space-y-2">
               <button
                 onClick={() => switchMode('signup')}
-                className="text-orange-600 hover:text-orange-700 font-medium"
+                className="text-indigo-600 hover:text-indigo-700 font-medium"
               >
                 Don't have an account? Sign up
               </button>
               <div>
                 <button
                   onClick={() => switchMode('forgot')}
-                  className="text-sm text-gray-600 hover:text-gray-800"
+                  className="text-sm text-slate-600 hover:text-slate-800"
                 >
                   Forgot your password?
                 </button>
@@ -277,14 +277,14 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
           ) : mode === 'signup' ? (
             <button
               onClick={() => switchMode('login')}
-              className="text-orange-600 hover:text-orange-700 font-medium"
+              className="text-indigo-600 hover:text-indigo-700 font-medium"
             >
               Already have an account? Sign in
             </button>
           ) : (
             <button
               onClick={() => switchMode('login')}
-              className="text-orange-600 hover:text-orange-700 font-medium"
+              className="text-indigo-600 hover:text-indigo-700 font-medium"
             >
               Back to sign in
             </button>
