@@ -252,10 +252,11 @@ function App() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 flex items-center justify-center">
-    <div className="min-h-screen bg-professional flex items-center justify-center">
+        <div className="min-h-screen bg-professional flex items-center justify-center">
           <Mic className="h-12 w-12 text-orange-600 mx-auto mb-4 animate-pulse" />
-        <Mic className="h-12 w-12 text-white mx-auto mb-4 animate-pulse" />
-        <p className="text-white">Loading TalkBuddy...</p>
+          <Mic className="h-12 w-12 text-white mx-auto mb-4 animate-pulse" />
+          <p className="text-white">Loading TalkBuddy...</p>
+        </div>
       </div>
     );
   }
@@ -655,7 +656,7 @@ function App() {
               <p>&copy; 2025 TalkBuddy. All rights reserved. Built for language learners who want to speak with confidence.</p>
             </div>
           </div>
-          </div>
+        </div>
       </footer>
 
       <AuthModal
