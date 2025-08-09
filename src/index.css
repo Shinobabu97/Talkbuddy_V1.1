@@ -6,20 +6,13 @@
 .bg-professional {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #667eea 50%, #764ba2 75%, #667eea 100%);
   background-size: 400% 400%;
-  animation: gradientShift 25s ease infinite;
+  animation: gradientShift 15s ease infinite;
 }
 
 .bg-cool-gradient {
   background: linear-gradient(135deg, #74b9ff 0%, #0984e3 25%, #6c5ce7 50%, #a29bfe 75%, #74b9ff 100%);
   background-size: 400% 400%;
-  animation: gradientShift 30s ease infinite;
-}
-
-/* Warm Hero Gradient */
-.bg-warm-hero {
-  background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 25%, #fecfef 50%, #ff9a9e 75%, #fecfef 100%);
-  background-size: 400% 400%;
-  animation: gradientShift 35s ease infinite;
+  animation: gradientShift 20s ease infinite;
 }
 
 /* Glass Morphism Effects */

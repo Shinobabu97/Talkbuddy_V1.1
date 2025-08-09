@@ -266,49 +266,36 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-warm-hero">
+    <div className="min-h-screen bg-professional">
 
       {/* Header */}
-      <header className="relative z-50" style={{
-        background: 'linear-gradient(135deg, rgba(255,154,158,0.95) 0%, rgba(254,207,239,0.95) 100%)',
-        backdropFilter: 'blur(20px)',
-        borderBottom: '1px solid rgba(255,255,255,0.2)'
-      }}>
+      <header className="relative z-50 glass-header">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center space-x-2">
-              <Mic className="h-8 w-8 text-slate-800" />
-              <span className="text-2xl font-bold text-slate-800">TalkBuddy</span>
+              <Mic className="h-8 w-8 text-white" />
+              <span className="text-2xl font-bold text-white">TalkBuddy</span>
             </div>
             
             <nav className="hidden md:flex items-center space-x-8">
-              <a href="#home" className="text-slate-700 hover:text-slate-900 transition-colors">Home</a>
-              <a href="#benefits" className="text-slate-700 hover:text-slate-900 transition-colors">Benefits</a>
-              <a href="#how-it-works" className="text-slate-700 hover:text-slate-900 transition-colors">How It Works</a>
-              <a href="#testimonials" className="text-slate-700 hover:text-slate-900 transition-colors">Reviews</a>
-              <a href="#faq" className="text-slate-700 hover:text-slate-900 transition-colors">FAQ</a>
+              <a href="#home" className="text-white/90 hover:text-white transition-colors">Home</a>
+              <a href="#benefits" className="text-white/90 hover:text-white transition-colors">Benefits</a>
+              <a href="#how-it-works" className="text-white/90 hover:text-white transition-colors">How It Works</a>
+              <a href="#testimonials" className="text-white/90 hover:text-white transition-colors">Reviews</a>
+              <a href="#faq" className="text-white/90 hover:text-white transition-colors">FAQ</a>
             </nav>
 
             <div className="flex items-center space-x-4">
               <button 
                 onClick={() => handleAuthModal('login')}
-                className="hidden md:inline-flex px-6 py-2 rounded-lg transform hover:scale-105 transition-all duration-200 font-medium text-white"
-                style={{
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  boxShadow: '0 4px 15px 0 rgba(102, 126, 234, 0.4)'
-                }}
+                className="hidden md:inline-flex px-6 py-2 btn-professional rounded-lg transform hover:scale-105 transition-all duration-200 font-medium"
               >
                 Login
               </button>
 
               <button
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="md:hidden p-2 rounded-lg transition-colors text-slate-800"
-                style={{
-                  background: 'linear-gradient(145deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0.1) 100%)',
-                  backdropFilter: 'blur(10px)',
-                  border: '1px solid rgba(255,255,255,0.3)'
-                }}
+                className="md:hidden p-2 rounded-lg glass-button text-white transition-colors"
               >
                 {isMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
               </button>
@@ -318,23 +305,16 @@ function App() {
 
         {/* Mobile Menu */}
         {isMenuOpen && (
-          <div className="md:hidden border-t border-white/20" style={{
-            background: 'linear-gradient(145deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)',
-            backdropFilter: 'blur(20px)'
-          }}>
+          <div className="md:hidden glass-card border-t border-white/20">
             <div className="px-2 py-2 space-y-2">
-              <a href="#home" className="block py-2 text-slate-700 hover:text-slate-900">Home</a>
-              <a href="#benefits" className="block py-2 text-slate-700 hover:text-slate-900">Benefits</a>
-              <a href="#how-it-works" className="block py-2 text-slate-700 hover:text-slate-900">How It Works</a>
-              <a href="#testimonials" className="block py-2 text-slate-700 hover:text-slate-900">Reviews</a>
-              <a href="#faq" className="block py-2 text-slate-700 hover:text-slate-900">FAQ</a>
+              <a href="#home" className="block py-2 text-white/90 hover:text-white">Home</a>
+              <a href="#benefits" className="block py-2 text-white/90 hover:text-white">Benefits</a>
+              <a href="#how-it-works" className="block py-2 text-white/90 hover:text-white">How It Works</a>
+              <a href="#testimonials" className="block py-2 text-white/90 hover:text-white">Reviews</a>
+              <a href="#faq" className="block py-2 text-white/90 hover:text-white">FAQ</a>
               <button 
                 onClick={() => handleAuthModal('login')}
-                className="w-full mt-2 px-6 py-2 rounded-lg transition-colors text-white"
-                style={{
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  boxShadow: '0 4px 15px 0 rgba(102, 126, 234, 0.4)'
-                }}
+                className="w-full mt-2 px-6 py-2 btn-professional rounded-lg transition-colors"
               >
                 Login
               </button>
@@ -349,13 +329,13 @@ function App() {
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className="space-y-8">
               <div className="space-y-4">
-                <p className="text-slate-700 font-medium uppercase tracking-wide">
+                <p className="text-white/80 font-medium uppercase tracking-wide">
                   Introducing Your Personal AI Language Coach
                 </p>
-                <h1 className="text-4xl lg:text-6xl font-bold text-slate-800 leading-tight">
+                <h1 className="text-4xl lg:text-6xl font-bold text-white leading-tight">
                   The Language Partner Who Actually Listens
                 </h1>
-                <p className="text-xl text-slate-700 leading-relaxed">
+                <p className="text-xl text-white/90 leading-relaxed">
                   Talk to an AI friend with infinite patience for your 'um's and 'uh's— one that adapts to your pace, cheers you on, and helps you build confidence before facing real conversations.
                 </p>
               </div>
@@ -363,18 +343,14 @@ function App() {
               <div className="flex flex-col sm:flex-row gap-4">
                 <button 
                   onClick={() => handleAuthModal('signup')}
-                  className="px-8 py-4 rounded-lg transform hover:scale-105 transition-all duration-200 font-medium text-lg text-white"
-                  style={{
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    boxShadow: '0 4px 15px 0 rgba(102, 126, 234, 0.4)'
-                  }}
+                  className="px-8 py-4 btn-professional rounded-lg transform hover:scale-105 transition-all duration-200 font-medium text-lg"
                 >
                   Try Your First Conversation
                 </button>
-                <div className="flex items-center space-x-2 text-slate-600">
+                <div className="flex items-center space-x-2 text-white/80">
                   <div className="flex">
                     {[...Array(5)].map((_, i) => (
-                      <Star key={i} className="h-5 w-5 text-orange-400 fill-current" />
+                      <Star key={i} className="h-5 w-5 text-yellow-400 fill-current" />
                     ))}
                   </div>
                   <span className="font-medium">4.9/5 from 5,500+ users</span>
@@ -383,7 +359,7 @@ function App() {
             </div>
 
             <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-pink-300/30 to-orange-300/30 rounded-full transform scale-110 soft-glow"></div>
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-400/30 to-purple-400/30 rounded-full transform scale-110 soft-glow"></div>
               <div className="relative glossy-card rounded-2xl p-8 shadow-2xl">
                 <img 
                   src="https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg?auto=compress&cs=tinysrgb&w=500&h=500&fit=crop" 
@@ -392,14 +368,10 @@ function App() {
                 />
                 <div className="space-y-3">
                   <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 bg-emerald-400 rounded-full animate-pulse"></div>
+                    <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
                     <span className="text-sm text-slate-700">AI Language Partner Active</span>
                   </div>
-                  <div className="rounded-lg p-3" style={{
-                    background: 'linear-gradient(145deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)',
-                    backdropFilter: 'blur(20px)',
-                    border: '1px solid rgba(255,255,255,0.2)'
-                  }}>
+                  <div className="glass-card rounded-lg p-3">
                     <p className="text-sm text-slate-700">"Let's practice ordering at a restaurant. I'll be the waiter, and you're the customer..."</p>
                   </div>
                 </div>
@@ -410,7 +382,7 @@ function App() {
       </section>
 
       {/* Social Proof */}
-      <section className="py-20 bg-professional border-y border-white/20 shadow-sm scroll-animate">
+      <section className="py-20 glass-card border-y border-white/20 shadow-sm scroll-animate">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-white mb-4">
@@ -423,11 +395,7 @@ function App() {
           
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
             <div className="text-center stagger-animate">
-              <div className="rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl" style={{
-                background: 'linear-gradient(145deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.1) 100%)',
-                backdropFilter: 'blur(10px)',
-                border: '1px solid rgba(255,255,255,0.3)'
-              }}>
+              <div className="glass-button rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
                 <Users className="h-8 w-8 text-white" />
               </div>
               <h3 className="text-xl font-semibold text-white mb-2 hover:text-blue-200 transition-colors duration-300">Working Professionals</h3>
@@ -435,11 +403,7 @@ function App() {
             </div>
             
             <div className="text-center stagger-animate">
-              <div className="rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl" style={{
-                background: 'linear-gradient(145deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.1) 100%)',
-                backdropFilter: 'blur(10px)',
-                border: '1px solid rgba(255,255,255,0.3)'
-              }}>
+              <div className="glass-button rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
                 <Target className="h-8 w-8 text-white" />
               </div>
               <h3 className="text-xl font-semibold text-white mb-2 hover:text-blue-200 transition-colors duration-300">University Students</h3>
@@ -447,11 +411,7 @@ function App() {
             </div>
             
             <div className="text-center stagger-animate">
-              <div className="rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl" style={{
-                background: 'linear-gradient(145deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.1) 100%)',
-                backdropFilter: 'blur(10px)',
-                border: '1px solid rgba(255,255,255,0.3)'
-              }}>
+              <div className="glass-button rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
                 <Star className="h-8 w-8 text-white" />
               </div>
               <h3 className="text-xl font-semibold text-white mb-2 hover:text-blue-200 transition-colors duration-300">Language Enthusiasts</h3>
@@ -459,11 +419,7 @@ function App() {
             </div>
             
             <div className="text-center stagger-animate">
-              <div className="rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl" style={{
-                background: 'linear-gradient(145deg, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.1) 100%)',
-                backdropFilter: 'blur(10px)',
-                border: '1px solid rgba(255,255,255,0.3)'
-              }}>
+              <div className="glass-button rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:scale-110 transition-all duration-300 shadow-lg hover:shadow-xl">
                 <Shield className="h-8 w-8 text-white" />
               </div>
               <h3 className="text-xl font-semibold text-white mb-2 hover:text-blue-200 transition-colors duration-300">International Teams</h3>
@@ -474,7 +430,7 @@ function App() {
       </section>
 
       {/* Benefits Section */}
-      <section id="benefits" className="py-20 bg-professional relative scroll-animate" style={{ marginTop: '0', paddingTop: '5rem' }}>
+      <section id="benefits" className="py-20 relative scroll-animate" style={{ marginTop: '0', paddingTop: '5rem' }}>
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-white mb-4">
@@ -510,17 +466,13 @@ function App() {
       </section>
 
       {/* How It Works */}
-      <section id="how-it-works" className="py-20 relative scroll-animate" style={{
-        background: 'linear-gradient(145deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)',
-        backdropFilter: 'blur(20px)',
-        border: '1px solid rgba(255,255,255,0.2)'
-      }}>
+      <section id="how-it-works" className="py-20 glass-card relative scroll-animate">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-slate-800 mb-4">
+            <h2 className="text-4xl font-bold text-white mb-4">
               How It Works
             </h2>
-            <p className="text-xl text-slate-700 max-w-3xl mx-auto">
+            <p className="text-xl text-white/90 max-w-3xl mx-auto">
               Get started in minutes and begin building your speaking confidence today
             </p>
           </div>
@@ -533,10 +485,7 @@ function App() {
               >
                 <div className="flex flex-col lg:flex-row items-center gap-8">
                   <div className="flex-shrink-0">
-                    <div className="w-16 h-16 text-white rounded-full flex items-center justify-center text-2xl font-bold group-hover:scale-110 transition-all duration-300" style={{
-                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                      boxShadow: '0 4px 15px 0 rgba(102, 126, 234, 0.4)'
-                    }}>
+                    <div className="w-16 h-16 btn-professional text-white rounded-full flex items-center justify-center text-2xl font-bold group-hover:scale-110 transition-all duration-300">
                       {step.number}
                     </div>
                   </div>
@@ -556,7 +505,7 @@ function App() {
       </section>
 
       {/* Testimonials */}
-      <section id="testimonials" className="py-20 bg-professional relative scroll-animate">
+      <section id="testimonials" className="py-20 relative scroll-animate">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-white mb-4">
@@ -601,14 +550,9 @@ function App() {
                 <button
                   key={index}
                   onClick={() => setCurrentTestimonial(index)}
-                  className={`w-3 h-3 rounded-full transition-colors duration-200 ${
+                  className={`w-3 h-3 rounded-full transition-colors duration-200 glass-button ${
                     index === currentTestimonial ? 'bg-white' : 'bg-white/50'
-                  }`} 
-                  style={{
-                    background: index === currentTestimonial ? 'white' : 'rgba(255,255,255,0.5)',
-                    backdropFilter: 'blur(10px)',
-                    border: '1px solid rgba(255,255,255,0.3)'
-                  }}
+                  }`}
                 />
               ))}
             </div>
@@ -617,17 +561,13 @@ function App() {
       </section>
 
       {/* FAQ Section */}
-      <section id="faq" className="py-20 relative scroll-animate" style={{
-        background: 'linear-gradient(145deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.1) 100%)',
-        backdropFilter: 'blur(20px)',
-        border: '1px solid rgba(255,255,255,0.2)'
-      }}>
+      <section id="faq" className="py-20 glass-card relative scroll-animate">
         <div className="max-w-4xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-slate-800 mb-4">
+            <h2 className="text-4xl font-bold text-white mb-4">
               Frequently Asked Questions
             </h2>
-            <p className="text-xl text-slate-700">
+            <p className="text-xl text-white/90">
               Everything you need to know about TalkBuddy
             </p>
           </div>
@@ -673,11 +613,7 @@ function App() {
             </p>
             <button 
               onClick={() => handleAuthModal('signup')}
-              className="px-8 py-4 rounded-lg transform hover:scale-105 transition-all duration-200 font-medium text-lg text-white"
-              style={{
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                boxShadow: '0 4px 15px 0 rgba(102, 126, 234, 0.4)'
-              }}
+              className="px-8 py-4 btn-professional rounded-lg transform hover:scale-105 transition-all duration-200 font-medium text-lg"
             >
               Try Your First Conversation
             </button>

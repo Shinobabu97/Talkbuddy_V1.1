@@ -39,7 +39,6 @@ export default {
       backgroundImage: {
         'gradient-professional': 'linear-gradient(135deg, #667eea 0%, #764ba2 25%, #667eea 50%, #764ba2 75%, #667eea 100%)',
         'gradient-cool': 'linear-gradient(135deg, #74b9ff 0%, #0984e3 25%, #6c5ce7 50%, #a29bfe 75%, #74b9ff 100%)',
-        'gradient-warm-hero': 'linear-gradient(135deg, #ff9a9e 0%, #fecfef 25%, #fecfef 50%, #ff9a9e 75%, #fecfef 100%)',
         'gradient-glass': 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
         'gradient-card': 'linear-gradient(145deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.7) 100%)',
         'gradient-header': 'linear-gradient(135deg, rgba(116,185,255,0.95) 0%, rgba(105,92,231,0.95) 100%)',
