@@ -268,8 +268,8 @@ function App() {
     <div className="min-h-screen bg-continuous-hero">
 
       {/* Header */}
-      <header className="relative z-50 header-glass">
-        <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
+      <header className="relative z-50 header-glass sticky top-0">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center space-x-2">
               <Mic className="h-8 w-8 text-orange-600" />
@@ -324,7 +324,7 @@ function App() {
 
       {/* Hero Section */}
       <section id="home" className="relative overflow-hidden py-20 lg:py-28 section-divider">
-        <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className="space-y-8">
               <div className="space-y-4">
@@ -382,7 +382,7 @@ function App() {
 
       {/* Social Proof */}
       <section className="py-20 scroll-animate section-divider social-proof-highlight">
-        <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-gray-900 mb-4 text-glass">
               Trusted by Language Learners Worldwide
@@ -430,7 +430,7 @@ function App() {
 
       {/* Benefits Section */}
       <section id="benefits" className="py-20 relative scroll-animate section-divider" style={{ marginTop: '0', paddingTop: '5rem' }}>
-        <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-900 mb-4 text-glass">
               Why TalkBuddy Works
@@ -466,7 +466,7 @@ function App() {
 
       {/* How It Works */}
       <section id="how-it-works" className="py-20 scroll-animate section-divider">
-        <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-900 mb-4 text-glass">
               How It Works
@@ -505,7 +505,7 @@ function App() {
 
       {/* Testimonials */}
       <section id="testimonials" className="py-20 relative scroll-animate section-divider">
-        <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-900 mb-4 text-glass">
               What Our Users Say
@@ -561,7 +561,7 @@ function App() {
 
       {/* FAQ Section */}
       <section id="faq" className="py-20 scroll-animate section-divider">
-        <div className="max-w-4xl mx-auto px-2 sm:px-4 lg:px-6">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-900 mb-4 text-glass">
               Frequently Asked Questions
@@ -602,7 +602,7 @@ function App() {
 
       {/* Footer */}
       <footer className="py-16 relative footer-dark section-top-divider">
-        <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold mb-4 text-glass">
               Ready to Start Speaking with Confidence?
