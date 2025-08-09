@@ -24,10 +24,10 @@ export default function Dashboard({ user }: DashboardProps) {
   const firstName = user.user_metadata?.first_name || 'User';
 
   const mockStats = [
-    { label: 'Conversations', value: '12', icon: MessageCircle, color: 'text-blue-600' },
-    { label: 'Speaking Time', value: '2.5h', icon: Clock, color: 'text-green-600' },
+    { label: 'Conversations', value: '12', icon: MessageCircle, color: 'text-orange-600' },
+    { label: 'Speaking Time', value: '2.5h', icon: Clock, color: 'text-amber-600' },
     { label: 'Streak', value: '7 days', icon: Target, color: 'text-orange-600' },
-    { label: 'Level', value: 'B1', icon: Award, color: 'text-purple-600' }
+    { label: 'Level', value: 'B1', icon: Award, color: 'text-rose-600' }
   ];
 
   const recentTopics = [
@@ -105,7 +105,7 @@ export default function Dashboard({ user }: DashboardProps) {
               <div className="grid md:grid-cols-2 gap-4">
                 <button className="p-4 glass-button rounded-lg transition-colors text-left">
                   <div className="flex items-center space-x-3 mb-2">
-                    <Play className="h-6 w-6 text-indigo-600" />
+                    <Play className="h-6 w-6 text-orange-600" />
                     <span className="font-medium text-slate-800">Start New Conversation</span>
                   </div>
                   <p className="text-sm text-slate-600">
@@ -115,7 +115,7 @@ export default function Dashboard({ user }: DashboardProps) {
                 
                 <button className="p-4 glass-button rounded-lg transition-colors text-left">
                   <div className="flex items-center space-x-3 mb-2">
-                    <BookOpen className="h-6 w-6 text-blue-600" />
+                    <BookOpen className="h-6 w-6 text-amber-600" />
                     <span className="font-medium text-slate-800">Review Vocabulary</span>
                   </div>
                   <p className="text-sm text-slate-600">
@@ -142,7 +142,7 @@ export default function Dashboard({ user }: DashboardProps) {
                         <div className="text-sm text-slate-600">{topic.duration}</div>
                       </div>
                     </div>
-                    <button className="text-indigo-600 hover:text-indigo-700 font-medium text-sm">
+                    <button className="text-orange-600 hover:text-orange-700 font-medium text-sm">
                       {topic.completed ? 'Review' : 'Continue'}
                     </button>
                   </div>
@@ -164,7 +164,7 @@ export default function Dashboard({ user }: DashboardProps) {
                   <span className="font-medium">2.5h / 5h</span>
                 </div>
                 <div className="w-full bg-slate-200 rounded-full h-2">
-                  <div className="bg-indigo-600 h-2 rounded-full" style={{ width: '50%' }}></div>
+                  <div className="bg-orange-600 h-2 rounded-full" style={{ width: '50%' }}></div>
                 </div>
               </div>
               
@@ -174,7 +174,7 @@ export default function Dashboard({ user }: DashboardProps) {
                   <span className="font-medium">23 / 30</span>
                 </div>
                 <div className="w-full bg-slate-200 rounded-full h-2">
-                  <div className="bg-blue-600 h-2 rounded-full" style={{ width: '77%' }}></div>
+                  <div className="bg-amber-600 h-2 rounded-full" style={{ width: '77%' }}></div>
                 </div>
               </div>
             </div>
@@ -215,7 +215,7 @@ export default function Dashboard({ user }: DashboardProps) {
               <p className="text-white/80 text-sm mb-4">
                 Continue building your confidence with personalized conversations.
               </p>
-              <button className="w-full py-2 bg-white/90 text-indigo-600 rounded-lg hover:bg-white transition-colors font-medium backdrop-blur-sm">
+              <button className="w-full py-2 bg-white/90 text-orange-600 rounded-lg hover:bg-white transition-colors font-medium backdrop-blur-sm">
                 Start Speaking
               </button>
             </div>
