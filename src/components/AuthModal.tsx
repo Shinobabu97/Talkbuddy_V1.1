@@ -174,6 +174,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
                     className="w-full pl-10 pr-4 py-2 input-glass rounded-lg focus-glass"
                     placeholder="John"
                     required
+                    style={{ color: '#1f2937' }}
                   />
                 </div>
               </div>
@@ -191,6 +192,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
                     className="w-full pl-10 pr-4 py-2 input-glass rounded-lg focus-glass"
                     placeholder="Doe"
                     required
+                    style={{ color: '#1f2937' }}
                   />
                 </div>
               </div>
@@ -211,6 +213,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
                 className="w-full pl-10 pr-4 py-2 input-glass rounded-lg focus-glass"
                 placeholder="your@email.com"
                 required
+               style={{ color: '#1f2937' }}
               />
             </div>
           </div>
@@ -231,6 +234,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
                   placeholder="••••••••"
                   required
                   minLength={6}
+                 style={{ color: '#1f2937' }}
                 />
                 <button
                   type="button"
