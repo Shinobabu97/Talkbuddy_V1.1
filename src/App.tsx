@@ -383,13 +383,13 @@ function App() {
       </section>
 
       {/* Social Proof */}
-      <section className="py-20 scroll-animate section-divider social-proof-highlight">
+      <section className="py-20 scroll-animate social-proof-highlight section-break-top section-break-bottom">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-gray-900 mb-4 text-glass">
               Trusted by Language Learners Worldwide
             </h2>
-            <p className="text-lg text-gray-700 max-w-2xl mx-auto text-glass">
+            <p className="text-lg text-gray-800 max-w-2xl mx-auto" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>
               Join a community of over 5,500+ professionals, students, and language enthusiasts
             </p>
           </div>
@@ -399,32 +399,32 @@ function App() {
               <div className="glass rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:glass-strong hover:scale-110 transition-all duration-300 shadow-glass hover:shadow-glass-lg">
                 <Users className="h-8 w-8 text-orange-600" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-orange-700 transition-colors duration-300 text-glass">Working Professionals</h3>
-              <p className="text-gray-700 text-sm hover:text-gray-800 transition-colors duration-300">Building confidence for meetings and presentations</p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-orange-700 transition-colors duration-300" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>Working Professionals</h3>
+              <p className="text-gray-800 text-sm hover:text-gray-900 transition-colors duration-300">Building confidence for meetings and presentations</p>
             </div>
             
             <div className="text-center stagger-animate">
               <div className="glass rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:glass-strong hover:scale-110 transition-all duration-300 shadow-glass hover:shadow-glass-lg">
                 <Target className="h-8 w-8 text-blue-600" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-blue-700 transition-colors duration-300 text-glass">University Students</h3>
-              <p className="text-gray-700 text-sm hover:text-gray-800 transition-colors duration-300">Preparing for academic discussions and social interactions</p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-blue-700 transition-colors duration-300" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>University Students</h3>
+              <p className="text-gray-800 text-sm hover:text-gray-900 transition-colors duration-300">Preparing for academic discussions and social interactions</p>
             </div>
             
             <div className="text-center stagger-animate">
               <div className="glass rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:glass-strong hover:scale-110 transition-all duration-300 shadow-glass hover:shadow-glass-lg">
                 <Star className="h-8 w-8 text-green-600" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-green-700 transition-colors duration-300 text-glass">Language Enthusiasts</h3>
-              <p className="text-gray-700 text-sm hover:text-gray-800 transition-colors duration-300">Passionate learners perfecting their speaking skills</p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-green-700 transition-colors duration-300" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>Language Enthusiasts</h3>
+              <p className="text-gray-800 text-sm hover:text-gray-900 transition-colors duration-300">Passionate learners perfecting their speaking skills</p>
             </div>
             
             <div className="text-center stagger-animate">
               <div className="glass rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:glass-strong hover:scale-110 transition-all duration-300 shadow-glass hover:shadow-glass-lg">
                 <Shield className="h-8 w-8 text-purple-600" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-purple-700 transition-colors duration-300 text-glass">International Teams</h3>
-              <p className="text-gray-700 text-sm hover:text-gray-800 transition-colors duration-300">Improving cross-cultural communication</p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-purple-700 transition-colors duration-300" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>International Teams</h3>
+              <p className="text-gray-800 text-sm hover:text-gray-900 transition-colors duration-300">Improving cross-cultural communication</p>
             </div>
           </div>
         </div>

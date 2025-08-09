@@ -191,14 +191,119 @@
 
 /* Social Proof Highlight */
 .social-proof-highlight {
-  background: rgba(255, 255, 255, 0.25);
-  backdrop-filter: blur(15px);
-  -webkit-backdrop-filter: blur(15px);
-  border-top: 1px solid rgba(255, 255, 255, 0.2);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0.4) 100%);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  position: relative;
+  overflow: hidden;
   box-shadow: 
-    0 8px 32px 0 rgba(217, 119, 6, 0.08),
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.4);
+    0 16px 64px 0 rgba(217, 119, 6, 0.12),
+    inset 0 2px 0 0 rgba(255, 255, 255, 0.7),
+    inset 0 -2px 0 0 rgba(255, 255, 255, 0.5);
+}
+
+.social-proof-highlight::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.8s ease;
+}
+
+.social-proof-highlight:hover::before {
+  left: 100%;
+}
+
+/* Dramatic Glossy Section Breaks */
+.section-break-top {
+  position: relative;
+  overflow: hidden;
+}
+
+.section-break-top::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(135deg, 
+    rgba(251, 146, 60, 0.8) 0%, 
+    rgba(255, 255, 255, 0.9) 25%, 
+    rgba(251, 146, 60, 0.6) 50%, 
+    rgba(255, 255, 255, 0.9) 75%, 
+    rgba(251, 146, 60, 0.8) 100%
+  );
+  box-shadow: 
+    0 4px 16px rgba(251, 146, 60, 0.4),
+    0 -2px 8px rgba(255, 255, 255, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  z-index: 10;
+}
+
+.section-break-top::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(255, 255, 255, 0.8) 20%, 
+    rgba(255, 255, 255, 1) 50%, 
+    rgba(255, 255, 255, 0.8) 80%, 
+    transparent 100%
+  );
+  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.5);
+  z-index: 11;
+}
+
+.section-break-bottom {
+  position: relative;
+  overflow: hidden;
+}
+
+.section-break-bottom::before {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(135deg, 
+    rgba(251, 146, 60, 0.8) 0%, 
+    rgba(255, 255, 255, 0.9) 25%, 
+    rgba(251, 146, 60, 0.6) 50%, 
+    rgba(255, 255, 255, 0.9) 75%, 
+    rgba(251, 146, 60, 0.8) 100%
+  );
+  box-shadow: 
+    0 -4px 16px rgba(251, 146, 60, 0.4),
+    0 2px 8px rgba(255, 255, 255, 0.6),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.8);
+  z-index: 10;
+}
+
+.section-break-bottom::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(255, 255, 255, 0.8) 20%, 
+    rgba(255, 255, 255, 1) 50%, 
+    rgba(255, 255, 255, 0.8) 80%, 
+    transparent 100%
+  );
+  box-shadow: 0 -2px 8px rgba(255, 255, 255, 0.5);
+  z-index: 11;
 }
 /* Modal Glass Effect */
 .modal-glass {
