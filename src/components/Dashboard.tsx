@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Mic,
   LogOut,
@@ -17,6 +17,10 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ user }: DashboardProps) {
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    setLoaded(true);
+  }, []);
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
@@ -26,7 +30,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const mockStats = [
     { label: 'Conversations', value: '12', icon: MessageCircle, color: 'text-blue-600' },
     { label: 'Speaking Time', value: '2.5h', icon: Clock, color: 'text-green-600' },
-    { label: 'Streak', value: '7 days', icon: Target, color: 'text-orange-600' },
+    { label: 'Streak', value: '7 days', icon: Target, color: 'text-primary-600' },
     { label: 'Level', value: 'B1', icon: Award, color: 'text-purple-600' }
   ];
 
@@ -38,13 +42,13 @@ export default function Dashboard({ user }: DashboardProps) {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-100 to-orange-100">
+    <div className={`min-h-screen bg-gradient-to-br from-secondary-100 to-primary-100 transition-opacity duration-700 ${loaded ? 'opacity-100' : 'opacity-0'}`}> 
       {/* Header */}
-      <header className="bg-orange-50/95 backdrop-blur-sm border-b border-amber-300">
+      <header className="bg-primary-50/95 backdrop-blur-sm border-b border-secondary-300">
         <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center space-x-2">
-              <Mic className="h-8 w-8 text-orange-600" />
+              <Mic className="h-8 w-8 text-primary-600" />
               <span className="text-2xl font-bold text-gray-900">TalkBuddy</span>
             </div>
             
@@ -79,7 +83,7 @@ export default function Dashboard({ user }: DashboardProps) {
           {mockStats.map((stat, index) => {
             const Icon = stat.icon;
             return (
-              <div key={index} className="bg-orange-50 rounded-xl p-6 shadow-lg border border-orange-300">
+              <div key={index} className="bg-primary-50 rounded-xl p-6 shadow-lg border border-primary-300">
                 <div className="flex items-center justify-between mb-2">
                   <Icon className={`h-6 w-6 ${stat.color}`} />
                 </div>
@@ -98,14 +102,14 @@ export default function Dashboard({ user }: DashboardProps) {
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Quick Start */}
           <div className="lg:col-span-2">
-            <div className="bg-orange-50 rounded-xl p-6 shadow-lg border border-orange-300 mb-6">
+            <div className="bg-primary-50 rounded-xl p-6 shadow-lg border border-primary-300 mb-6">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">
                 Quick Start
               </h2>
               <div className="grid md:grid-cols-2 gap-4">
-                <button className="p-4 bg-orange-100 hover:bg-orange-200 rounded-lg border border-orange-300 transition-colors text-left">
+                <button className="p-4 bg-primary-100 hover:bg-primary-200 rounded-lg border border-primary-300 transition-colors text-left">
                   <div className="flex items-center space-x-3 mb-2">
-                    <Play className="h-6 w-6 text-orange-600" />
+                    <Play className="h-6 w-6 text-primary-600" />
                     <span className="font-medium text-gray-900">Start New Conversation</span>
                   </div>
                   <p className="text-sm text-gray-600">
@@ -126,7 +130,7 @@ export default function Dashboard({ user }: DashboardProps) {
             </div>
 
             {/* Recent Topics */}
-            <div className="bg-orange-50 rounded-xl p-6 shadow-lg border border-orange-300">
+            <div className="bg-primary-50 rounded-xl p-6 shadow-lg border border-primary-300">
               <h2 className="text-xl font-semibold text-gray-900 mb-4">
                 Recent Topics
               </h2>
@@ -142,7 +146,7 @@ export default function Dashboard({ user }: DashboardProps) {
                         <div className="text-sm text-gray-600">{topic.duration}</div>
                       </div>
                     </div>
-                    <button className="text-orange-600 hover:text-orange-700 font-medium text-sm">
+                    <button className="text-primary-600 hover:text-primary-700 font-medium text-sm">
                       {topic.completed ? 'Review' : 'Continue'}
                     </button>
                   </div>
@@ -154,7 +158,7 @@ export default function Dashboard({ user }: DashboardProps) {
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Progress Chart */}
-            <div className="bg-orange-50 rounded-xl p-6 shadow-lg border border-orange-300">
+            <div className="bg-primary-50 rounded-xl p-6 shadow-lg border border-primary-300">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
                 Weekly Progress
               </h3>
@@ -164,7 +168,7 @@ export default function Dashboard({ user }: DashboardProps) {
                   <span className="font-medium">2.5h / 5h</span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div className="bg-orange-600 h-2 rounded-full" style={{ width: '50%' }}></div>
+                  <div className="bg-primary-600 h-2 rounded-full" style={{ width: '50%' }}></div>
                 </div>
               </div>
               
@@ -180,7 +184,7 @@ export default function Dashboard({ user }: DashboardProps) {
             </div>
 
             {/* Achievements */}
-            <div className="bg-orange-50 rounded-xl p-6 shadow-lg border border-orange-300">
+            <div className="bg-primary-50 rounded-xl p-6 shadow-lg border border-primary-300">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
                 Recent Achievements
               </h3>
@@ -208,14 +212,14 @@ export default function Dashboard({ user }: DashboardProps) {
             </div>
 
             {/* Next Session */}
-            <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl p-6 text-white">
+            <div className="bg-gradient-to-r from-primary-500 to-primary-600 rounded-xl p-6 text-white">
               <h3 className="text-lg font-semibold mb-2">
                 Ready for your next session?
               </h3>
-              <p className="text-orange-100 text-sm mb-4">
+              <p className="text-primary-100 text-sm mb-4">
                 Continue building your confidence with personalized conversations.
               </p>
-              <button className="w-full py-2 bg-white text-orange-600 rounded-lg hover:bg-orange-50 transition-colors font-medium">
+              <button className="w-full py-2 bg-white text-primary-600 rounded-lg hover:bg-primary-50 transition-colors font-medium">
                 Start Speaking
               </button>
             </div>

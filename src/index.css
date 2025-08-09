@@ -37,13 +37,13 @@
 }
 
 .subtle-bg-shift {
-  background: linear-gradient(45deg, #fed7aa 0%, #fdba74 50%, #fed7aa 100%);
+  background: linear-gradient(45deg, #eef2ff 0%, #d1fae5 50%, #eef2ff 100%);
   background-size: 200% 200%;
   animation: subtleShift 20s ease-in-out infinite;
 }
 
 .subtle-bg-shift-dark {
-  background: linear-gradient(45deg, #fed7aa 0%, #fdba74 50%, #fed7aa 100%);
+  background: linear-gradient(45deg, #c7d2fe 0%, #a7f3d0 50%, #c7d2fe 100%);
   background-size: 200% 200%;
   animation: subtleShift 20s ease-in-out infinite;
 }
@@ -58,12 +58,12 @@
 }
 
 @keyframes pulseGlow {
-  0%, 100% { 
-    box-shadow: 0 0 20px rgba(251, 146, 60, 0.3);
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
     transform: scale(1);
   }
-  50% { 
-    box-shadow: 0 0 30px rgba(251, 146, 60, 0.5);
+  50% {
+    box-shadow: 0 0 30px rgba(99, 102, 241, 0.5);
     transform: scale(1.02);
   }
 }
@@ -80,12 +80,12 @@
 }
 
 @keyframes softGlow {
-  0%, 100% { 
-    box-shadow: 0 0 40px rgba(251, 146, 60, 0.25);
+  0%, 100% {
+    box-shadow: 0 0 40px rgba(99, 102, 241, 0.25);
     opacity: 0.4;
   }
-  50% { 
-    box-shadow: 0 0 70px rgba(251, 146, 60, 0.4);
+  50% {
+    box-shadow: 0 0 70px rgba(99, 102, 241, 0.4);
     opacity: 0.6;
   }
 }
