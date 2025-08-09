@@ -268,20 +268,20 @@ function App() {
     <div className="min-h-screen bg-continuous-hero">
 
       {/* Header */}
-      <header className="relative z-50 header-glass sticky top-0">
+      <header className="relative z-50 header-glossy-light sticky top-0">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center space-x-2">
               <Mic className="h-8 w-8 text-orange-600" />
-              <span className="text-2xl font-bold text-gray-900 text-glass">TalkBuddy</span>
+              <span className="text-2xl font-bold text-gray-900" style={{ textShadow: '0 2px 4px rgba(255, 255, 255, 0.5)' }}>TalkBuddy</span>
             </div>
             
             <nav className="hidden md:flex items-center space-x-8">
-              <a href="#home" className="text-gray-700 hover:text-orange-600 transition-all duration-300 font-medium">Home</a>
-              <a href="#benefits" className="text-gray-700 hover:text-orange-600 transition-all duration-300 font-medium">Benefits</a>
-              <a href="#how-it-works" className="text-gray-700 hover:text-orange-600 transition-all duration-300 font-medium">How It Works</a>
-              <a href="#testimonials" className="text-gray-700 hover:text-orange-600 transition-all duration-300 font-medium">Reviews</a>
-              <a href="#faq" className="text-gray-700 hover:text-orange-600 transition-all duration-300 font-medium">FAQ</a>
+              <a href="#home" className="text-gray-800 hover:text-orange-600 transition-all duration-300 font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>Home</a>
+              <a href="#benefits" className="text-gray-800 hover:text-orange-600 transition-all duration-300 font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>Benefits</a>
+              <a href="#how-it-works" className="text-gray-800 hover:text-orange-600 transition-all duration-300 font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>How It Works</a>
+              <a href="#testimonials" className="text-gray-800 hover:text-orange-600 transition-all duration-300 font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>Reviews</a>
+              <a href="#faq" className="text-gray-800 hover:text-orange-600 transition-all duration-300 font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>FAQ</a>
             </nav>
 
             <div className="flex items-center space-x-4">
@@ -304,13 +304,13 @@ function App() {
 
         {/* Mobile Menu */}
         {isMenuOpen && (
-          <div className="md:hidden glass-strong border-t border-white/20">
+          <div className="md:hidden glass-strong border-t border-white/20" style={{ background: 'rgba(255, 255, 255, 0.4)' }}>
             <div className="px-2 py-2 space-y-2">
-              <a href="#home" className="block py-2 text-gray-700 hover:text-orange-600 transition-colors font-medium">Home</a>
-              <a href="#benefits" className="block py-2 text-gray-700 hover:text-orange-600 transition-colors font-medium">Benefits</a>
-              <a href="#how-it-works" className="block py-2 text-gray-700 hover:text-orange-600 transition-colors font-medium">How It Works</a>
-              <a href="#testimonials" className="block py-2 text-gray-700 hover:text-orange-600 transition-colors font-medium">Reviews</a>
-              <a href="#faq" className="block py-2 text-gray-700 hover:text-orange-600 transition-colors font-medium">FAQ</a>
+              <a href="#home" className="block py-2 text-gray-800 hover:text-orange-600 transition-colors font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>Home</a>
+              <a href="#benefits" className="block py-2 text-gray-800 hover:text-orange-600 transition-colors font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>Benefits</a>
+              <a href="#how-it-works" className="block py-2 text-gray-800 hover:text-orange-600 transition-colors font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>How It Works</a>
+              <a href="#testimonials" className="block py-2 text-gray-800 hover:text-orange-600 transition-colors font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>Reviews</a>
+              <a href="#faq" className="block py-2 text-gray-800 hover:text-orange-600 transition-colors font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>FAQ</a>
               <button 
                 onClick={() => handleAuthModal('login')}
                 className="w-full mt-2 px-6 py-2 btn-glossy text-white rounded-lg"
