@@ -39,9 +39,17 @@ import {
   Meh,
   ThumbsUp,
   Calendar,
-  Trophy
+  Trophy,
+  Brain,
+  Zap,
+  Shield,
+  Sun,
+  Moon,
+  Compass,
+  Lightbulb,
+  Loader2
 } from 'lucide-react';
-import { AuthUser } from '../lib/supabase';
+import { AuthUser, supabase } from '../lib/supabase';
 
 interface OnboardingFlowProps {
   user: AuthUser;
@@ -58,8 +66,11 @@ interface OnboardingData {
   workDomain?: string;
   germanLevel: string;
   speakingFears: string[];
+  customFears: string[];
   timeline: string;
   goals: string[];
+  personalityTraits: string[];
+  secretDetails?: string;
   conversationTopics: string[];
 }
 
@@ -67,8 +78,7 @@ const motivationOptions = [
   { id: 'career', label: 'Career Growth', icon: Briefcase, description: 'Advance professionally with German skills' },
   { id: 'travel', label: 'Travel & Culture', icon: Plane, description: 'Explore German-speaking countries confidently' },
   { id: 'personal', label: 'Personal Growth', icon: Heart, description: 'Challenge yourself and expand your mind' },
-  { id: 'family', label: 'Family & Relationships', icon: Users, description: 'Connect with German-speaking loved ones' },
-  { id: 'other', label: 'Something Else', icon: Plus, description: 'Tell us what drives your German journey' }
+  { id: 'family', label: 'Family & Relationships', icon: Users, description: 'Connect with German-speaking loved ones' }
 ];
 
 const hobbyOptions = [
@@ -129,8 +139,20 @@ const goalOptions = [
   { id: 'fluency', label: 'Become fluent', icon: Trophy }
 ];
 
+const personalityOptions = [
+  { id: 'extrovert', label: 'Extrovert', icon: Sun, description: 'I love meeting new people and socializing' },
+  { id: 'introvert', label: 'Introvert', icon: Moon, description: 'I prefer quiet, thoughtful conversations' },
+  { id: 'analytical', label: 'Analytical', icon: Brain, description: 'I like to understand the why behind things' },
+  { id: 'creative', label: 'Creative', icon: Lightbulb, description: 'I think outside the box and love new ideas' },
+  { id: 'adventurous', label: 'Adventurous', icon: Compass, description: 'I love trying new things and taking risks' },
+  { id: 'cautious', label: 'Cautious', icon: Shield, description: 'I prefer to think things through carefully' },
+  { id: 'energetic', label: 'Energetic', icon: Zap, description: 'I have lots of enthusiasm and energy' },
+  { id: 'calm', label: 'Calm', icon: Heart, description: 'I stay composed and prefer peaceful environments' }
+];
+
 export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps) {
   const [currentStep, setCurrentStep] = useState(0);
+  const [saving, setSaving] = useState(false);
   const [data, setData] = useState<OnboardingData>({
     motivations: [],
     hobbies: [],
@@ -138,8 +160,10 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
     hasWork: false,
     germanLevel: '',
     speakingFears: [],
+    customFears: [],
     timeline: '',
     goals: [],
+    personalityTraits: [],
     conversationTopics: []
   });
   
@@ -147,9 +171,11 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
   const [customMotivationText, setCustomMotivationText] = useState('');
   const [showCustomHobby, setShowCustomHobby] = useState(false);
   const [customHobbyText, setCustomHobbyText] = useState('');
+  const [showCustomFear, setShowCustomFear] = useState(false);
+  const [customFearText, setCustomFearText] = useState('');
   const [profilePreview, setProfilePreview] = useState<string | null>(null);
 
-  const totalSteps = 8;
+  const totalSteps = 9; // Added personality step
   const firstName = user.user_metadata?.first_name || 'there';
 
   const updateData = (updates: Partial<OnboardingData>) => {
@@ -168,47 +194,60 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
     }
   };
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const uploadProfilePicture = async (file: File): Promise<string | null> => {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.id}-${Math.random()}.${fileExt}`;
+      const filePath = `profile-pictures/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('profile-pictures')
+        .upload(filePath, file);
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        return null;
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('profile-pictures')
+        .getPublicUrl(filePath);
+
+      return publicUrl;
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      return null;
+    }
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onload = (e) => {
         const result = e.target?.result as string;
         setProfilePreview(result);
-        updateData({ profilePicture: result });
       };
       reader.readAsDataURL(file);
-    }
-  };
 
-  const toggleMotivation = (motivationId: string) => {
-    if (motivationId === 'other') {
-      setShowCustomMotivation(true);
-      return;
+      // Upload to Supabase
+      const publicUrl = await uploadProfilePicture(file);
+      if (publicUrl) {
+        updateData({ profilePicture: publicUrl });
+      }
     }
-    
-    const newMotivations = data.motivations.includes(motivationId)
-      ? data.motivations.filter(m => m !== motivationId)
-      : [...data.motivations, motivationId];
-    updateData({ motivations: newMotivations });
   };
 
   const addCustomMotivation = () => {
     if (customMotivationText.trim()) {
+      const customId = `custom-${Date.now()}`;
       updateData({ 
         customMotivation: customMotivationText.trim(),
-        motivations: [...data.motivations.filter(m => m !== 'other'), 'other']
+        motivations: [...data.motivations, customId]
       });
       setShowCustomMotivation(false);
       setCustomMotivationText('');
     }
-  };
-
-  const toggleHobby = (hobbyId: string) => {
-    const newHobbies = data.hobbies.includes(hobbyId)
-      ? data.hobbies.filter(h => h !== hobbyId)
-      : [...data.hobbies, hobbyId];
-    updateData({ hobbies: newHobbies });
   };
 
   const addCustomHobby = () => {
@@ -221,15 +260,45 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
     }
   };
 
+  const addCustomFear = () => {
+    if (customFearText.trim()) {
+      updateData({ 
+        customFears: [...data.customFears, customFearText.trim()]
+      });
+      setShowCustomFear(false);
+      setCustomFearText('');
+    }
+  };
+
   const removeCustomHobby = (hobby: string) => {
     updateData({
       customHobbies: data.customHobbies.filter(h => h !== hobby)
     });
   };
 
+  const removeCustomFear = (fear: string) => {
+    updateData({
+      customFears: data.customFears.filter(f => f !== fear)
+    });
+  };
+
+  const toggleMotivation = (motivationId: string) => {
+    const newMotivations = data.motivations.includes(motivationId)
+      ? data.motivations.filter(m => m !== motivationId)
+      : [...data.motivations, motivationId];
+    updateData({ motivations: newMotivations });
+  };
+
+  const toggleHobby = (hobbyId: string) => {
+    const newHobbies = data.hobbies.includes(hobbyId)
+      ? data.hobbies.filter(h => h !== hobbyId)
+      : [...data.hobbies, hobbyId];
+    updateData({ hobbies: newHobbies });
+  };
+
   const toggleFear = (fearId: string) => {
     if (fearId === 'none') {
-      updateData({ speakingFears: ['none'] });
+      updateData({ speakingFears: ['none'], customFears: [] });
       return;
     }
     
@@ -244,6 +313,13 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
       ? data.goals.filter(g => g !== goalId)
       : [...data.goals, goalId];
     updateData({ goals: newGoals });
+  };
+
+  const togglePersonalityTrait = (traitId: string) => {
+    const newTraits = data.personalityTraits.includes(traitId)
+      ? data.personalityTraits.filter(t => t !== traitId)
+      : [...data.personalityTraits, traitId];
+    updateData({ personalityTraits: newTraits });
   };
 
   const generateConversationTopics = () => {
@@ -277,6 +353,14 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
       topics.push('Family gatherings and relationships');
     }
     
+    // Add personality-based topics
+    if (data.personalityTraits.includes('extrovert')) {
+      topics.push('Meeting new people and networking');
+    }
+    if (data.personalityTraits.includes('creative')) {
+      topics.push('Creative projects and artistic expression');
+    }
+    
     // Add level-appropriate topics
     if (data.germanLevel.includes('beginner')) {
       topics.push('Daily routines and activities', 'Shopping and errands');
@@ -284,13 +368,69 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
       topics.push('Current events discussion', 'Cultural differences');
     }
     
-    return topics.slice(0, 6); // Limit to 6 topics
+    return topics.slice(0, 8); // Limit to 8 topics
   };
 
-  const completeOnboarding = () => {
+  const saveToDatabase = async (finalData: OnboardingData) => {
+    try {
+      setSaving(true);
+
+      // Save user profile
+      const { error: profileError } = await supabase
+        .from('user_profiles')
+        .upsert({
+          user_id: user.id,
+          profile_picture_url: finalData.profilePicture,
+          first_name: user.user_metadata?.first_name || '',
+          last_name: user.user_metadata?.last_name || ''
+        });
+
+      if (profileError) throw profileError;
+
+      // Save onboarding data
+      const { error: onboardingError } = await supabase
+        .from('user_onboarding')
+        .upsert({
+          user_id: user.id,
+          motivations: finalData.motivations,
+          custom_motivation: finalData.customMotivation,
+          hobbies: finalData.hobbies,
+          custom_hobbies: finalData.customHobbies,
+          has_work: finalData.hasWork,
+          work_domain: finalData.workDomain,
+          german_level: finalData.germanLevel,
+          speaking_fears: finalData.speakingFears,
+          custom_fears: finalData.customFears,
+          timeline: finalData.timeline,
+          goals: finalData.goals,
+          personality_traits: finalData.personalityTraits,
+          secret_details: finalData.secretDetails,
+          conversation_topics: finalData.conversationTopics,
+          completed_at: new Date().toISOString()
+        });
+
+      if (onboardingError) throw onboardingError;
+
+      return true;
+    } catch (error) {
+      console.error('Error saving onboarding data:', error);
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const completeOnboarding = async () => {
     const conversationTopics = generateConversationTopics();
     const finalData = { ...data, conversationTopics };
-    onComplete(finalData);
+    
+    const success = await saveToDatabase(finalData);
+    if (success) {
+      onComplete(finalData);
+    } else {
+      // Handle error - maybe show a toast notification
+      alert('There was an error saving your data. Please try again.');
+    }
   };
 
   const renderProgressBar = () => (
@@ -325,8 +465,8 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
                     <Camera className="h-12 w-12 text-orange-600" />
                   )}
                 </div>
-                <label className="absolute bottom-0 right-1/2 transform translate-x-1/2 translate-y-2 btn-glossy text-white p-2 rounded-full cursor-pointer shadow-glass hover:scale-110 transition-transform duration-200">
-                  <Upload className="h-4 w-4" />
+                <label className="absolute bottom-0 right-1/2 transform translate-x-1/2 translate-y-2 bg-orange-500 hover:bg-orange-600 text-white p-3 rounded-full cursor-pointer shadow-glass hover:scale-110 transition-all duration-200 flex items-center justify-center">
+                  <Upload className="h-5 w-5" />
                   <input
                     type="file"
                     accept="image/*"
@@ -357,8 +497,7 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
             <div className="grid md:grid-cols-2 gap-4 max-w-4xl mx-auto">
               {motivationOptions.map((motivation) => {
                 const Icon = motivation.icon;
-                const isSelected = data.motivations.includes(motivation.id) || 
-                  (motivation.id === 'other' && data.customMotivation);
+                const isSelected = data.motivations.includes(motivation.id);
                 
                 return (
                   <button
@@ -389,6 +528,51 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
                   </button>
                 );
               })}
+
+              {/* Custom motivations display */}
+              {data.customMotivation && (
+                <div className="card-glass rounded-xl p-6 text-left ring-2 ring-orange-400 bg-orange-50/50">
+                  <div className="flex items-start space-x-4">
+                    <div className="p-3 rounded-lg bg-orange-100">
+                      <Plus className="h-6 w-6 text-orange-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-gray-900 mb-1">
+                        {data.customMotivation}
+                      </h3>
+                      <p className="text-sm text-gray-600">
+                        Your personal motivation
+                      </p>
+                      <Check className="h-5 w-5 text-orange-600 mt-2" />
+                    </div>
+                    <button
+                      onClick={() => {
+                        updateData({ 
+                          customMotivation: undefined, 
+                          motivations: data.motivations.filter(m => !m.startsWith('custom-'))
+                        });
+                      }}
+                      className="text-gray-500 hover:text-red-500"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Add custom motivation button */}
+              <button
+                onClick={() => setShowCustomMotivation(true)}
+                className="card-glass rounded-xl p-6 text-center transition-all duration-300 border-2 border-dashed border-gray-300 hover:border-orange-400"
+              >
+                <div className="flex items-center justify-center space-x-3">
+                  <Plus className="h-6 w-6 text-gray-600" />
+                  <span className="font-semibold text-gray-900">Add Your Own</span>
+                </div>
+                <p className="text-sm text-gray-600 mt-2">
+                  Tell us what else drives you
+                </p>
+              </button>
             </div>
 
             {showCustomMotivation && (
@@ -418,20 +602,6 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
                       Cancel
                     </button>
                   </div>
-                </div>
-              </div>
-            )}
-
-            {data.customMotivation && (
-              <div className="max-w-md mx-auto">
-                <div className="card-glass rounded-lg p-4 flex items-center justify-between">
-                  <span className="text-gray-900">"{data.customMotivation}"</span>
-                  <button
-                    onClick={() => updateData({ customMotivation: undefined, motivations: data.motivations.filter(m => m !== 'other') })}
-                    className="text-gray-500 hover:text-red-500"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
                 </div>
               </div>
             )}
@@ -479,6 +649,28 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
                   </button>
                 );
               })}
+
+              {/* Custom hobbies display */}
+              {data.customHobbies.map((hobby, index) => (
+                <div
+                  key={`custom-${index}`}
+                  className="card-glass rounded-xl p-4 text-center ring-2 ring-orange-400 bg-orange-50/50 relative"
+                >
+                  <div className="w-12 h-12 mx-auto mb-2 rounded-lg flex items-center justify-center bg-orange-100">
+                    <Plus className="h-6 w-6 text-orange-600" />
+                  </div>
+                  <span className="text-sm font-medium text-gray-900">
+                    {hobby}
+                  </span>
+                  <Check className="h-4 w-4 text-orange-600 mx-auto mt-1" />
+                  <button
+                    onClick={() => removeCustomHobby(hobby)}
+                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
               
               <button
                 onClick={() => setShowCustomHobby(true)}
@@ -492,25 +684,6 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
                 </span>
               </button>
             </div>
-
-            {data.customHobbies.length > 0 && (
-              <div className="max-w-2xl mx-auto">
-                <h3 className="font-semibold text-gray-900 mb-3">Your custom hobbies:</h3>
-                <div className="flex flex-wrap gap-2">
-                  {data.customHobbies.map((hobby, index) => (
-                    <div key={index} className="card-glass rounded-full px-4 py-2 flex items-center space-x-2">
-                      <span className="text-sm text-gray-900">{hobby}</span>
-                      <button
-                        onClick={() => removeCustomHobby(hobby)}
-                        className="text-gray-500 hover:text-red-500"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {showCustomHobby && (
               <div className="max-w-md mx-auto card-glass rounded-xl p-6">
@@ -707,7 +880,81 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
                   </button>
                 );
               })}
+
+              {/* Custom fears display */}
+              {data.customFears.map((fear, index) => (
+                <div
+                  key={`custom-fear-${index}`}
+                  className="card-glass rounded-xl p-6 text-left ring-2 ring-orange-400 bg-orange-50/50 relative"
+                >
+                  <div className="flex items-start space-x-4">
+                    <div className="p-3 rounded-lg bg-orange-100">
+                      <Plus className="h-6 w-6 text-orange-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-gray-900 mb-1">
+                        {fear}
+                      </h3>
+                      <p className="text-sm text-gray-600">
+                        Your personal concern
+                      </p>
+                      <Check className="h-5 w-5 text-orange-600 mt-2" />
+                    </div>
+                    <button
+                      onClick={() => removeCustomFear(fear)}
+                      className="text-gray-500 hover:text-red-500"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {/* Add custom fear button */}
+              <button
+                onClick={() => setShowCustomFear(true)}
+                className="card-glass rounded-xl p-6 text-center transition-all duration-300 border-2 border-dashed border-gray-300 hover:border-orange-400"
+              >
+                <div className="flex items-center justify-center space-x-3">
+                  <Plus className="h-6 w-6 text-gray-600" />
+                  <span className="font-semibold text-gray-900">Add Your Own</span>
+                </div>
+                <p className="text-sm text-gray-600 mt-2">
+                  Tell us what else concerns you
+                </p>
+              </button>
             </div>
+
+            {showCustomFear && (
+              <div className="max-w-md mx-auto card-glass rounded-xl p-6">
+                <h3 className="font-semibold text-gray-900 mb-3">What else worries you?</h3>
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    value={customFearText}
+                    onChange={(e) => setCustomFearText(e.target.value)}
+                    placeholder="What makes you nervous about speaking?"
+                    className="w-full px-4 py-2 input-glass rounded-lg focus-glass"
+                    style={{ color: '#1f2937' }}
+                    autoFocus
+                  />
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={addCustomFear}
+                      className="flex-1 btn-glossy text-white py-2 rounded-lg"
+                    >
+                      Add
+                    </button>
+                    <button
+                      onClick={() => setShowCustomFear(false)}
+                      className="px-4 py-2 glass rounded-lg"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="text-center">
               <p className="text-sm text-gray-600 max-w-md mx-auto">
@@ -790,6 +1037,75 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
         );
 
       case 7:
+        return (
+          <div className="space-y-6">
+            <div className="text-center space-y-4">
+              <h2 className="text-2xl font-bold text-glass">
+                Tell us about your personality! 🌟
+              </h2>
+              <p className="text-gray-700 max-w-2xl mx-auto">
+                Understanding your personality helps us create conversations that feel natural and comfortable for you. Select all that describe you!
+              </p>
+            </div>
+
+            <div className="max-w-4xl mx-auto grid md:grid-cols-2 gap-4">
+              {personalityOptions.map((trait) => {
+                const Icon = trait.icon;
+                const isSelected = data.personalityTraits.includes(trait.id);
+                
+                return (
+                  <button
+                    key={trait.id}
+                    onClick={() => togglePersonalityTrait(trait.id)}
+                    className={`card-glass rounded-xl p-6 text-left transition-all duration-300 ${
+                      isSelected ? 'ring-2 ring-orange-400 bg-orange-50/50' : ''
+                    }`}
+                  >
+                    <div className="flex items-start space-x-4">
+                      <div className={`p-3 rounded-lg ${
+                        isSelected ? 'bg-orange-100' : 'bg-white/50'
+                      }`}>
+                        <Icon className={`h-6 w-6 ${
+                          isSelected ? 'text-orange-600' : 'text-gray-600'
+                        }`} />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-gray-900 mb-1">
+                          {trait.label}
+                        </h3>
+                        <p className="text-sm text-gray-600">
+                          {trait.description}
+                        </p>
+                        {isSelected && <Check className="h-5 w-5 text-orange-600 mt-2" />}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="max-w-2xl mx-auto">
+              <div className="card-glass rounded-xl p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                  Share something special about yourself (optional) 💫
+                </h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  This could be a fun fact, a secret talent, a dream you have, or anything that makes you unique. We'll use this to make conversations more personal and engaging!
+                </p>
+                <textarea
+                  value={data.secretDetails || ''}
+                  onChange={(e) => updateData({ secretDetails: e.target.value })}
+                  placeholder="I secretly love to sing in the shower, I dream of opening a bakery, I collect vintage postcards..."
+                  className="w-full px-4 py-3 input-glass rounded-lg focus-glass resize-none"
+                  style={{ color: '#1f2937' }}
+                  rows={4}
+                />
+              </div>
+            </div>
+          </div>
+        );
+
+      case 8:
         const conversationTopics = generateConversationTopics();
         
         return (
@@ -836,6 +1152,19 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
                       })}
                     </div>
                   </div>
+                  <div>
+                    <span className="font-medium text-gray-700">Personality:</span>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {data.personalityTraits.map(traitId => {
+                        const trait = personalityOptions.find(t => t.id === traitId);
+                        return trait ? (
+                          <span key={traitId} className="px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-xs">
+                            {trait.label}
+                          </span>
+                        ) : null;
+                      })}
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -863,7 +1192,7 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
                 </h3>
                 <div className="space-y-2">
                   {data.motivations.map(motivationId => {
-                    if (motivationId === 'other' && data.customMotivation) {
+                    if (motivationId.startsWith('custom-') && data.customMotivation) {
                       return (
                         <div key="custom" className="flex items-center space-x-2 text-sm">
                           <div className="w-2 h-2 bg-red-400 rounded-full" />
@@ -895,26 +1224,57 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
                       <span className="text-gray-900">Building on your confidence!</span>
                     </div>
                   ) : (
-                    data.speakingFears.map(fearId => {
-                      const fear = speakingFears.find(f => f.id === fearId);
-                      return fear ? (
-                        <div key={fearId} className="flex items-center space-x-2 text-sm">
+                    <>
+                      {data.speakingFears.map(fearId => {
+                        const fear = speakingFears.find(f => f.id === fearId);
+                        return fear ? (
+                          <div key={fearId} className="flex items-center space-x-2 text-sm">
+                            <div className="w-2 h-2 bg-green-400 rounded-full" />
+                            <span className="text-gray-900">{fear.label}</span>
+                          </div>
+                        ) : null;
+                      })}
+                      {data.customFears.map((fear, index) => (
+                        <div key={`custom-fear-${index}`} className="flex items-center space-x-2 text-sm">
                           <div className="w-2 h-2 bg-green-400 rounded-full" />
-                          <span className="text-gray-900">{fear.label}</span>
+                          <span className="text-gray-900">{fear}</span>
                         </div>
-                      ) : null;
-                    })
+                      ))}
+                    </>
                   )}
                 </div>
               </div>
             </div>
 
+            {data.secretDetails && (
+              <div className="max-w-2xl mx-auto">
+                <div className="card-glass rounded-xl p-6">
+                  <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
+                    <Sparkles className="h-6 w-6 text-purple-600 mr-2" />
+                    Your Special Touch
+                  </h3>
+                  <p className="text-gray-700 italic">"{data.secretDetails}"</p>
+                  <p className="text-sm text-gray-600 mt-2">
+                    We'll weave this into your conversations to make them uniquely yours! ✨
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="text-center">
               <button
                 onClick={completeOnboarding}
-                className="px-8 py-4 btn-glossy text-white rounded-lg font-semibold text-lg shadow-glass-lg hover:scale-105 transition-transform duration-200"
+                disabled={saving}
+                className="px-8 py-4 btn-glossy text-white rounded-lg font-semibold text-lg shadow-glass-lg hover:scale-105 transition-transform duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center mx-auto"
               >
-                Start My German Journey! 🚀
+                {saving ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                    Saving Your Journey...
+                  </>
+                ) : (
+                  'Start My German Journey! 🚀'
+                )}
               </button>
             </div>
           </div>

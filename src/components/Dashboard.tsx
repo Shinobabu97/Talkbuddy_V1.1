@@ -9,7 +9,8 @@ import {
   Target,
   Award,
   MessageCircle,
-  Settings
+  Settings,
+  Loader2
 } from 'lucide-react';
 import { supabase, AuthUser } from '../lib/supabase';
 import OnboardingFlow from './OnboardingFlow';
@@ -28,8 +29,11 @@ interface OnboardingData {
   workDomain?: string;
   germanLevel: string;
   speakingFears: string[];
+  customFears: string[];
   timeline: string;
   goals: string[];
+  personalityTraits: string[];
+  secretDetails?: string;
   conversationTopics: string[];
 }
 
@@ -37,18 +41,68 @@ export default function Dashboard({ user }: DashboardProps) {
   const [showOnboarding, setShowOnboarding] = React.useState(false);
   const [onboardingData, setOnboardingData] = React.useState<OnboardingData | null>(null);
   const [isNewUser, setIsNewUser] = React.useState(true);
+  const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    // Check if user has completed onboarding
-    const hasCompletedOnboarding = localStorage.getItem(`onboarding_${user.id}`);
-    if (hasCompletedOnboarding) {
-      setIsNewUser(false);
-      setOnboardingData(JSON.parse(hasCompletedOnboarding));
-    } else {
-      setShowOnboarding(true);
-    }
+    loadOnboardingData();
   }, [user.id]);
 
+  const loadOnboardingData = async () => {
+    try {
+      setLoading(true);
+      
+      // Check database first
+      const { data: onboardingRecord, error } = await supabase
+        .from('user_onboarding')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 is "not found"
+        console.error('Error loading onboarding data:', error);
+      }
+
+      if (onboardingRecord && onboardingRecord.completed_at) {
+        // User has completed onboarding
+        const data: OnboardingData = {
+          profilePicture: onboardingRecord.profile_picture_url,
+          motivations: onboardingRecord.motivations || [],
+          customMotivation: onboardingRecord.custom_motivation,
+          hobbies: onboardingRecord.hobbies || [],
+          customHobbies: onboardingRecord.custom_hobbies || [],
+          hasWork: onboardingRecord.has_work || false,
+          workDomain: onboardingRecord.work_domain,
+          germanLevel: onboardingRecord.german_level || '',
+          speakingFears: onboardingRecord.speaking_fears || [],
+          customFears: onboardingRecord.custom_fears || [],
+          timeline: onboardingRecord.timeline || '',
+          goals: onboardingRecord.goals || [],
+          personalityTraits: onboardingRecord.personality_traits || [],
+          secretDetails: onboardingRecord.secret_details,
+          conversationTopics: onboardingRecord.conversation_topics || []
+        };
+        
+        setOnboardingData(data);
+        setIsNewUser(false);
+        setShowOnboarding(false);
+      } else {
+        // Check localStorage as fallback
+        const hasCompletedOnboarding = localStorage.getItem(`onboarding_${user.id}`);
+        if (hasCompletedOnboarding) {
+          setIsNewUser(false);
+          setOnboardingData(JSON.parse(hasCompletedOnboarding));
+          setShowOnboarding(false);
+        } else {
+          setShowOnboarding(true);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading onboarding data:', error);
+      setShowOnboarding(true);
+    } finally {
+      setLoading(false);
+    }
+  };
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
@@ -57,6 +111,7 @@ export default function Dashboard({ user }: DashboardProps) {
     setOnboardingData(data);
     setShowOnboarding(false);
     setIsNewUser(false);
+    // Keep localStorage as backup
     localStorage.setItem(`onboarding_${user.id}`, JSON.stringify(data));
   };
 
@@ -65,6 +120,18 @@ export default function Dashboard({ user }: DashboardProps) {
   };
 
   const firstName = user.user_metadata?.first_name || 'User';
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-glass-light flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 text-orange-600 mx-auto mb-4 animate-spin" />
+          <p className="text-gray-600">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Show onboarding flow for new users or when requested
   if (showOnboarding) {
@@ -147,6 +214,11 @@ export default function Dashboard({ user }: DashboardProps) {
               <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
                 {onboardingData.hobbies.length + onboardingData.customHobbies.length} Interests
               </span>
+              {onboardingData.personalityTraits.length > 0 && (
+                <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
+                  {onboardingData.personalityTraits.length} Personality Traits
+                </span>
+              )}
             </div>
           )}
         </div>
