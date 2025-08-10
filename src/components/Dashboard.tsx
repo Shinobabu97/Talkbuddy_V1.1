@@ -8,20 +8,68 @@ import {
   Play,
   Target,
   Award,
-  MessageCircle
+  MessageCircle,
+  Settings
 } from 'lucide-react';
 import { supabase, AuthUser } from '../lib/supabase';
+import OnboardingFlow from './OnboardingFlow';
 
 interface DashboardProps {
   user: AuthUser;
 }
 
+interface OnboardingData {
+  profilePicture?: string;
+  motivations: string[];
+  customMotivation?: string;
+  hobbies: string[];
+  customHobbies: string[];
+  hasWork: boolean;
+  workDomain?: string;
+  germanLevel: string;
+  speakingFears: string[];
+  timeline: string;
+  goals: string[];
+  conversationTopics: string[];
+}
+
 export default function Dashboard({ user }: DashboardProps) {
+  const [showOnboarding, setShowOnboarding] = React.useState(false);
+  const [onboardingData, setOnboardingData] = React.useState<OnboardingData | null>(null);
+  const [isNewUser, setIsNewUser] = React.useState(true);
+
+  React.useEffect(() => {
+    // Check if user has completed onboarding
+    const hasCompletedOnboarding = localStorage.getItem(`onboarding_${user.id}`);
+    if (hasCompletedOnboarding) {
+      setIsNewUser(false);
+      setOnboardingData(JSON.parse(hasCompletedOnboarding));
+    } else {
+      setShowOnboarding(true);
+    }
+  }, [user.id]);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
   };
 
+  const handleOnboardingComplete = (data: OnboardingData) => {
+    setOnboardingData(data);
+    setShowOnboarding(false);
+    setIsNewUser(false);
+    localStorage.setItem(`onboarding_${user.id}`, JSON.stringify(data));
+  };
+
+  const handleRestartOnboarding = () => {
+    setShowOnboarding(true);
+  };
+
   const firstName = user.user_metadata?.first_name || 'User';
+
+  // Show onboarding flow for new users or when requested
+  if (showOnboarding) {
+    return <OnboardingFlow user={user} onComplete={handleOnboardingComplete} />;
+  }
 
   const mockStats = [
     { label: 'Conversations', value: '12', icon: MessageCircle, color: 'text-blue-600' },
@@ -30,12 +78,18 @@ export default function Dashboard({ user }: DashboardProps) {
     { label: 'Level', value: 'B1', icon: Award, color: 'text-purple-600' }
   ];
 
-  const recentTopics = [
-    { title: 'Job Interview Practice', duration: '15 min', completed: true },
-    { title: 'Restaurant Ordering', duration: '12 min', completed: true },
-    { title: 'Travel Conversations', duration: '18 min', completed: false },
-    { title: 'Business Meeting', duration: '20 min', completed: false }
-  ];
+  // Use personalized topics if available, otherwise use defaults
+  const recentTopics = onboardingData?.conversationTopics.length ? 
+    onboardingData.conversationTopics.map((topic, index) => ({
+      title: topic,
+      duration: `${12 + index * 2} min`,
+      completed: index < 2
+    })) : [
+      { title: 'Job Interview Practice', duration: '15 min', completed: true },
+      { title: 'Restaurant Ordering', duration: '12 min', completed: true },
+      { title: 'Travel Conversations', duration: '18 min', completed: false },
+      { title: 'Business Meeting', duration: '20 min', completed: false }
+    ];
 
   return (
     <div className="min-h-screen bg-gradient-glass-light">
@@ -50,6 +104,13 @@ export default function Dashboard({ user }: DashboardProps) {
             
             <div className="flex items-center space-x-4">
               <span className="text-gray-800 font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>Hi, {firstName}!</span>
+              <button
+                onClick={handleRestartOnboarding}
+                className="flex items-center space-x-2 px-3 py-2 glass rounded-lg hover:glass-strong transition-all duration-200"
+                title="Restart onboarding"
+              >
+                <Settings className="h-4 w-4" />
+              </button>
               <button
                 onClick={handleLogout}
                 className="flex items-center space-x-2 px-4 py-2 btn-glossy-secondary rounded-lg"
@@ -67,11 +128,27 @@ export default function Dashboard({ user }: DashboardProps) {
         {/* Welcome Section */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2 text-glass-light">
-            Welcome back, {firstName}! 👋
+            {isNewUser ? `Welcome to TalkBuddy, ${firstName}! 🎉` : `Welcome back, ${firstName}! 👋`}
           </h1>
           <p className="text-gray-700-light text-lg">
-            Ready to continue your language learning journey?
+            {isNewUser ? 
+              "Let's start your German learning adventure!" : 
+              "Ready to continue your language learning journey?"
+            }
           </p>
+          {onboardingData && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              <span className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm">
+                Level: {onboardingData.germanLevel.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+              </span>
+              <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                {onboardingData.goals.length} Goals Set
+              </span>
+              <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
+                {onboardingData.hobbies.length + onboardingData.customHobbies.length} Interests
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Stats Grid */}
@@ -128,7 +205,7 @@ export default function Dashboard({ user }: DashboardProps) {
             {/* Recent Topics */}
             <div className="card-glass-light no-hover rounded-xl p-4 lg:p-6">
               <h2 className="text-xl font-semibold mb-4 text-glass-light">
-                Recent Topics
+                {onboardingData?.conversationTopics.length ? 'Your Personalized Topics' : 'Recent Topics'}
               </h2>
               <div className="space-y-3">
                 {recentTopics.map((topic, index) => (
@@ -148,6 +225,13 @@ export default function Dashboard({ user }: DashboardProps) {
                   </div>
                 ))}
               </div>
+              {onboardingData?.conversationTopics.length && (
+                <div className="mt-4 text-center">
+                  <p className="text-xs text-gray-600">
+                    Topics personalized based on your interests and goals ✨
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -210,13 +294,16 @@ export default function Dashboard({ user }: DashboardProps) {
             {/* Next Session */}
             <div className="btn-glossy rounded-xl p-4 lg:p-6 text-white">
               <h3 className="text-lg font-semibold mb-2 text-glow">
-                Ready for your next session?
+                {isNewUser ? "Ready to start speaking?" : "Ready for your next session?"}
               </h3>
               <p className="text-white/90 text-xs sm:text-sm mb-4">
-                Continue building your confidence with personalized conversations.
+                {isNewUser ? 
+                  "Begin your journey with personalized German conversations." :
+                  "Continue building your confidence with personalized conversations."
+                }
               </p>
               <button className="w-full py-2 btn-glossy-secondary text-gray-900 rounded-lg font-semibold hover:scale-105 transition-transform duration-200">
-                Start Speaking
+                {isNewUser ? "Start First Conversation" : "Start Speaking"}
               </button>
             </div>
           </div>
