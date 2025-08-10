@@ -120,6 +120,8 @@ export default function ProfilePictureModal({
           first_name: user.user_metadata?.first_name || '',
           last_name: user.user_metadata?.last_name || '',
           updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id'
         });
 
       if (dbError) throw dbError;
@@ -156,6 +158,8 @@ export default function ProfilePictureModal({
           first_name: user.user_metadata?.first_name || '',
           last_name: user.user_metadata?.last_name || '',
           updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id'
         });
 
       if (dbError) throw dbError;
