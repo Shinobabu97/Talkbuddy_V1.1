@@ -10,7 +10,8 @@ import {
   Award,
   MessageCircle,
   Settings,
-  Loader2
+  Loader2,
+  User
 } from 'lucide-react';
 import { supabase, AuthUser } from '../lib/supabase';
 import OnboardingFlow from './OnboardingFlow';
@@ -20,7 +21,7 @@ interface DashboardProps {
 }
 
 interface OnboardingData {
-  profilePicture?: string;
+  profilePictureUrl?: string;
   motivations: string[];
   customMotivation?: string;
   hobbies: string[];
@@ -65,7 +66,7 @@ export default function Dashboard({ user }: DashboardProps) {
       if (onboardingRecord && onboardingRecord.completed_at) {
         // User has completed onboarding
         const data: OnboardingData = {
-          profilePicture: onboardingRecord.profile_picture_url,
+          profilePictureUrl: onboardingRecord.profile_picture_url,
           motivations: onboardingRecord.motivations || [],
           customMotivation: onboardingRecord.custom_motivation,
           hobbies: onboardingRecord.hobbies || [],
@@ -135,7 +136,14 @@ export default function Dashboard({ user }: DashboardProps) {
 
   // Show onboarding flow for new users or when requested
   if (showOnboarding) {
-    return <OnboardingFlow user={user} onComplete={handleOnboardingComplete} />;
+    return (
+      <OnboardingFlow 
+        user={user} 
+        onComplete={handleOnboardingComplete}
+        existingData={onboardingData}
+        isEditing={!isNewUser}
+      />
+    );
   }
 
   const mockStats = [
@@ -170,7 +178,20 @@ export default function Dashboard({ user }: DashboardProps) {
             </div>
             
             <div className="flex items-center space-x-4">
-              <span className="text-gray-800 font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>Hi, {firstName}!</span>
+              <div className="flex items-center space-x-3">
+                {onboardingData?.profilePictureUrl ? (
+                  <img 
+                    src={onboardingData.profilePictureUrl} 
+                    alt="Profile" 
+                    className="w-8 h-8 rounded-full object-cover border-2 border-white/50"
+                  />
+                ) : (
+                  <div className="w-8 h-8 glass rounded-full flex items-center justify-center">
+                    <User className="h-4 w-4 text-gray-600" />
+                  </div>
+                )}
+                <span className="text-gray-800 font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>Hi, {firstName}!</span>
+              </div>
               <button
                 onClick={handleRestartOnboarding}
                 className="flex items-center space-x-2 px-3 py-2 glass rounded-lg hover:glass-strong transition-all duration-200"
@@ -194,9 +215,20 @@ export default function Dashboard({ user }: DashboardProps) {
       <main className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-6 py-8">
         {/* Welcome Section */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2 text-glass-light">
-            {isNewUser ? `Welcome to TalkBuddy, ${firstName}! 🎉` : `Welcome back, ${firstName}! 👋`}
-          </h1>
+          <div className="flex items-center space-x-4 mb-4">
+            {onboardingData?.profilePictureUrl && (
+              <img 
+                src={onboardingData.profilePictureUrl} 
+                alt="Profile" 
+                className="w-16 h-16 rounded-full object-cover border-4 border-white/50 shadow-glass"
+              />
+            )}
+            <div>
+              <h1 className="text-3xl font-bold text-glass-light">
+                {isNewUser ? `Welcome to TalkBuddy, ${firstName}! 🎉` : `Welcome back, ${firstName}! 👋`}
+              </h1>
+            </div>
+          </div>
           <p className="text-gray-700-light text-lg">
             {isNewUser ? 
               "Let's start your German learning adventure!" : 
