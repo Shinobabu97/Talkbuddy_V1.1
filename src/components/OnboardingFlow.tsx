@@ -156,6 +156,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
   const [currentStep, setCurrentStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const totalSteps = 9;
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [data, setData] = useState<OnboardingData>({
@@ -230,37 +231,54 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      setIsUploading(true);
-      
-      try {
-        // Create a unique filename
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${user.id}-${Date.now()}.${fileExt}`;
-        const filePath = `profile-pictures/${fileName}`;
+    if (!file) return;
 
-        // Upload file to Supabase storage
-        const { error: uploadError } = await supabase.storage
-          .from('profile-pictures')
-          .upload(filePath, file);
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setUploadError('Please select an image file');
+      return;
+    }
 
-        if (uploadError) {
-          console.error('Upload error:', uploadError);
-          return;
-        }
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadError('Image must be smaller than 5MB');
+      return;
+    }
 
-        // Get public URL
-        const { data: { publicUrl } } = supabase.storage
-          .from('profile-pictures')
-          .getPublicUrl(filePath);
+    setIsUploading(true);
+    setUploadError(null);
 
-        // Update form data with the public URL
-        updateData({ profilePictureUrl: publicUrl });
-      } catch (error) {
-        console.error('Error uploading file:', error);
-      } finally {
-        setIsUploading(false);
+    try {
+      // Create unique filename
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+      const filePath = `profile-pictures/${fileName}`;
+
+      // Upload to Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('profile-pictures')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) {
+        throw uploadError;
       }
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('profile-pictures')
+        .getPublicUrl(filePath);
+
+      // Update form data with the public URL
+      updateData({ profilePictureUrl: publicUrl });
+
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      setUploadError('Failed to upload image. Please try again.');
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -517,6 +535,11 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
                   </label>
                 )}
               </div>
+              {uploadError && (
+                <p className="mt-2 text-sm text-red-600 text-center">
+                  {uploadError}
+                </p>
+              )}
               <p className="text-sm text-gray-600 mt-4">
                 Add a profile picture to personalize your experience (optional)
               </p>
