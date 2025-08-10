@@ -54,10 +54,12 @@ import { AuthUser, supabase } from '../lib/supabase';
 interface OnboardingFlowProps {
   user: AuthUser;
   onComplete: (data: OnboardingData) => void;
+  existingData?: OnboardingData | null;
+  isEditing?: boolean;
 }
 
 interface OnboardingData {
-  profilePicture?: string;
+  profilePictureUrl?: string;
   motivations: string[];
   customMotivation?: string;
   hobbies: string[];
@@ -150,21 +152,27 @@ const personalityOptions = [
   { id: 'calm', label: 'Calm', icon: Heart, description: 'I stay composed and prefer peaceful environments' }
 ];
 
-export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps) {
+export default function OnboardingFlow({ user, onComplete, existingData, isEditing = false }: OnboardingFlowProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const [saving, setSaving] = useState(false);
+  const totalSteps = 9;
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [data, setData] = useState<OnboardingData>({
-    motivations: [],
-    hobbies: [],
-    customHobbies: [],
-    hasWork: false,
-    germanLevel: '',
-    speakingFears: [],
-    customFears: [],
-    timeline: '',
-    goals: [],
-    personalityTraits: [],
-    conversationTopics: []
+    profilePictureUrl: existingData?.profilePictureUrl || '',
+    motivations: existingData?.motivations || [],
+    customMotivation: existingData?.customMotivation || '',
+    hobbies: existingData?.hobbies || [],
+    customHobbies: existingData?.customHobbies || [],
+    hasWork: existingData?.hasWork || false,
+    workDomain: existingData?.workDomain || '',
+    germanLevel: existingData?.germanLevel || '',
+    speakingFears: existingData?.speakingFears || [],
+    customFears: existingData?.customFears || [],
+    timeline: existingData?.timeline || '',
+    goals: existingData?.goals || [],
+    personalityTraits: existingData?.personalityTraits || [],
+    secretDetails: existingData?.secretDetails || '',
+    conversationTopics: existingData?.conversationTopics || []
   });
   
   const [showCustomMotivation, setShowCustomMotivation] = useState(false);
@@ -175,7 +183,6 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
   const [customFearText, setCustomFearText] = useState('');
   const [profilePreview, setProfilePreview] = useState<string | null>(null);
 
-  const totalSteps = 9; // Added personality step
   const firstName = user.user_metadata?.first_name || 'there';
 
   const updateData = (updates: Partial<OnboardingData>) => {
@@ -233,7 +240,7 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
       // Upload to Supabase
       const publicUrl = await uploadProfilePicture(file);
       if (publicUrl) {
-        updateData({ profilePicture: publicUrl });
+        updateData({ profilePictureUrl: publicUrl });
       }
     }
   };
@@ -380,10 +387,10 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
         .from('user_profiles')
         .upsert({
           user_id: user.id,
-          profile_picture_url: finalData.profilePicture,
+          profile_picture_url: finalData.profilePictureUrl,
           first_name: user.user_metadata?.first_name || '',
           last_name: user.user_metadata?.last_name || ''
-        });
+        }, { onConflict: 'user_id' });
 
       if (profileError) throw profileError;
 
@@ -407,7 +414,7 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
           secret_details: finalData.secretDetails,
           conversation_topics: finalData.conversationTopics,
           completed_at: new Date().toISOString()
-        });
+        }, { onConflict: 'user_id' });
 
       if (onboardingError) throw onboardingError;
 
@@ -431,6 +438,16 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
       // Handle error - maybe show a toast notification
       alert('There was an error saving your data. Please try again.');
     }
+  };
+
+  const handleClose = () => {
+    if (isEditing) {
+      setShowCloseConfirm(true);
+    }
+  };
+
+  const confirmClose = () => {
+    onComplete(existingData || data);
   };
 
   const renderProgressBar = () => (
@@ -459,8 +476,8 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
             <div className="max-w-sm mx-auto">
               <div className="relative">
                 <div className="w-32 h-32 mx-auto mb-4 rounded-full bg-gradient-to-br from-orange-200 to-orange-300 flex items-center justify-center overflow-hidden border-4 border-white shadow-glass">
-                  {profilePreview ? (
-                    <img src={profilePreview} alt="Profile" className="w-full h-full object-cover" />
+                  {profilePreview || data.profilePictureUrl ? (
+                    <img src={profilePreview || data.profilePictureUrl} alt="Profile" className="w-full h-full object-cover" />
                   ) : (
                     <Camera className="h-12 w-12 text-orange-600" />
                   )}
@@ -1287,7 +1304,43 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
 
   return (
     <div className="min-h-screen bg-continuous-hero">
+      {/* Close Confirmation Modal */}
+      {showCloseConfirm && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="modal-glass rounded-xl max-w-md w-full p-6">
+            <h3 className="text-xl font-bold mb-4 text-glass">Discard Changes?</h3>
+            <p className="text-gray-700 mb-6">
+              Are you sure you want to close without saving your changes? All modifications will be lost.
+            </p>
+            <div className="flex space-x-4">
+              <button
+                onClick={() => setShowCloseConfirm(false)}
+                className="flex-1 px-4 py-2 btn-glossy-secondary rounded-lg"
+              >
+                Continue Editing
+              </button>
+              <button
+                onClick={confirmClose}
+                className="flex-1 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors duration-200"
+              >
+                Discard Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Close Button for Editing Mode */}
+        {isEditing && (
+          <button
+            onClick={handleClose}
+            className="absolute top-4 right-4 w-8 h-8 glass rounded-full flex items-center justify-center hover:glass-strong transition-all duration-200 z-10"
+          >
+            <X className="h-4 w-4 text-gray-600" />
+          </button>
+        )}
+
         {renderProgressBar()}
         
         <div className="min-h-[600px] flex flex-col">
@@ -1312,7 +1365,7 @@ export default function OnboardingFlow({ user, onComplete }: OnboardingFlowProps
 
             <div className="flex items-center space-x-2">
               <span className="text-sm text-gray-600">
-                {currentStep + 1} of {totalSteps}
+                {isEditing ? 'Editing Profile' : `${currentStep + 1} of ${totalSteps}`}
               </span>
             </div>
 
