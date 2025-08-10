@@ -130,10 +130,8 @@ export default function Dashboard({ user }: DashboardProps) {
     setOnboardingData(data);
     setShowOnboarding(false);
     setIsNewUser(false);
-    // Update current profile picture from onboarding data
-    if (data.profilePictureUrl) {
-      setCurrentProfilePicture(data.profilePictureUrl);
-    }
+    // Update current profile picture from onboarding data immediately
+    setCurrentProfilePicture(data.profilePictureUrl || null);
     // Keep localStorage as backup
     localStorage.setItem(`onboarding_${user.id}`, JSON.stringify(data));
   };
