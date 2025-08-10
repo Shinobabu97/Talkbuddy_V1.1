@@ -248,6 +248,33 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
     }
   };
 
+  const deleteOldProfilePicture = async (oldUrl: string) => {
+    try {
+      // Extract the file path from the URL
+      const url = new URL(oldUrl);
+      const pathParts = url.pathname.split('/');
+      const bucketIndex = pathParts.indexOf('profile-pictures');
+      
+      if (bucketIndex === -1) {
+        console.error('Invalid profile picture URL format');
+        return;
+      }
+      
+      // Get the path after 'profile-pictures/'
+      const filePath = pathParts.slice(bucketIndex + 1).join('/');
+      
+      const { error } = await supabase.storage
+        .from('profile-pictures')
+        .remove([filePath]);
+        
+      if (error) {
+        console.error('Error deleting old profile picture:', error);
+      }
+    } catch (error) {
+      console.error('Error deleting old profile picture:', error);
+    }
+  };
+
   const uploadProfilePicture = async (file: File): Promise<string | null> => {
     try {
       const fileExt = file.name.split('.').pop();
@@ -299,8 +326,8 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
       const fileName = `${user.id}/${Date.now()}.${fileExt}`;
       
       // Delete old profile picture if it exists
-      if (formData.profilePictureUrl) {
-        await deleteOldProfilePicture(formData.profilePictureUrl);
+      if (data.profilePictureUrl) {
+        await deleteOldProfilePicture(data.profilePictureUrl);
       }
 
       // Upload to Supabase Storage

@@ -143,6 +143,15 @@ export default function Dashboard({ user }: DashboardProps) {
         profilePictureUrl: newUrl
       });
     }
+    
+    // Update localStorage backup as well
+    if (onboardingData) {
+      const updatedData = {
+        ...onboardingData,
+        profilePictureUrl: newUrl
+      };
+      localStorage.setItem(`onboarding_${user.id}`, JSON.stringify(updatedData));
+    }
   };
 
   const handleRestartOnboarding = () => {
