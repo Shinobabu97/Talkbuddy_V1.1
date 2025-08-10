@@ -155,6 +155,7 @@ const personalityOptions = [
 export default function OnboardingFlow({ user, onComplete, existingData, isEditing = false }: OnboardingFlowProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const totalSteps = 9;
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [data, setData] = useState<OnboardingData>({
@@ -230,17 +231,35 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const result = e.target?.result as string;
-        setProfilePreview(result);
-      };
-      reader.readAsDataURL(file);
+      setIsUploading(true);
+      
+      try {
+        // Create a unique filename
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+        const filePath = `profile-pictures/${fileName}`;
 
-      // Upload to Supabase
-      const publicUrl = await uploadProfilePicture(file);
-      if (publicUrl) {
+        // Upload file to Supabase storage
+        const { error: uploadError } = await supabase.storage
+          .from('profile-pictures')
+          .upload(filePath, file);
+
+        if (uploadError) {
+          console.error('Upload error:', uploadError);
+          return;
+        }
+
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('profile-pictures')
+          .getPublicUrl(filePath);
+
+        // Update form data with the public URL
         updateData({ profilePictureUrl: publicUrl });
+      } catch (error) {
+        console.error('Error uploading file:', error);
+      } finally {
+        setIsUploading(false);
       }
     }
   };
@@ -482,15 +501,21 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
                     <Camera className="h-12 w-12 text-orange-600" />
                   )}
                 </div>
-                <label className="absolute bottom-0 right-1/2 transform translate-x-1/2 translate-y-2 bg-orange-500 hover:bg-orange-600 text-white p-3 rounded-full cursor-pointer shadow-glass hover:scale-110 transition-all duration-200 flex items-center justify-center">
-                  <Upload className="h-5 w-5" />
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
-                </label>
+                {isUploading ? (
+                  <div className="absolute bottom-0 right-1/2 transform translate-x-1/2 translate-y-2 bg-orange-500 text-white p-3 rounded-full shadow-glass opacity-75 cursor-not-allowed flex items-center justify-center">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  </div>
+                ) : (
+                  <label className="absolute bottom-0 right-1/2 transform translate-x-1/2 translate-y-2 bg-orange-500 hover:bg-orange-600 text-white p-3 rounded-full cursor-pointer shadow-glass hover:scale-110 transition-all duration-200 flex items-center justify-center">
+                    <Upload className="h-5 w-5" />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                  </label>
+                )}
               </div>
               <p className="text-sm text-gray-600 mt-4">
                 Add a profile picture to personalize your experience (optional)

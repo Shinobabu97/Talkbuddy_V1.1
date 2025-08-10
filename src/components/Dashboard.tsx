@@ -43,6 +43,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [onboardingData, setOnboardingData] = React.useState<OnboardingData | null>(null);
   const [isNewUser, setIsNewUser] = React.useState(true);
   const [loading, setLoading] = React.useState(true);
+  const [hoveredStat, setHoveredStat] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     loadOnboardingData();
@@ -240,16 +241,52 @@ export default function Dashboard({ user }: DashboardProps) {
               <span className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm">
                 Level: {onboardingData.germanLevel.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
               </span>
-              <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                {onboardingData.goals.length} Goals Set
-              </span>
-              <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-                {onboardingData.hobbies.length + onboardingData.customHobbies.length} Interests
-              </span>
-              {onboardingData.personalityTraits.length > 0 && (
-                <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
-                  {onboardingData.personalityTraits.length} Personality Traits
+              <div className="relative">
+                <span 
+                  className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm cursor-help"
+                  onMouseEnter={() => setHoveredStat('goals')}
+                  onMouseLeave={() => setHoveredStat(null)}
+                >
+                  {onboardingData.goals.length} Goals Set
                 </span>
+                {hoveredStat === 'goals' && (
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-10 whitespace-nowrap">
+                    {onboardingData.goals.join(', ')}
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                  </div>
+                )}
+              </div>
+              <div className="relative">
+                <span 
+                  className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm cursor-help"
+                  onMouseEnter={() => setHoveredStat('interests')}
+                  onMouseLeave={() => setHoveredStat(null)}
+                >
+                  {onboardingData.hobbies.length + onboardingData.customHobbies.length} Interests
+                </span>
+                {hoveredStat === 'interests' && (
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-10 whitespace-nowrap max-w-xs">
+                    {[...onboardingData.hobbies, ...onboardingData.customHobbies].join(', ')}
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                  </div>
+                )}
+              </div>
+              {onboardingData.personalityTraits.length > 0 && (
+                <div className="relative">
+                  <span 
+                    className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm cursor-help"
+                    onMouseEnter={() => setHoveredStat('personality')}
+                    onMouseLeave={() => setHoveredStat(null)}
+                  >
+                    {onboardingData.personalityTraits.length} Personality Traits
+                  </span>
+                  {hoveredStat === 'personality' && (
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-10 whitespace-nowrap max-w-xs">
+                      {onboardingData.personalityTraits.join(', ')}
+                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}
