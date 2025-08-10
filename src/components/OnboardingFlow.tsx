@@ -187,6 +187,51 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
 
   const firstName = user.user_metadata?.first_name || 'there';
 
+  useEffect(() => {
+    if (isEditing && existingData) {
+      setData({
+        profilePictureUrl: '',
+        motivations: existingData.motivations || [],
+        customMotivation: existingData.customMotivation || '',
+        hobbies: existingData.hobbies || [],
+        customHobbies: existingData.customHobbies || [],
+        hasWork: existingData.hasWork || false,
+        workDomain: existingData.workDomain || '',
+        germanLevel: existingData.germanLevel || '',
+        speakingFears: existingData.speakingFears || [],
+        customFears: existingData.customFears || [],
+        timeline: existingData.timeline || '',
+        goals: existingData.goals || [],
+        personalityTraits: existingData.personalityTraits || [],
+        secretDetails: existingData.secretDetails || '',
+        conversationTopics: existingData.conversationTopics || []
+      });
+      setCurrentStep(1);
+      
+      // Load profile picture from database
+      loadExistingProfilePicture();
+    }
+  }, [isEditing, existingData]);
+
+  const loadExistingProfilePicture = async () => {
+    try {
+      const { data: profileData, error } = await supabase
+        .from('user_profiles')
+        .select('profile_picture_url')
+        .eq('user_id', user.id)
+        .single();
+
+      if (profileData?.profile_picture_url && !error) {
+        setData(prev => ({
+          ...prev,
+          profilePictureUrl: profileData.profile_picture_url
+        }));
+      }
+    } catch (error) {
+      console.error('Error loading existing profile picture:', error);
+    }
+  };
+
   const updateData = (updates: Partial<OnboardingData>) => {
     setData(prev => ({ ...prev, ...updates }));
   };
