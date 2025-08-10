@@ -297,6 +297,11 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
       // Create user folder path
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+      
+      // Delete old profile picture if it exists
+      if (formData.profilePictureUrl) {
+        await deleteOldProfilePicture(formData.profilePictureUrl);
+      }
 
       // Upload to Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage

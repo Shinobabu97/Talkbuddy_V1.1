@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { supabase, AuthUser } from '../lib/supabase';
 import OnboardingFlow from './OnboardingFlow';
+import ProfilePictureModal from './ProfilePictureModal';
 
 interface DashboardProps {
   user: AuthUser;
@@ -44,6 +45,8 @@ export default function Dashboard({ user }: DashboardProps) {
   const [isNewUser, setIsNewUser] = React.useState(true);
   const [loading, setLoading] = React.useState(true);
   const [hoveredStat, setHoveredStat] = React.useState<string | null>(null);
+  const [showProfileModal, setShowProfileModal] = React.useState(false);
+  const [currentProfilePicture, setCurrentProfilePicture] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     loadOnboardingData();
@@ -63,6 +66,9 @@ export default function Dashboard({ user }: DashboardProps) {
       if (profileError && profileError.code !== 'PGRST116') {
         console.error('Error loading profile data:', profileError);
       }
+      
+      // Set current profile picture
+      setCurrentProfilePicture(profileData?.profile_picture_url || null);
 
       // Load onboarding data
       const { data: onboardingRecord, error } = await supabase
@@ -128,6 +134,17 @@ export default function Dashboard({ user }: DashboardProps) {
     localStorage.setItem(`onboarding_${user.id}`, JSON.stringify(data));
   };
 
+  const handleProfilePictureUpdate = (newUrl: string | null) => {
+    setCurrentProfilePicture(newUrl);
+    // Also update onboarding data if it exists
+    if (onboardingData) {
+      setOnboardingData({
+        ...onboardingData,
+        profilePictureUrl: newUrl
+      });
+    }
+  };
+
   const handleRestartOnboarding = () => {
     setShowOnboarding(true);
   };
@@ -191,16 +208,24 @@ export default function Dashboard({ user }: DashboardProps) {
             
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-3">
-                {onboardingData?.profilePictureUrl ? (
-                  <img 
-                    src={onboardingData.profilePictureUrl} 
-                    alt="Profile" 
-                    className="w-8 h-8 rounded-full object-cover border-2 border-white/50"
-                  />
+                {currentProfilePicture ? (
+                  <button
+                    onClick={() => setShowProfileModal(true)}
+                    className="w-8 h-8 rounded-full overflow-hidden border-2 border-white/50 hover:border-orange-400 transition-all duration-200 hover:scale-110"
+                  >
+                    <img 
+                      src={currentProfilePicture} 
+                      alt="Profile" 
+                      className="w-full h-full object-cover"
+                    />
+                  </button>
                 ) : (
-                  <div className="w-8 h-8 glass rounded-full flex items-center justify-center">
+                  <button
+                    onClick={() => setShowProfileModal(true)}
+                    className="w-8 h-8 glass rounded-full flex items-center justify-center hover:glass-strong transition-all duration-200 hover:scale-110"
+                  >
                     <User className="h-4 w-4 text-gray-600" />
-                  </div>
+                  </button>
                 )}
                 <span className="text-gray-800 font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>Hi, {firstName}!</span>
               </div>
@@ -228,12 +253,17 @@ export default function Dashboard({ user }: DashboardProps) {
         {/* Welcome Section */}
         <div className="mb-8">
           <div className="flex items-center space-x-4 mb-4">
-            {onboardingData?.profilePictureUrl && (
-              <img 
-                src={onboardingData.profilePictureUrl} 
-                alt="Profile" 
-                className="w-16 h-16 rounded-full object-cover border-4 border-white/50 shadow-glass"
-              />
+            {currentProfilePicture && (
+              <button
+                onClick={() => setShowProfileModal(true)}
+                className="w-16 h-16 rounded-full overflow-hidden border-4 border-white/50 shadow-glass hover:border-orange-400 transition-all duration-200 hover:scale-105"
+              >
+                <img 
+                  src={currentProfilePicture} 
+                  alt="Profile" 
+                  className="w-full h-full object-cover"
+                />
+              </button>
             )}
             <div>
               <h1 className="text-3xl font-bold text-glass-light">
@@ -461,6 +491,14 @@ export default function Dashboard({ user }: DashboardProps) {
           </div>
         </div>
       </main>
+      
+      <ProfilePictureModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        user={user}
+        currentPictureUrl={currentProfilePicture}
+        onPictureUpdate={handleProfilePictureUpdate}
+      />
     </div>
   );
 }
