@@ -53,7 +53,18 @@ export default function Dashboard({ user }: DashboardProps) {
     try {
       setLoading(true);
       
-      // Check database first
+      // Load user profile data first
+      const { data: profileData, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('profile_picture_url')
+        .eq('user_id', user.id)
+        .single();
+
+      if (profileError && profileError.code !== 'PGRST116') {
+        console.error('Error loading profile data:', profileError);
+      }
+
+      // Load onboarding data
       const { data: onboardingRecord, error } = await supabase
         .from('user_onboarding')
         .select('*')
@@ -67,7 +78,7 @@ export default function Dashboard({ user }: DashboardProps) {
       if (onboardingRecord && onboardingRecord.completed_at) {
         // User has completed onboarding
         const data: OnboardingData = {
-          profilePictureUrl: onboardingRecord.profile_picture_url,
+          profilePictureUrl: profileData?.profile_picture_url || null,
           motivations: onboardingRecord.motivations || [],
           customMotivation: onboardingRecord.custom_motivation,
           hobbies: onboardingRecord.hobbies || [],
