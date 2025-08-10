@@ -249,15 +249,14 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
     setUploadError(null);
 
     try {
-      // Create unique filename
+      // Create user folder path
       const fileExt = file.name.split('.').pop();
-      const fileName = `${user.id}-${Date.now()}.${fileExt}`;
-      const filePath = `profile-pictures/${fileName}`;
+      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
 
       // Upload to Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('profile-pictures')
-        .upload(filePath, file, {
+        .upload(fileName, file, {
           cacheControl: '3600',
           upsert: false
         });
@@ -269,7 +268,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
       // Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from('profile-pictures')
-        .getPublicUrl(filePath);
+        .getPublicUrl(fileName);
 
       // Update form data with the public URL
       updateData({ profilePictureUrl: publicUrl });
