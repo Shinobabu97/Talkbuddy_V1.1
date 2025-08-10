@@ -46,19 +46,33 @@ export default function ProfilePictureModal({
     setPreviewUrl(url);
   };
 
-  const deleteOldProfilePicture = async (oldUrl: string) => {
+  const deleteOldProfilePicture = async (oldUrl: string | null) => {
+    if (!oldUrl) return;
+    
     try {
-      // Extract file path from URL
-      const urlParts = oldUrl.split('/');
-      const fileName = urlParts[urlParts.length - 1];
-      const filePath = `${user.id}/${fileName}`;
+      // Extract the file path from the URL
+      // URL format: https://[project].supabase.co/storage/v1/object/public/profile-pictures/user_id/filename.ext
+      const url = new URL(oldUrl);
+      const pathParts = url.pathname.split('/');
+      const bucketIndex = pathParts.indexOf('profile-pictures');
       
-      await supabase.storage
+      if (bucketIndex === -1) {
+        console.error('Invalid profile picture URL format');
+        return;
+      }
+      
+      // Get the path after 'profile-pictures/'
+      const filePath = pathParts.slice(bucketIndex + 1).join('/');
+      
+      const { error } = await supabase.storage
         .from('profile-pictures')
         .remove([filePath]);
+        
+      if (error) {
+        console.error('Error deleting old profile picture:', error);
+      }
     } catch (error) {
       console.error('Error deleting old profile picture:', error);
-      // Don't throw error - it's not critical if old file deletion fails
     }
   };
 
@@ -72,16 +86,12 @@ export default function ProfilePictureModal({
     setError(null);
 
     try {
-      // Delete old profile picture if it exists
-      if (currentPictureUrl) {
-        await deleteOldProfilePicture(currentPictureUrl);
-      }
-
-      // Upload new file
+      // Create unique filename
       const fileExt = selectedFile.name.split('.').pop();
       const fileName = `${Date.now()}.${fileExt}`;
       const filePath = `${user.id}/${fileName}`;
 
+      // Upload new file to Supabase Storage
       const { error: uploadError } = await supabase.storage
         .from('profile-pictures')
         .upload(filePath, selectedFile, {
@@ -95,6 +105,11 @@ export default function ProfilePictureModal({
       const { data: { publicUrl } } = supabase.storage
         .from('profile-pictures')
         .getPublicUrl(filePath);
+
+      // Delete old profile picture after successful upload
+      if (currentPictureUrl) {
+        await deleteOldProfilePicture(currentPictureUrl);
+      }
 
       // Update user profile in database
       const { error: dbError } = await supabase
@@ -115,7 +130,8 @@ export default function ProfilePictureModal({
 
     } catch (error) {
       console.error('Error uploading profile picture:', error);
-      setError('Failed to upload image. Please try again.');
+      const err = error as Error;
+      setError(err.message || 'Failed to upload image. Please try again.');
     } finally {
       setUploading(false);
     }
@@ -150,7 +166,8 @@ export default function ProfilePictureModal({
 
     } catch (error) {
       console.error('Error removing profile picture:', error);
-      setError('Failed to remove image. Please try again.');
+      const err = error as Error;
+      setError(err.message || 'Failed to remove image. Please try again.');
     } finally {
       setUploading(false);
     }
