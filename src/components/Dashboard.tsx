@@ -629,20 +629,21 @@ export default function Dashboard({ user }: DashboardProps) {
 
                 {/* Action Buttons */}
                 <div className="flex items-center justify-between">
-                  <div className="flex space-x-3">
+                  <div></div>
+                  
+                  <div className="flex items-center space-x-3">
                     <button className="p-3 apple-input rounded-full hover:bg-gray-50 transition-colors">
                       <Mic className="h-5 w-5 text-gray-600" />
                     </button>
+                    <button 
+                      onClick={createNewConversation}
+                      disabled={!conversationInput.trim()}
+                      className="apple-button px-8 py-3 rounded-full flex items-center space-x-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Play className="h-4 w-4" />
+                      <span>Ask</span>
+                    </button>
                   </div>
-                  
-                  <button 
-                    onClick={createNewConversation}
-                    disabled={!conversationInput.trim()}
-                    className="apple-button px-8 py-3 rounded-full flex items-center space-x-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Play className="h-4 w-4" />
-                    <span>Ask</span>
-                  </button>
                 </div>
               </div>
             </div>
