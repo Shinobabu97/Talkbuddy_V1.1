@@ -621,6 +621,24 @@ html {
   background: rgba(0, 0, 0, 0.3);
 }
 
+/* Custom scrollbar for conversations */
+.conversation-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.conversation-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.conversation-scroll::-webkit-scrollbar-thumb {
+  background: rgba(203, 213, 225, 0.8);
+  border-radius: 2px;
+}
+
+.conversation-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.8);
+}
+
 /* Focus States */
 .focus-glass:focus {
   outline: none;

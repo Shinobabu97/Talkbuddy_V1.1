@@ -14,7 +14,8 @@ import {
   BarChart3,
   MessageCircle,
   Target,
-  Bot
+  Bot,
+  X
 } from 'lucide-react';
 import { supabase, AuthUser } from '../lib/supabase';
 import OnboardingFlow from './OnboardingFlow';
@@ -57,7 +58,6 @@ interface ChatMessage {
   content: string;
   timestamp: string;
 }
-
 export default function Dashboard({ user }: DashboardProps) {
   const [showOnboarding, setShowOnboarding] = React.useState(false);
   const [onboardingData, setOnboardingData] = React.useState<OnboardingData | null>(null);
@@ -85,6 +85,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [suggestedResponses, setSuggestedResponses] = useState<{[key: string]: string[]}>({});
   const [showTranslation, setShowTranslation] = useState<{[key: string]: boolean}>({});
   const [showSuggestions, setShowSuggestions] = useState<{[key: string]: boolean}>({});
+  const [deletingConversation, setDeletingConversation] = useState<string | null>(null);
 
   React.useEffect(() => {
     loadOnboardingData();
@@ -418,6 +419,39 @@ export default function Dashboard({ user }: DashboardProps) {
     setMessageInput(suggestion);
   };
 
+  const deleteConversation = async (conversationId: string) => {
+    if (!confirm('Are you sure you want to delete this conversation?')) {
+      return;
+    }
+
+    setDeletingConversation(conversationId);
+    
+    try {
+      const { error } = await supabase
+        .from('conversations')
+        .delete()
+        .eq('id', conversationId)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      // Remove from local state
+      setConversations(prev => prev.filter(conv => conv.id !== conversationId));
+      
+      // If this was the current conversation, clear it
+      if (selectedConversation === conversationId) {
+        setSelectedConversation(null);
+        setChatMessages([]);
+      }
+
+    } catch (error) {
+      console.error('Error deleting conversation:', error);
+      alert('Failed to delete conversation. Please try again.');
+    } finally {
+      setDeletingConversation(null);
+    }
+  };
+
   const sendMessage = async () => {
     if (!messageInput.trim() || isSending || !selectedConversation) return;
 
@@ -733,23 +767,37 @@ export default function Dashboard({ user }: DashboardProps) {
             ) : filteredConversations.length > 0 ? (
               <div className="space-y-1">
                 {filteredConversations.map((conversation) => (
-                  <button
+                  <div
                     key={conversation.id}
-                    onClick={() => startNewConversation(conversation.id)}
-                    className={`w-full text-left p-3 rounded-lg transition-colors ${
+                    className={`p-3 rounded-lg transition-colors group ${
                       selectedConversation === conversation.id
                         ? 'bg-blue-50 border border-blue-200'
                         : 'hover:bg-gray-50 border border-transparent'
                     }`}
                   >
-                    <div className="flex items-start justify-between mb-1">
-                      <h4 className="text-sm font-medium truncate apple-text-primary">
-                        {conversation.title}
-                      </h4>
+                    <div className="flex items-start justify-between">
+                      <div 
+                        onClick={() => startNewConversation(conversation.id)}
+                        className="flex-1 cursor-pointer"
+                      >
+                        <h4 className="text-sm font-medium truncate apple-text-primary">
+                          {conversation.title}
+                        </h4>
+                        <p className="text-xs apple-text-secondary truncate mb-1">{conversation.preview}</p>
+                        <p className="text-xs text-gray-400">{formatTime(conversation.updated_at)}</p>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteConversation(conversation.id);
+                        }}
+                        className="ml-2 p-1 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all duration-200"
+                        title="Delete conversation"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
                     </div>
-                    <p className="text-xs apple-text-secondary truncate mb-1">{conversation.preview}</p>
-                    <p className="text-xs text-gray-400">{formatTime(conversation.updated_at)}</p>
-                  </button>
+                  </div>
                 ))}
               </div>
             ) : (
@@ -903,7 +951,7 @@ export default function Dashboard({ user }: DashboardProps) {
                           onClick={() => useSuggestedResponse(suggestion)}
                           className="block w-full text-left bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors"
                         >
-                          <div className="font-medium">{suggestion}</div>
+                          {suggestion}
                         </button>
                       ))}
                     </div>
