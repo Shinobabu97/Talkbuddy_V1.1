@@ -190,7 +190,7 @@ export default function ProfilePictureModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-amber-900/40 to-orange-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+    <div className="fixed inset-0 bg-gradient-to-br from-blue-900/40 to-indigo-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
       <div className="modal-glass rounded-xl max-w-md w-full p-6 relative shadow-glass-xl">
         <button
           onClick={handleClose}
