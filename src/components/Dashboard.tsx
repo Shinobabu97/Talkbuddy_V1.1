@@ -761,7 +761,7 @@ export default function Dashboard({ user }: DashboardProps) {
           </div>
           <div className="flex-1 overflow-y-auto px-4 pb-4">
             {conversationsLoading ? (
-              <div className="flex items-center justify-center py-8">
+            <div className="space-y-2">
                 <Loader2 className="h-5 w-5 text-gray-400 animate-spin" />
               </div>
             ) : filteredConversations.length > 0 ? (
