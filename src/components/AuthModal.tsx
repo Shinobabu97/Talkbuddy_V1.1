@@ -265,7 +265,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
             <div className="space-y-2">
               <button
                 onClick={() => switchMode('signup')}
-                className="text-orange-600 hover:text-orange-700 font-medium transition-colors duration-200"
+                className="text-blue-600 hover:text-blue-700 font-medium transition-colors duration-200"
               >
                 Don't have an account? Sign up
               </button>
@@ -281,14 +281,14 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
           ) : mode === 'signup' ? (
             <button
               onClick={() => switchMode('login')}
-              className="text-orange-600 hover:text-orange-700 font-medium transition-colors duration-200"
+              className="text-blue-600 hover:text-blue-700 font-medium transition-colors duration-200"
             >
               Already have an account? Sign in
             </button>
           ) : (
             <button
               onClick={() => switchMode('login')}
-              className="text-orange-600 hover:text-orange-700 font-medium transition-colors duration-200"
+              className="text-blue-600 hover:text-blue-700 font-medium transition-colors duration-200"
             >
               Back to sign in
             </button>
