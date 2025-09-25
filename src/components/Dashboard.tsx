@@ -595,7 +595,7 @@ export default function Dashboard({ user }: DashboardProps) {
                         <div className="flex space-x-2 ml-4">
                           <button
                             onClick={() => setSelectedConversation(conversation.id)}
-                            className="px-3 py-1 text-sm btn-glossy text-white rounded-md font-medium transition-all duration-300"
+                            className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
                           >
                             Review
                           </button>
@@ -604,7 +604,7 @@ export default function Dashboard({ user }: DashboardProps) {
                               setConversationInput(conversation.preview);
                               setCurrentView('dashboard');
                             }}
-                            className="px-3 py-1 text-sm btn-glossy text-white rounded-md font-medium transition-all duration-300"
+                            className="px-3 py-1 text-sm bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors"
                           >
                             Re-practice
                           </button>
@@ -767,7 +767,7 @@ export default function Dashboard({ user }: DashboardProps) {
                     <button 
                       onClick={createNewConversation}
                       disabled={!conversationInput.trim()}
-                      className="btn-glossy px-8 py-3 rounded-full flex items-center space-x-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed text-white"
+                      className="apple-button px-8 py-3 rounded-full flex items-center space-x-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Play className="h-4 w-4" />
                       <span>Ask</span>
