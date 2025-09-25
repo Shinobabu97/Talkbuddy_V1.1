@@ -181,6 +181,7 @@ export default function Dashboard({ user }: DashboardProps) {
     if (!conversationInput.trim()) return;
 
     try {
+      // Create the conversation in database
       const { data, error } = await supabase
         .from('conversations')
         .insert({
@@ -195,16 +196,91 @@ export default function Dashboard({ user }: DashboardProps) {
 
       if (error) throw error;
 
-      // Add to conversations list
+      // Add to conversations list and start immediately
       setConversations(prev => [data, ...prev]);
       
-      // Start the new conversation
-      startNewConversation(data.id);
+      // Start the conversation with user's input as first message
+      startConversationWithUserMessage(data.id, conversationInput.trim());
       
       // Clear input
       setConversationInput('');
     } catch (error) {
       console.error('Error creating conversation:', error);
+    }
+  };
+
+  const startConversationWithUserMessage = (conversationId: string, userMessage: string) => {
+    setSelectedConversation(conversationId);
+    
+    // Set initial messages with user's topic as first message
+    const initialUserMessage: ChatMessage = {
+      id: '1',
+      role: 'user',
+      content: userMessage,
+      timestamp: new Date().toISOString()
+    };
+    
+    setChatMessages([initialUserMessage]);
+    
+    // Immediately send the user's message to get AI response
+    sendInitialMessage(conversationId, userMessage);
+  };
+
+  const sendInitialMessage = async (conversationId: string, userMessage: string) => {
+    setIsSending(true);
+    setIsTyping(true);
+
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [{
+            role: 'user',
+            content: userMessage
+          }],
+          conversationId,
+          contextLevel,
+          difficultyLevel,
+          userProfile: onboardingData ? {
+            germanLevel: onboardingData.germanLevel,
+            goals: onboardingData.goals,
+            personalityTraits: onboardingData.personalityTraits,
+            conversationTopics: onboardingData.conversationTopics
+          } : undefined
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get response');
+      }
+
+      const data = await response.json();
+      
+      const assistantMessage: ChatMessage = {
+        id: '2',
+        role: 'assistant',
+        content: data.message,
+        timestamp: new Date().toISOString()
+      };
+
+      setChatMessages(prev => [...prev, assistantMessage]);
+
+    } catch (error) {
+      console.error('Error sending initial message:', error);
+      const errorMessage: ChatMessage = {
+        id: '2',
+        role: 'assistant',
+        content: 'Entschuldigung, ich hatte ein technisches Problem. Können Sie das bitte wiederholen? (Sorry, I had a technical issue. Could you please repeat that?)',
+        timestamp: new Date().toISOString()
+      };
+      setChatMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsSending(false);
+      setIsTyping(false);
     }
   };
 
@@ -905,7 +981,7 @@ export default function Dashboard({ user }: DashboardProps) {
                       className="apple-button px-8 py-3 rounded-full flex items-center space-x-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Play className="h-4 w-4" />
-                      <span>Ask</span>
+                      <span>Start Chat</span>
                     </button>
                   </div>
                 </div>
