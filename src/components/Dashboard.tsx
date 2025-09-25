@@ -1010,7 +1010,7 @@ export default function Dashboard({ user }: DashboardProps) {
               <div className="apple-card rounded-xl p-6 mb-8">
                 <h2 className="text-xl font-semibold apple-text-primary mb-4">Recent Practice Sessions</h2>
                 {conversations.length > 0 ? (
-                  <div className="space-y-4 h-96 overflow-y-auto pr-2 conversation-scroll">
+                  <div className="space-y-4 h-96 overflow-y-scroll pr-2 conversation-scroll">
                     {conversations.slice(0, 5).map((conversation) => (
                       <div key={conversation.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                         <div className="flex-1">
