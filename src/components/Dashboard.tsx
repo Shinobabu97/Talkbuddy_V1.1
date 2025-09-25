@@ -629,24 +629,3 @@ export default function Dashboard({ user }: DashboardProps) {
           </div>
         )}
       </div>
-
-      <ProfilePictureModal
-        isOpen={showProfileModal}
-        onClose={() => setShowProfileModal(false)}
-        user={user}
-        currentPictureUrl={currentProfilePicture}
-        onPictureUpdate={handleProfilePictureUpdate}
-      />
-    </>
-  );
-}
-      <ProfilePictureModal
-        isOpen={showProfileModal}
-        onClose={() => setShowProfileModal(false)}
-        user={user}
-        currentPictureUrl={currentProfilePicture}
-        onPictureUpdate={handleProfilePictureUpdate}
-      />
-    </>
-  );
-}
