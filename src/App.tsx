@@ -362,8 +362,8 @@ function App() {
               <div className="absolute inset-0 bg-gradient-to-r from-blue-100/60 to-indigo-100/60 rounded-full transform scale-110 opacity-40"></div>
               <div className="relative card-glass rounded-2xl p-8 shadow-glass-xl">
                 <img 
-                  src="https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg?auto=compress&cs=tinysrgb&w=500&h=500&fit=crop" 
-                  alt="Person practicing language with TalkBuddy" 
+                  src="https://images.pexels.com/photos/4145190/pexels-photo-4145190.jpeg?auto=compress&cs=tinysrgb&w=600&h=400&fit=crop" 
+                  alt="Professional using TalkBuddy for language practice" 
                   className="w-full h-64 object-cover rounded-lg mb-4"
                 />
                 <div className="space-y-3">
@@ -372,7 +372,7 @@ function App() {
                     <span className="text-sm text-gray-700 font-medium">AI Language Partner Active</span>
                   </div>
                   <div className="glass-subtle rounded-lg p-3">
-                    <p className="text-sm text-gray-700 italic">"Let's practice ordering at a restaurant. I'll be the waiter, and you're the customer..."</p>
+                    <p className="text-sm text-gray-700 italic">"Great! Let's practice your presentation skills. I'll ask you questions about your project..."</p>
                   </div>
                 </div>
               </div>
