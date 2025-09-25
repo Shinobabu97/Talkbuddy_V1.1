@@ -431,10 +431,7 @@ export default function Dashboard({ user }: DashboardProps) {
     setIsSending(true);
     setIsTyping(true);
 
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/suggest`;
-      console.log('Calling suggest API:', apiUrl);
-      
-      const response = await fetch(apiUrl, {
+    try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
         headers: {
@@ -458,23 +455,17 @@ export default function Dashboard({ user }: DashboardProps) {
         })
       });
 
-      console.log('Response status:', response.status);
-      
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('API Error:', errorText);
-        throw new Error(`Failed to generate suggestions: ${response.status}`);
+        throw new Error('Failed to get response');
       }
 
       const data = await response.json();
-      console.log('Suggestions data:', data);
       
       const assistantMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: data.message,
-        console.error('Invalid suggestions format:', data);
-        throw new Error('Invalid suggestions format from API');
+        timestamp: new Date().toISOString()
       };
 
       setChatMessages(prev => [...prev, assistantMessage]);
@@ -484,16 +475,6 @@ export default function Dashboard({ user }: DashboardProps) {
 
     } catch (error) {
       console.error('Error sending message:', error);
-      // Show error state or fallback
-      setSuggestions(prev => ({ 
-        ...prev, 
-        [messageId]: [
-          { german: 'Das ist interessant.', english: 'That is interesting.' },
-          { german: 'Können Sie das erklären?', english: 'Can you explain that?' },
-          { german: 'Ich verstehe.', english: 'I understand.' }
-        ]
-      }));
-      setShowSuggestions(prev => ({ ...prev, [messageId]: true }));
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -917,13 +898,10 @@ export default function Dashboard({ user }: DashboardProps) {
                       {suggestedResponses[message.id].map((suggestion, index) => (
                         <button
                           key={index}
-                          onClick={() => useSuggestedResponse(suggestion.german)}
+                          onClick={() => useSuggestedResponse(suggestion)}
                           className="block w-full text-left bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors"
                         >
-                          <div className="font-medium">{suggestion.german}</div>
-                          {showTranslation[message.id] && (
-                            <div className="text-gray-500 text-xs mt-1">{suggestion.english}</div>
-                          )}
+                          {suggestion}
                         </button>
                       ))}
                     </div>

@@ -8,52 +8,52 @@ const corsHeaders = {
 
 interface SuggestRequest {
   germanText: string
-  context?: Array<{ role: string; content: string }>
+  conversationContext: Array<{role: string, content: string}>
 }
 
-Deno.serve(async (req) => {
+serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    console.log('Suggest function called');
-    
-    const { germanText, context }: SuggestRequest = await req.json()
-    console.log('Request data:', { germanText, context });
+    const { germanText, conversationContext }: SuggestRequest = await req.json()
 
     // Get OpenAI API key from environment
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
     if (!openaiApiKey) {
-      console.error('OpenAI API key not found');
       throw new Error('OpenAI API key not configured')
     }
 
-    // Create context string
-    const contextStr = context 
-      ? context.map(msg => `${msg.role}: ${msg.content}`).join('\n')
-      : '';
+    // Create context from conversation history
+    const contextString = conversationContext
+      .map(msg => `${msg.role}: ${msg.content}`)
+      .join('\n')
 
     // Create suggestion prompt
-    const prompt = `Based on this German conversation context:
-${contextStr}
+    const prompt = `You are helping a German language learner practice conversation. Based on this German message: "${germanText}"
 
-The AI just said: "${germanText}"
+Conversation context:
+${contextString}
 
-Generate exactly 3 appropriate German responses that a language learner might give, along with their English translations. 
+Generate exactly 3 appropriate German responses that a learner could use to continue this conversation naturally. Each response should be at an intermediate level and contextually appropriate.
 
-Format your response as a JSON array like this:
-[
-  {"german": "German response 1", "english": "English translation 1"},
-  {"german": "German response 2", "english": "English translation 2"},
-  {"german": "German response 3", "english": "English translation 3"}
-]
+Format your response as JSON with this exact structure:
+{
+  "suggestions": [
+    {"german": "German response 1", "english": "English translation 1"},
+    {"german": "German response 2", "english": "English translation 2"},
+    {"german": "German response 3", "english": "English translation 3"}
+  ]
+}
 
-Make the responses varied - one agreeing/positive, one questioning/curious, and one that continues the conversation naturally.`
+Make sure the responses are:
+1. Contextually appropriate for the conversation
+2. At an intermediate German level
+3. Natural and commonly used phrases
+4. Varied in tone (agreeing, questioning, elaborating)`
 
-    console.log('Calling OpenAI API');
-    
     // Call OpenAI API
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -66,7 +66,7 @@ Make the responses varied - one agreeing/positive, one questioning/curious, and 
         messages: [
           {
             role: 'system',
-            content: 'You are a helpful assistant that generates German language learning responses. Always respond with valid JSON only.'
+            content: 'You are a German language learning assistant. Always respond with valid JSON in the exact format requested.'
           },
           {
             role: 'user',
@@ -80,38 +80,34 @@ Make the responses varied - one agreeing/positive, one questioning/curious, and 
 
     if (!response.ok) {
       const error = await response.text()
-      console.error('OpenAI API error:', error);
       throw new Error(`OpenAI API error: ${error}`)
     }
 
     const data = await response.json()
-    console.log('OpenAI response:', data);
-    
     const content = data.choices[0]?.message?.content?.trim()
 
     if (!content) {
-      console.error('No content from OpenAI');
       throw new Error('No suggestions received from OpenAI')
     }
 
     // Parse the JSON response
     let suggestions
     try {
-      suggestions = JSON.parse(content)
-      console.log('Parsed suggestions:', suggestions);
+      const parsed = JSON.parse(content)
+      suggestions = parsed.suggestions
     } catch (parseError) {
-      console.error('JSON parse error:', parseError, 'Content:', content);
-      throw new Error('Invalid JSON response from OpenAI')
-    }
-
-    if (!Array.isArray(suggestions) || suggestions.length !== 3) {
-      console.error('Invalid suggestions format:', suggestions);
-      throw new Error('Invalid suggestions format')
+      // Fallback if JSON parsing fails
+      suggestions = [
+        { german: "Das ist interessant.", english: "That's interesting." },
+        { german: "Können Sie das erklären?", english: "Can you explain that?" },
+        { german: "Ich verstehe.", english: "I understand." }
+      ]
     }
 
     return new Response(
       JSON.stringify({
-        suggestions: suggestions
+        suggestions: suggestions,
+        originalText: germanText
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
