@@ -275,15 +275,12 @@ export default function Dashboard({ user }: DashboardProps) {
   };
 
   return (
-    <>
-      <div className="min-h-screen bg-gray-50 flex">
+    <div className="min-h-screen bg-gray-50 flex">
       {/* Sidebar */}
       <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
         {/* Sidebar Header */}
         <div className="p-4 border-b border-gray-100">
-          <div className="flex items-center justify-
-  )
-}between mb-4">
+          <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-2">
               <MessageCircle className="h-6 w-6 text-blue-500" />
               <span className="text-lg font-semibold text-gray-900 apple-text-primary">TalkBuddy</span>
@@ -451,6 +448,7 @@ export default function Dashboard({ user }: DashboardProps) {
       </div>
 
       {/* Main Content */}
+      <div className="flex-1 flex flex-col">
         {selectedConversation ? (
           // Conversation View
           <div className="flex-1 flex flex-col">
@@ -611,6 +609,7 @@ export default function Dashboard({ user }: DashboardProps) {
                 {/* Action Buttons */}
                 <div className="flex items-center justify-between">
                   <div className="flex space-x-3">
+                    <button className="p-3 apple-input rounded-full hover:bg-gray-50 transition-colors">
                   <button 
                     onClick={createNewConversation}
                     disabled={!conversationInput.trim()}
@@ -629,3 +628,14 @@ export default function Dashboard({ user }: DashboardProps) {
           </div>
         )}
       </div>
+
+      <ProfilePictureModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        user={user}
+        currentPictureUrl={currentProfilePicture}
+        onPictureUpdate={handleProfilePictureUpdate}
+      />
+    </div>
+  );
+}
