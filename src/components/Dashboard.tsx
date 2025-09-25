@@ -67,6 +67,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [conversationsLoading, setConversationsLoading] = useState(false);
   const [currentView, setCurrentView] = useState<'dashboard' | 'vocab'>('dashboard');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
 
   React.useEffect(() => {
     loadOnboardingData();
@@ -354,26 +355,6 @@ export default function Dashboard({ user }: DashboardProps) {
           </div>
         </div>
 
-        {/* Conversation Categories */}
-        <div className="p-4 border-b border-gray-100">
-          <h3 className="text-sm font-medium text-gray-700 mb-3 apple-text-primary">Conversation Categories</h3>
-          <div className="space-y-1">
-            {conversationCategories.map((category) => (
-              <button
-                key={category}
-                onClick={() => setSelectedCategory(selectedCategory === category ? null : category)}
-                className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${
-                  selectedCategory === category
-                    ? 'bg-blue-50 text-blue-600 font-medium'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 apple-text-secondary'
-                }`}
-              >
-                {category}
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Search */}
         <div className="p-4 border-b border-gray-100">
           <div className="relative">
@@ -393,14 +374,44 @@ export default function Dashboard({ user }: DashboardProps) {
           <div className="p-4 pb-2">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-gray-700 apple-text-primary">Recent Conversations</h3>
-              {selectedCategory && (
+              <div className="relative">
                 <button
-                  onClick={() => setSelectedCategory(null)}
-                  className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                  onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
+                  className="flex items-center space-x-1 text-xs text-gray-600 hover:text-gray-900 font-medium px-2 py-1 rounded-md hover:bg-gray-50 transition-colors"
                 >
-                  Clear filter
+                  <span>{selectedCategory || 'All Categories'}</span>
+                  <ChevronDown className="h-3 w-3" />
                 </button>
-              )}
+                {showCategoryDropdown && (
+                  <div className="absolute top-full right-0 mt-1 w-40 apple-card rounded-lg shadow-lg z-10 py-1">
+                    <button
+                      onClick={() => {
+                        setSelectedCategory(null);
+                        setShowCategoryDropdown(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 transition-colors ${
+                        selectedCategory === null ? 'text-blue-600 font-medium' : 'text-gray-700'
+                      }`}
+                    >
+                      All Categories
+                    </button>
+                    {conversationCategories.map((category) => (
+                      <button
+                        key={category}
+                        onClick={() => {
+                          setSelectedCategory(selectedCategory === category ? null : category);
+                          setShowCategoryDropdown(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 transition-colors ${
+                          selectedCategory === category ? 'text-blue-600 font-medium' : 'text-gray-700'
+                        }`}
+                      >
+                        {category}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           <div className="flex-1 overflow-y-auto px-4 pb-4">
