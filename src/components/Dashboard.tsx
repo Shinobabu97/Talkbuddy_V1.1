@@ -431,7 +431,10 @@ export default function Dashboard({ user }: DashboardProps) {
     setIsSending(true);
     setIsTyping(true);
 
-    try {
+      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/suggest`;
+      console.log('Calling suggest API:', apiUrl);
+      
+      const response = await fetch(apiUrl, {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
         headers: {
@@ -455,17 +458,23 @@ export default function Dashboard({ user }: DashboardProps) {
         })
       });
 
+      console.log('Response status:', response.status);
+      
       if (!response.ok) {
-        throw new Error('Failed to get response');
+        const errorText = await response.text();
+        console.error('API Error:', errorText);
+        throw new Error(`Failed to generate suggestions: ${response.status}`);
       }
 
       const data = await response.json();
+      console.log('Suggestions data:', data);
       
       const assistantMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: data.message,
-        timestamp: new Date().toISOString()
+        console.error('Invalid suggestions format:', data);
+        throw new Error('Invalid suggestions format from API');
       };
 
       setChatMessages(prev => [...prev, assistantMessage]);
@@ -475,6 +484,16 @@ export default function Dashboard({ user }: DashboardProps) {
 
     } catch (error) {
       console.error('Error sending message:', error);
+      // Show error state or fallback
+      setSuggestions(prev => ({ 
+        ...prev, 
+        [messageId]: [
+          { german: 'Das ist interessant.', english: 'That is interesting.' },
+          { german: 'Können Sie das erklären?', english: 'Can you explain that?' },
+          { german: 'Ich verstehe.', english: 'I understand.' }
+        ]
+      }));
+      setShowSuggestions(prev => ({ ...prev, [messageId]: true }));
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
