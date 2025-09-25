@@ -281,7 +281,9 @@ export default function Dashboard({ user }: DashboardProps) {
       <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
         {/* Sidebar Header */}
         <div className="p-4 border-b border-gray-100">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-
+  )
+}between mb-4">
             <div className="flex items-center space-x-2">
               <MessageCircle className="h-6 w-6 text-blue-500" />
               <span className="text-lg font-semibold text-gray-900 apple-text-primary">TalkBuddy</span>
@@ -628,6 +630,16 @@ export default function Dashboard({ user }: DashboardProps) {
         )}
       </div>
 
+      <ProfilePictureModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        user={user}
+        currentPictureUrl={currentProfilePicture}
+        onPictureUpdate={handleProfilePictureUpdate}
+      />
+    </>
+  );
+}
       <ProfilePictureModal
         isOpen={showProfileModal}
         onClose={() => setShowProfileModal(false)}
