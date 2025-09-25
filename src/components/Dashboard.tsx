@@ -351,10 +351,59 @@ export default function Dashboard({ user }: DashboardProps) {
   };
 
   const toggleTranslation = (messageId: string) => {
-    setShowTranslation(prev => ({
-      ...prev,
-      [messageId]: !prev[messageId]
-    }));
+    const isCurrentlyShowing = showTranslation[messageId];
+    
+    if (isCurrentlyShowing) {
+      // Hide translation
+      setShowTranslation(prev => ({
+        ...prev,
+        [messageId]: false
+      }));
+    } else {
+      // Show translation - get it if we don't have it
+      if (!translatedMessages[messageId]) {
+        // Find the message content
+        const message = chatMessages.find(msg => msg.id === messageId);
+        if (message) {
+          translateMessage(messageId, message.content);
+        }
+      }
+      setShowTranslation(prev => ({
+        ...prev,
+        [messageId]: true
+      }));
+    }
+  };
+
+  const translateMessage = async (messageId: string, germanText: string) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/translate`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: germanText,
+          targetLanguage: 'English'
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setTranslatedMessages(prev => ({
+          ...prev,
+          [messageId]: data.translation
+        }));
+      }
+    } catch (error) {
+      console.error('Error translating message:', error);
+      // Fallback - set a placeholder
+      setTranslatedMessages(prev => ({
+        ...prev,
+        [messageId]: 'Translation unavailable'
+      }));
+    }
   };
 
   const toggleSuggestions = (messageId: string) => {
