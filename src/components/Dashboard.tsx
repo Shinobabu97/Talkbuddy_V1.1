@@ -302,7 +302,7 @@ export default function Dashboard({ user }: DashboardProps) {
         body: JSON.stringify({
           messages: [{
             role: 'user',
-            content: `Please provide: 1) English translation of: "${germanText}" 2) Three suggested German responses that a language learner could use to reply. Format as: TRANSLATION: [translation] SUGGESTIONS: [suggestion1] | [suggestion2] | [suggestion3]`
+            content: `Please provide: 1) English translation of: "${germanText}" 2) Three suggested German responses with English translations that a language learner could use to reply. Format as: TRANSLATION: [translation] SUGGESTIONS: [german1]=[english1] | [german2]=[english2] | [german3]=[english3]`
           }],
           conversationId: 'helper',
           contextLevel,
@@ -326,7 +326,13 @@ export default function Dashboard({ user }: DashboardProps) {
         }
         
         if (suggestionsMatch) {
-          const suggestions = suggestionsMatch[1].split('|').map(s => s.trim());
+          const suggestions = suggestionsMatch[1].split('|').map(s => {
+            const parts = s.trim().split('=');
+            return {
+              german: parts[0]?.trim() || s.trim(),
+              english: parts[1]?.trim() || ''
+            };
+          });
           setSuggestedResponses(prev => ({
             ...prev,
             [messageId]: suggestions
@@ -849,12 +855,12 @@ export default function Dashboard({ user }: DashboardProps) {
                       {suggestedResponses[message.id].map((suggestion, index) => (
                         <button
                           key={index}
-                          onClick={() => useSuggestedResponse(suggestion.german)}
+                          onClick={() => useSuggestedResponse(typeof suggestion === 'string' ? suggestion : suggestion.german)}
                           className="block w-full text-left bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors"
                         >
-                          <div className="font-medium">{suggestion.german}</div>
+                          <div className="font-medium">{typeof suggestion === 'string' ? suggestion : suggestion.german}</div>
                           {showTranslation[message.id] && (
-                            <div className="text-gray-500 text-xs mt-1">{suggestion.english}</div>
+                            <div className="text-gray-500 text-xs mt-1">{typeof suggestion === 'object' ? suggestion.english : ''}</div>
                           )}
                         </button>
                       ))}
