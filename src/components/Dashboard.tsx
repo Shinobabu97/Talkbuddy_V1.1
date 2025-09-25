@@ -12,7 +12,8 @@ import {
   Play,
   BookOpen,
   BarChart3,
-  MessageCircle
+  MessageCircle,
+  Target
 } from 'lucide-react';
 import { supabase, AuthUser } from '../lib/supabase';
 import OnboardingFlow from './OnboardingFlow';
@@ -65,7 +66,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [conversationInput, setConversationInput] = useState('');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [conversationsLoading, setConversationsLoading] = useState(false);
-  const [currentView, setCurrentView] = useState<'dashboard' | 'vocab'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'vocab' | 'progress'>('dashboard');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
 
@@ -331,15 +332,15 @@ export default function Dashboard({ user }: DashboardProps) {
           {/* Navigation Links */}
           <div className="flex space-x-1">
             <button
-              onClick={() => setCurrentView('dashboard')}
+              onClick={() => setCurrentView('progress')}
               className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                currentView === 'dashboard'
-                  ? 'bg-blue-50 text-blue-600'
+                currentView === 'progress'
+                  ? 'bg-blue-50 text-blue-600' 
                   : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
               }`}
             >
               <BarChart3 className="h-4 w-4 inline mr-1" />
-              Dashboard
+              Progress
             </button>
             <button
               onClick={() => setCurrentView('vocab')}
@@ -530,6 +531,134 @@ export default function Dashboard({ user }: DashboardProps) {
                 <button className="bg-green-500 hover:bg-green-600 text-white p-3 rounded-full transition-colors">
                   <Mic className="h-4 w-4" />
                 </button>
+              </div>
+            </div>
+          </div>
+        ) : currentView === 'progress' ? (
+          // Progress View
+          <div className="flex-1 p-8">
+            <div className="max-w-4xl mx-auto">
+              <div className="mb-8">
+                <h1 className="text-3xl font-semibold apple-text-primary mb-2">
+                  Your Progress
+                </h1>
+                <p className="text-xl apple-text-secondary">
+                  Track your speaking practice and review past conversations
+                </p>
+              </div>
+
+              {/* Progress Stats */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div className="apple-card rounded-xl p-6">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-medium apple-text-secondary">Total Conversations</h3>
+                    <MessageCircle className="h-5 w-5 text-blue-500" />
+                  </div>
+                  <p className="text-2xl font-semibold apple-text-primary">{conversations.length}</p>
+                </div>
+                
+                <div className="apple-card rounded-xl p-6">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-medium apple-text-secondary">This Week</h3>
+                    <BarChart3 className="h-5 w-5 text-green-500" />
+                  </div>
+                  <p className="text-2xl font-semibold apple-text-primary">
+                    {conversations.filter(conv => {
+                      const weekAgo = new Date();
+                      weekAgo.setDate(weekAgo.getDate() - 7);
+                      return new Date(conv.created_at) > weekAgo;
+                    }).length}
+                  </p>
+                </div>
+                
+                <div className="apple-card rounded-xl p-6">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-medium apple-text-secondary">Current Streak</h3>
+                    <Target className="h-5 w-5 text-orange-500" />
+                  </div>
+                  <p className="text-2xl font-semibold apple-text-primary">3 days</p>
+                </div>
+              </div>
+
+              {/* Recent Practice Sessions */}
+              <div className="apple-card rounded-xl p-6 mb-8">
+                <h2 className="text-xl font-semibold apple-text-primary mb-4">Recent Practice Sessions</h2>
+                {conversations.length > 0 ? (
+                  <div className="space-y-4">
+                    {conversations.slice(0, 5).map((conversation) => (
+                      <div key={conversation.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                        <div className="flex-1">
+                          <h3 className="font-medium apple-text-primary">{conversation.title}</h3>
+                          <p className="text-sm apple-text-secondary truncate">{conversation.preview}</p>
+                          <p className="text-xs text-gray-400 mt-1">{formatTime(conversation.updated_at)}</p>
+                        </div>
+                        <div className="flex space-x-2 ml-4">
+                          <button
+                            onClick={() => setSelectedConversation(conversation.id)}
+                            className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
+                          >
+                            Review
+                          </button>
+                          <button
+                            onClick={() => {
+                              setConversationInput(conversation.preview);
+                              setCurrentView('dashboard');
+                            }}
+                            className="px-3 py-1 text-sm bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors"
+                          >
+                            Re-practice
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <MessageCircle className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                    <p className="apple-text-secondary">No practice sessions yet. Start a conversation to see your progress!</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Practice Goals */}
+              <div className="apple-card rounded-xl p-6">
+                <h2 className="text-xl font-semibold apple-text-primary mb-4">Practice Goals</h2>
+                <div className="space-y-6">
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm font-medium apple-text-primary">Weekly Goal</span>
+                      <span className="text-sm apple-text-secondary">
+                        {conversations.filter(conv => {
+                          const weekAgo = new Date();
+                          weekAgo.setDate(weekAgo.getDate() - 7);
+                          return new Date(conv.created_at) > weekAgo;
+                        }).length} / 5 conversations
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-blue-500 h-2 rounded-full transition-all duration-300" 
+                        style={{ 
+                          width: `${Math.min(100, (conversations.filter(conv => {
+                            const weekAgo = new Date();
+                            weekAgo.setDate(weekAgo.getDate() - 7);
+                            return new Date(conv.created_at) > weekAgo;
+                          }).length / 5) * 100)}%` 
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm font-medium apple-text-primary">Daily Streak</span>
+                      <span className="text-sm apple-text-secondary">3 / 7 days</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div className="bg-orange-500 h-2 rounded-full transition-all duration-300" style={{ width: '43%' }}></div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
