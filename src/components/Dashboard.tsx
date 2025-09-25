@@ -449,7 +449,6 @@ export default function Dashboard({ user }: DashboardProps) {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col">
         {selectedConversation ? (
           // Conversation View
           <div className="flex-1 flex flex-col">
@@ -627,7 +626,6 @@ export default function Dashboard({ user }: DashboardProps) {
             </div>
           </div>
         )}
-      </div>
       </div>
 
       <ProfilePictureModal
