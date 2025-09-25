@@ -633,13 +633,6 @@ export default function Dashboard({ user }: DashboardProps) {
                     <button className="p-3 apple-input rounded-full hover:bg-gray-50 transition-colors">
                       <Mic className="h-5 w-5 text-gray-600" />
                     </button>
-                    <button 
-                      onClick={createNewConversation}
-                      disabled={!conversationInput.trim()}
-                      className="p-3 apple-input rounded-full hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Send className="h-5 w-5 text-gray-600" />
-                    </button>
                   </div>
                   
                   <button 
