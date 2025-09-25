@@ -275,7 +275,8 @@ export default function Dashboard({ user }: DashboardProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <>
+      <div className="min-h-screen bg-gray-50 flex">
       {/* Sidebar */}
       <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
         {/* Sidebar Header */}
@@ -627,6 +628,7 @@ export default function Dashboard({ user }: DashboardProps) {
           </div>
         )}
       </div>
+      </div>
 
       <ProfilePictureModal
         isOpen={showProfileModal}
@@ -635,6 +637,6 @@ export default function Dashboard({ user }: DashboardProps) {
         currentPictureUrl={currentProfilePicture}
         onPictureUpdate={handleProfilePictureUpdate}
       />
-    </div>
+    </>
   );
 }
