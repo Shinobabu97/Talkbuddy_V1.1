@@ -382,7 +382,7 @@ function App() {
       </section>
 
       {/* Social Proof */}
-      <section className="py-20 scroll-animate">
+      <section className="py-20 scroll-animate social-proof-highlight">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-gray-900 mb-4">
@@ -430,7 +430,7 @@ function App() {
       </section>
 
       {/* Benefits Section */}
-      <section id="benefits" className="py-20 relative scroll-animate" style={{ marginTop: '0', paddingTop: '5rem' }}>
+      <section id="benefits" className="py-20 relative scroll-animate section-divider" style={{ marginTop: '0', paddingTop: '5rem' }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-900 mb-4">
@@ -466,7 +466,7 @@ function App() {
       </section>
 
       {/* How It Works */}
-      <section id="how-it-works" className="py-20 scroll-animate">
+      <section id="how-it-works" className="py-20 scroll-animate section-divider">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-900 mb-4">
@@ -505,7 +505,7 @@ function App() {
       </section>
 
       {/* Testimonials */}
-      <section id="testimonials" className="py-20 relative scroll-animate">
+      <section id="testimonials" className="py-20 relative scroll-animate section-divider">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-900 mb-4">
@@ -561,7 +561,7 @@ function App() {
       </section>
 
       {/* FAQ Section */}
-      <section id="faq" className="py-20 scroll-animate">
+      <section id="faq" className="py-20 scroll-animate section-divider">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-900 mb-4">
@@ -602,7 +602,7 @@ function App() {
       </section>
 
       {/* Footer */}
-      <footer className="py-16 relative footer-dark">
+      <footer className="py-16 relative footer-dark section-top-divider">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold mb-4 text-white">
