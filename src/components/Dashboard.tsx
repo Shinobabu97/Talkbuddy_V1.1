@@ -328,12 +328,9 @@ export default function Dashboard({ user }: DashboardProps) {
           {/* Navigation Links */}
           <div className="flex space-x-1">
             <button
-              onClick={() => {
-                setCurrentView('dashboard');
-                setSelectedConversation(null);
-              }}
+              onClick={() => setCurrentView('dashboard')}
               className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                currentView === 'dashboard' && !selectedConversation
+                currentView === 'dashboard'
                   ? 'bg-blue-50 text-blue-600'
                   : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
               }`}
@@ -355,9 +352,23 @@ export default function Dashboard({ user }: DashboardProps) {
           </div>
         </div>
 
+        {/* Conversation Categories */}
+        <div className="p-4 border-b border-gray-100">
+          <h3 className="text-sm font-medium text-gray-700 mb-3 apple-text-primary">Conversation Categories</h3>
+          <div className="space-y-1">
+            {conversationCategories.map((category) => (
+              <button
+                key={category}
+                className="w-full text-left px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 rounded-md transition-colors apple-text-secondary"
+              >
+                {category}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Search */}
         <div className="p-4 border-b border-gray-100">
-          <h3 className="text-sm font-medium text-gray-700 mb-3 apple-text-primary">Search Conversations</h3>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
@@ -367,20 +378,6 @@ export default function Dashboard({ user }: DashboardProps) {
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2 apple-input text-sm"
             />
-          </div>
-          
-          {/* Filter Categories */}
-          <div className="mt-3">
-            <div className="flex flex-wrap gap-1">
-              {conversationCategories.map((category) => (
-                <button
-                  key={category}
-                  className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-md transition-colors"
-                >
-                  {category}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
 
@@ -512,15 +509,6 @@ export default function Dashboard({ user }: DashboardProps) {
               <p className="text-lg apple-text-secondary">Your saved words and phrases will appear here</p>
             </div>
           </div>
-        ) : currentView === 'dashboard' && !selectedConversation ? (
-          // Progress Dashboard View
-          <div className="flex-1 flex items-center justify-center p-8">
-            <div className="text-center">
-              <BarChart3 className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-              <h2 className="text-2xl font-semibold apple-text-primary mb-2">Progress Dashboard</h2>
-              <p className="text-lg apple-text-secondary">Track your learning progress and practice sessions</p>
-            </div>
-          </div>
         ) : (
           // Welcome Screen
           <div className="flex-1 flex items-center justify-center p-8">
@@ -610,6 +598,17 @@ export default function Dashboard({ user }: DashboardProps) {
                 <div className="flex items-center justify-between">
                   <div className="flex space-x-3">
                     <button className="p-3 apple-input rounded-full hover:bg-gray-50 transition-colors">
+                      <Mic className="h-5 w-5 text-gray-600" />
+                    </button>
+                    <button 
+                      onClick={createNewConversation}
+                      disabled={!conversationInput.trim()}
+                      className="p-3 apple-input rounded-full hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Send className="h-5 w-5 text-gray-600" />
+                    </button>
+                  </div>
+                  
                   <button 
                     onClick={createNewConversation}
                     disabled={!conversationInput.trim()}
@@ -617,10 +616,6 @@ export default function Dashboard({ user }: DashboardProps) {
                   >
                     <Play className="h-4 w-4" />
                     <span>Ask</span>
-                  </button>
-                  
-                  <button className="bg-green-500 hover:bg-green-600 text-white p-3 rounded-full transition-colors">
-                    <Mic className="h-5 w-5" />
                   </button>
                 </div>
               </div>
