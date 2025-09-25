@@ -80,6 +80,10 @@ export default function Dashboard({ user }: DashboardProps) {
   const [messageInput, setMessageInput] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [translatedMessages, setTranslatedMessages] = useState<{[key: string]: string}>({});
+  const [suggestedResponses, setSuggestedResponses] = useState<{[key: string]: string[]}>({});
+  const [showTranslation, setShowTranslation] = useState<{[key: string]: boolean}>({});
+  const [showSuggestions, setShowSuggestions] = useState<{[key: string]: boolean}>({});
 
   React.useEffect(() => {
     loadOnboardingData();
@@ -240,7 +244,7 @@ export default function Dashboard({ user }: DashboardProps) {
         body: JSON.stringify({
           messages: [{
             role: 'user',
-            content: `I want to practice this scenario: ${userMessage}. Please start the conversation by asking me the first question in German.`
+            content: `I want to practice this scenario: ${userMessage}. Please start the conversation directly by asking me the first question in German. Don't include any English explanations or translations - just start the German conversation naturally.`
           }],
           conversationId,
           contextLevel,
@@ -268,6 +272,9 @@ export default function Dashboard({ user }: DashboardProps) {
       };
 
       setChatMessages(prev => [...prev, assistantMessage]);
+      
+      // Generate translation and suggestions for the AI message
+      generateTranslationAndSuggestions(assistantMessage.id, data.message);
 
     } catch (error) {
       console.error('Error sending initial message:', error);
@@ -284,6 +291,82 @@ export default function Dashboard({ user }: DashboardProps) {
     }
   };
 
+  const generateTranslationAndSuggestions = async (messageId: string, germanText: string) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [{
+            role: 'user',
+            content: `Please provide: 1) English translation of: "${germanText}" 2) Three suggested German responses that a language learner could use to reply. Format as: TRANSLATION: [translation] SUGGESTIONS: [suggestion1] | [suggestion2] | [suggestion3]`
+          }],
+          conversationId: 'helper',
+          contextLevel,
+          difficultyLevel
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const content = data.message;
+        
+        // Parse translation and suggestions
+        const translationMatch = content.match(/TRANSLATION:\s*(.+?)(?=SUGGESTIONS:|$)/);
+        const suggestionsMatch = content.match(/SUGGESTIONS:\s*(.+)/);
+        
+        if (translationMatch) {
+          setTranslatedMessages(prev => ({
+            ...prev,
+            [messageId]: translationMatch[1].trim()
+          }));
+        }
+        
+        if (suggestionsMatch) {
+          const suggestions = suggestionsMatch[1].split('|').map(s => s.trim());
+          setSuggestedResponses(prev => ({
+            ...prev,
+            [messageId]: suggestions
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('Error generating translation and suggestions:', error);
+    }
+  };
+
+  const speakText = (text: string) => {
+    if ('speechSynthesis' in window) {
+      // Cancel any ongoing speech
+      window.speechSynthesis.cancel();
+      
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'de-DE'; // German language
+      utterance.rate = 0.8; // Slightly slower for learning
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+
+  const toggleTranslation = (messageId: string) => {
+    setShowTranslation(prev => ({
+      ...prev,
+      [messageId]: !prev[messageId]
+    }));
+  };
+
+  const toggleSuggestions = (messageId: string) => {
+    setShowSuggestions(prev => ({
+      ...prev,
+      [messageId]: !prev[messageId]
+    }));
+  };
+
+  const useSuggestedResponse = (suggestion: string) => {
+    setMessageInput(suggestion);
+  };
   const sendMessage = async () => {
     if (!messageInput.trim() || isSending || !selectedConversation) return;
 
@@ -337,6 +420,9 @@ export default function Dashboard({ user }: DashboardProps) {
       };
 
       setChatMessages(prev => [...prev, assistantMessage]);
+
+      // Generate translation and suggestions for the AI message
+      generateTranslationAndSuggestions(assistantMessage.id, data.message);
 
     } catch (error) {
       console.error('Error sending message:', error);
@@ -677,41 +763,98 @@ export default function Dashboard({ user }: DashboardProps) {
             {/* Conversation Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {chatMessages.map((message) => (
-                <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-xs lg:max-w-md px-4 py-3 rounded-2xl ${
-                    message.role === 'user'
-                      ? 'bg-blue-500 text-white rounded-tr-md'
-                      : message.content.startsWith('**Topic:')
-                      ? 'apple-card rounded-tl-md border-l-4 border-blue-500'
-                      : 'apple-card rounded-tl-md'
-                  }`}>
-                    {message.role === 'assistant' && !message.content.startsWith('**Topic:') && (
-                      <div className="flex items-center space-x-2 mb-2">
-                        <Bot className="h-4 w-4 text-blue-500" />
-                        <span className="text-xs font-medium text-blue-600">AI Language Partner</span>
-                      </div>
-                    )}
-                    <div className={`text-sm ${
-                      message.role === 'user' 
-                        ? 'text-white' 
+                <div key={message.id}>
+                  <div className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-xs lg:max-w-md px-4 py-3 rounded-2xl ${
+                      message.role === 'user'
+                        ? 'bg-blue-500 text-white rounded-tr-md'
                         : message.content.startsWith('**Topic:')
-                        ? 'apple-text-primary'
-                        : 'apple-text-primary'
+                        ? 'apple-card rounded-tl-md border-l-4 border-blue-500'
+                        : 'apple-card rounded-tl-md'
                     }`}>
-                      {message.content.startsWith('**Topic:') ? (
-                        <div>
-                          <div className="font-semibold text-blue-600 mb-2">
-                            {message.content.split('\n')[0].replace(/\*\*/g, '')}
+                      {message.role === 'assistant' && !message.content.startsWith('**Topic:') && (
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center space-x-2">
+                            <Bot className="h-4 w-4 text-blue-500" />
+                            <span className="text-xs font-medium text-blue-600">AI Language Partner</span>
                           </div>
-                          <div className="text-gray-700">
-                            {message.content.split('\n').slice(2).join('\n')}
+                          <div className="flex items-center space-x-1">
+                            <button
+                              onClick={() => speakText(message.content)}
+                              className="p-1 hover:bg-gray-100 rounded transition-colors"
+                              title="Listen"
+                            >
+                              <svg className="h-3 w-3 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.617.816L4.846 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.846l3.537-3.816a1 1 0 011.617.816zM16 8a2 2 0 11-4 0 2 2 0 014 0zM14 8a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => toggleTranslation(message.id)}
+                              className="p-1 hover:bg-gray-100 rounded transition-colors text-xs text-gray-500"
+                              title="Translate"
+                            >
+                              EN
+                            </button>
+                            <button
+                              onClick={() => toggleSuggestions(message.id)}
+                              className="p-1 hover:bg-gray-100 rounded transition-colors"
+                              title="Suggest responses"
+                            >
+                              <svg className="h-3 w-3 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                              </svg>
+                            </button>
                           </div>
                         </div>
-                      ) : (
-                        message.content
                       )}
+                      <div className={`text-sm ${
+                        message.role === 'user' 
+                          ? 'text-white' 
+                          : message.content.startsWith('**Topic:')
+                          ? 'apple-text-primary'
+                          : 'apple-text-primary'
+                      }`}>
+                        {message.content.startsWith('**Topic:') ? (
+                          <div>
+                            <div className="font-semibold text-blue-600 mb-2">
+                              {message.content.split('\n')[0].replace(/\*\*/g, '')}
+                            </div>
+                            <div className="text-gray-700">
+                              {message.content.split('\n').slice(2).join('\n')}
+                            </div>
+                          </div>
+                        ) : (
+                          message.content
+                        )}
+                      </div>
                     </div>
                   </div>
+                  
+                  {/* Translation */}
+                  {message.role === 'assistant' && !message.content.startsWith('**Topic:') && showTranslation[message.id] && translatedMessages[message.id] && (
+                    <div className="ml-4 mt-2 max-w-xs lg:max-w-md">
+                      <div className="bg-gray-100 px-3 py-2 rounded-lg text-xs text-gray-700">
+                        <span className="font-medium">Translation: </span>
+                        {translatedMessages[message.id]}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Suggested Responses */}
+                  {message.role === 'assistant' && !message.content.startsWith('**Topic:') && showSuggestions[message.id] && suggestedResponses[message.id] && (
+                    <div className="ml-4 mt-2 max-w-xs lg:max-w-md space-y-1">
+                      <div className="text-xs font-medium text-gray-600 mb-1">Suggested responses:</div>
+                      {suggestedResponses[message.id].map((suggestion, index) => (
+                        <button
+                          key={index}
+                          onClick={() => useSuggestedResponse(suggestion)}
+                          className="block w-full text-left bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors"
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
               
