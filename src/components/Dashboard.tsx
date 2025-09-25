@@ -790,7 +790,9 @@ export default function Dashboard({ user }: DashboardProps) {
                             </button>
                             <button
                               onClick={() => toggleTranslation(message.id)}
-                              className="p-1 hover:bg-gray-100 rounded transition-colors text-xs text-gray-500"
+                              className={`p-1 hover:bg-gray-100 rounded transition-colors text-xs ${
+                                showTranslation[message.id] ? 'text-blue-600 bg-blue-50' : 'text-gray-500'
+                              }`}
                               title="Translate"
                             >
                               EN
@@ -847,10 +849,13 @@ export default function Dashboard({ user }: DashboardProps) {
                       {suggestedResponses[message.id].map((suggestion, index) => (
                         <button
                           key={index}
-                          onClick={() => useSuggestedResponse(suggestion)}
+                          onClick={() => useSuggestedResponse(suggestion.german)}
                           className="block w-full text-left bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors"
                         >
-                          {suggestion}
+                          <div className="font-medium">{suggestion.german}</div>
+                          {showTranslation[message.id] && (
+                            <div className="text-gray-500 text-xs mt-1">{suggestion.english}</div>
+                          )}
                         </button>
                       ))}
                     </div>
