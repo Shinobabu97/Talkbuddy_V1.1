@@ -66,6 +66,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [conversationsLoading, setConversationsLoading] = useState(false);
   const [currentView, setCurrentView] = useState<'dashboard' | 'vocab'>('dashboard');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   React.useEffect(() => {
     loadOnboardingData();
@@ -259,8 +260,9 @@ export default function Dashboard({ user }: DashboardProps) {
   const difficultyLevels = ['Beginner', 'Intermediate', 'Advanced'];
 
   const filteredConversations = conversations.filter(conv =>
-    conv.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    conv.preview.toLowerCase().includes(searchQuery.toLowerCase())
+    (conv.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+     conv.preview.toLowerCase().includes(searchQuery.toLowerCase())) &&
+    (selectedCategory === null || conv.context_level === selectedCategory)
   );
 
   const formatTime = (dateString: string) => {
@@ -359,7 +361,12 @@ export default function Dashboard({ user }: DashboardProps) {
             {conversationCategories.map((category) => (
               <button
                 key={category}
-                className="w-full text-left px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 rounded-md transition-colors apple-text-secondary"
+                onClick={() => setSelectedCategory(selectedCategory === category ? null : category)}
+                className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${
+                  selectedCategory === category
+                    ? 'bg-blue-50 text-blue-600 font-medium'
+                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 apple-text-secondary'
+                }`}
               >
                 {category}
               </button>
@@ -384,7 +391,17 @@ export default function Dashboard({ user }: DashboardProps) {
         {/* Recent Conversations */}
         <div className="flex-1 overflow-hidden flex flex-col">
           <div className="p-4 pb-2">
-            <h3 className="text-sm font-medium text-gray-700 mb-3 apple-text-primary">Recent Conversations</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-gray-700 apple-text-primary">Recent Conversations</h3>
+              {selectedCategory && (
+                <button
+                  onClick={() => setSelectedCategory(null)}
+                  className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  Clear filter
+                </button>
+              )}
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto px-4 pb-4">
             {conversationsLoading ? (
@@ -416,7 +433,12 @@ export default function Dashboard({ user }: DashboardProps) {
             ) : (
               <div className="text-center py-8">
                 <MessageCircle className="h-8 w-8 text-gray-300 mx-auto mb-2" />
-                <p className="text-sm apple-text-secondary">No conversations yet</p>
+                <p className="text-sm apple-text-secondary">
+                  {selectedCategory 
+                    ? `No ${selectedCategory.toLowerCase()} conversations yet`
+                    : 'No conversations yet'
+                  }
+                </p>
               </div>
             )}
           </div>
