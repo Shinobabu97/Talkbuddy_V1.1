@@ -609,7 +609,6 @@ export default function Dashboard({ user }: DashboardProps) {
                 {/* Action Buttons */}
                 <div className="flex items-center justify-between">
                   <div className="flex space-x-3">
-                    <button className="p-3 apple-input rounded-full hover:bg-gray-50 transition-colors">
                   <button 
                     onClick={createNewConversation}
                     disabled={!conversationInput.trim()}
