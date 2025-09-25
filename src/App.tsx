@@ -273,22 +273,22 @@ function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <div className="flex items-center space-x-2">
-              <Mic className="h-8 w-8 text-orange-600" />
-              <span className="text-2xl font-bold text-gray-900" style={{ textShadow: '0 2px 4px rgba(255, 255, 255, 0.5)' }}>TalkBuddy</span>
+              <Mic className="h-8 w-8 text-blue-600" />
+              <span className="text-2xl font-bold text-gray-900">TalkBuddy</span>
             </div>
             
             <nav className="hidden md:flex items-center space-x-8">
-              <a href="#home" className="text-gray-800 hover:text-orange-600 transition-all duration-300 font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>Home</a>
-              <a href="#benefits" className="text-gray-800 hover:text-orange-600 transition-all duration-300 font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>Benefits</a>
-              <a href="#how-it-works" className="text-gray-800 hover:text-orange-600 transition-all duration-300 font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>How It Works</a>
-              <a href="#testimonials" className="text-gray-800 hover:text-orange-600 transition-all duration-300 font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>Reviews</a>
-              <a href="#faq" className="text-gray-800 hover:text-orange-600 transition-all duration-300 font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>FAQ</a>
+              <a href="#home" className="text-gray-700 hover:text-blue-600 transition-all duration-300 font-medium">Home</a>
+              <a href="#benefits" className="text-gray-700 hover:text-blue-600 transition-all duration-300 font-medium">Benefits</a>
+              <a href="#how-it-works" className="text-gray-700 hover:text-blue-600 transition-all duration-300 font-medium">How It Works</a>
+              <a href="#testimonials" className="text-gray-700 hover:text-blue-600 transition-all duration-300 font-medium">Reviews</a>
+              <a href="#faq" className="text-gray-700 hover:text-blue-600 transition-all duration-300 font-medium">FAQ</a>
             </nav>
 
             <div className="flex items-center space-x-4">
               <button 
                 onClick={() => handleAuthModal('login')}
-                className="hidden md:inline-flex px-6 py-2 btn-glossy text-white rounded-lg font-medium"
+                className="hidden md:inline-flex px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
               >
                 Login
               </button>
@@ -307,14 +307,14 @@ function App() {
         {isMenuOpen && (
           <div className="md:hidden glass-strong border-t border-white/20" style={{ background: 'rgba(255, 255, 255, 0.4)' }}>
             <div className="px-2 py-2 space-y-2">
-              <a href="#home" className="block py-2 text-gray-800 hover:text-orange-600 transition-colors font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>Home</a>
-              <a href="#benefits" className="block py-2 text-gray-800 hover:text-orange-600 transition-colors font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>Benefits</a>
-              <a href="#how-it-works" className="block py-2 text-gray-800 hover:text-orange-600 transition-colors font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>How It Works</a>
-              <a href="#testimonials" className="block py-2 text-gray-800 hover:text-orange-600 transition-colors font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>Reviews</a>
-              <a href="#faq" className="block py-2 text-gray-800 hover:text-orange-600 transition-colors font-medium" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>FAQ</a>
+              <a href="#home" className="block py-2 text-gray-700 hover:text-blue-600 transition-colors font-medium">Home</a>
+              <a href="#benefits" className="block py-2 text-gray-700 hover:text-blue-600 transition-colors font-medium">Benefits</a>
+              <a href="#how-it-works" className="block py-2 text-gray-700 hover:text-blue-600 transition-colors font-medium">How It Works</a>
+              <a href="#testimonials" className="block py-2 text-gray-700 hover:text-blue-600 transition-colors font-medium">Reviews</a>
+              <a href="#faq" className="block py-2 text-gray-700 hover:text-blue-600 transition-colors font-medium">FAQ</a>
               <button 
                 onClick={() => handleAuthModal('login')}
-                className="w-full mt-2 px-6 py-2 btn-glossy text-white rounded-lg"
+                className="w-full mt-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
               >
                 Login
               </button>
@@ -329,13 +329,13 @@ function App() {
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className="space-y-8">
               <div className="space-y-4">
-                <p className="text-orange-600 font-semibold uppercase tracking-wide text-glow">
+                <p className="text-blue-600 font-semibold uppercase tracking-wide">
                   Introducing Your Personal AI Language Coach
                 </p>
-                <h1 className="text-4xl lg:text-6xl font-bold text-gray-900 leading-tight text-glass">
+                <h1 className="text-4xl lg:text-6xl font-bold text-gray-900 leading-tight">
                   The Language Partner Who Actually Listens
                 </h1>
-                <p className="text-xl text-gray-700 leading-relaxed text-glass">
+                <p className="text-xl text-gray-700 leading-relaxed">
                   Talk to an AI friend with infinite patience for your 'um's and 'uh's— one that adapts to your pace, cheers you on, and helps you build confidence before facing real conversations.
                 </p>
               </div>
@@ -343,7 +343,7 @@ function App() {
               <div className="flex flex-col sm:flex-row gap-4">
                 <button 
                   onClick={() => handleAuthModal('signup')}
-                  className="px-8 py-4 btn-glossy text-white rounded-lg font-semibold text-lg shadow-glass-lg"
+                  className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-lg transition-colors shadow-lg"
                 >
                   Try Your First Conversation
                 </button>
@@ -359,7 +359,7 @@ function App() {
             </div>
 
             <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-amber-200/60 to-orange-200/60 rounded-full transform scale-110 soft-glow opacity-40"></div>
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-100/60 to-indigo-100/60 rounded-full transform scale-110 opacity-40"></div>
               <div className="relative card-glass rounded-2xl p-8 shadow-glass-xl">
                 <img 
                   src="https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg?auto=compress&cs=tinysrgb&w=500&h=500&fit=crop" 
@@ -368,7 +368,7 @@ function App() {
                 />
                 <div className="space-y-3">
                   <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 bg-orange-400 rounded-full animate-pulse"></div>
+                    <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
                     <span className="text-sm text-gray-700 font-medium">AI Language Partner Active</span>
                   </div>
                   <div className="glass-subtle rounded-lg p-3">
@@ -385,45 +385,45 @@ function App() {
       <section className="py-20 scroll-animate social-proof-highlight section-break-top section-break-bottom">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4 text-glass">
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">
               Trusted by Language Learners Worldwide
             </h2>
-            <p className="text-lg text-gray-800 max-w-2xl mx-auto" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>
+            <p className="text-lg text-gray-700 max-w-2xl mx-auto">
               Join a community of over 5,500+ professionals, students, and language enthusiasts
             </p>
           </div>
           
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
             <div className="text-center stagger-animate">
-              <div className="glass rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:glass-strong hover:scale-110 transition-all duration-300 shadow-glass hover:shadow-glass-lg">
-                <Users className="h-8 w-8 text-orange-600" />
+              <div className="bg-white/80 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-white hover:scale-110 transition-all duration-300 shadow-lg">
+                <Users className="h-8 w-8 text-blue-600" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-orange-700 transition-colors duration-300" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>Working Professionals</h3>
-              <p className="text-gray-800 text-sm hover:text-gray-900 transition-colors duration-300">Building confidence for meetings and presentations</p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Working Professionals</h3>
+              <p className="text-gray-600 text-sm">Building confidence for meetings and presentations</p>
             </div>
             
             <div className="text-center stagger-animate">
-              <div className="glass rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:glass-strong hover:scale-110 transition-all duration-300 shadow-glass hover:shadow-glass-lg">
-                <Target className="h-8 w-8 text-blue-600" />
+              <div className="bg-white/80 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-white hover:scale-110 transition-all duration-300 shadow-lg">
+                <Target className="h-8 w-8 text-green-600" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-blue-700 transition-colors duration-300" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>University Students</h3>
-              <p className="text-gray-800 text-sm hover:text-gray-900 transition-colors duration-300">Preparing for academic discussions and social interactions</p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">University Students</h3>
+              <p className="text-gray-600 text-sm">Preparing for academic discussions and social interactions</p>
             </div>
             
             <div className="text-center stagger-animate">
-              <div className="glass rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:glass-strong hover:scale-110 transition-all duration-300 shadow-glass hover:shadow-glass-lg">
-                <Star className="h-8 w-8 text-green-600" />
+              <div className="bg-white/80 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-white hover:scale-110 transition-all duration-300 shadow-lg">
+                <Star className="h-8 w-8 text-yellow-600" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-green-700 transition-colors duration-300" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>Language Enthusiasts</h3>
-              <p className="text-gray-800 text-sm hover:text-gray-900 transition-colors duration-300">Passionate learners perfecting their speaking skills</p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Language Enthusiasts</h3>
+              <p className="text-gray-600 text-sm">Passionate learners perfecting their speaking skills</p>
             </div>
             
             <div className="text-center stagger-animate">
-              <div className="glass rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:glass-strong hover:scale-110 transition-all duration-300 shadow-glass hover:shadow-glass-lg">
+              <div className="bg-white/80 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-white hover:scale-110 transition-all duration-300 shadow-lg">
                 <Shield className="h-8 w-8 text-purple-600" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2 hover:text-purple-700 transition-colors duration-300" style={{ textShadow: '0 1px 2px rgba(255, 255, 255, 0.5)' }}>International Teams</h3>
-              <p className="text-gray-800 text-sm hover:text-gray-900 transition-colors duration-300">Improving cross-cultural communication</p>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">International Teams</h3>
+              <p className="text-gray-600 text-sm">Improving cross-cultural communication</p>
             </div>
           </div>
         </div>
@@ -433,10 +433,10 @@ function App() {
       <section id="benefits" className="py-20 relative scroll-animate section-divider" style={{ marginTop: '0', paddingTop: '5rem' }}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-gray-900 mb-4 text-glass">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
               Why TalkBuddy Works
             </h2>
-            <p className="text-xl text-gray-700 max-w-3xl mx-auto text-glass">
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
               Experience personalized language learning that adapts to your needs and builds real confidence
             </p>
           </div>
@@ -447,15 +447,15 @@ function App() {
               return (
                 <div 
                   key={index}
-                  className="card-glass rounded-xl p-6 shadow-glass group stagger-animate"
+                  className="bg-white/90 rounded-xl p-6 shadow-lg group stagger-animate hover:shadow-xl transition-all duration-300"
                 >
                   <div className="mb-4">
-                    <Icon className="h-10 w-10 text-orange-600 mb-3 group-hover:text-orange-700 transition-colors duration-300" />
-                    <h3 className="text-xl font-semibold text-gray-900 mb-2 group-hover:text-gray-900 transition-colors duration-300 text-glass">
+                    <Icon className="h-10 w-10 text-blue-600 mb-3 transition-colors duration-300" />
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">
                       {benefit.title}
                     </h3>
                   </div>
-                  <p className="text-gray-700 leading-relaxed group-hover:text-gray-800 transition-colors duration-300">
+                  <p className="text-gray-600 leading-relaxed">
                     {benefit.description}
                   </p>
                 </div>
@@ -469,10 +469,10 @@ function App() {
       <section id="how-it-works" className="py-20 scroll-animate section-divider">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-gray-900 mb-4 text-glass">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
               How It Works
             </h2>
-            <p className="text-xl text-gray-700 max-w-3xl mx-auto text-glass">
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
               Get started in minutes and begin building your speaking confidence today
             </p>
           </div>
@@ -481,19 +481,19 @@ function App() {
             {steps.map((step, index) => (
               <div 
                 key={index}
-                className="card-glass rounded-xl p-6 shadow-glass group stagger-animate"
+                className="bg-white/90 rounded-xl p-6 shadow-lg group stagger-animate hover:shadow-xl transition-all duration-300"
               >
                 <div className="flex flex-col lg:flex-row items-center gap-8">
                   <div className="flex-shrink-0">
-                    <div className="w-16 h-16 btn-glossy text-white rounded-full flex items-center justify-center text-2xl font-bold group-hover:scale-110 transition-all duration-300 shadow-glass">
+                    <div className="w-16 h-16 bg-blue-600 text-white rounded-full flex items-center justify-center text-2xl font-bold transition-all duration-300 shadow-lg">
                       {step.number}
                     </div>
                   </div>
                   <div className="flex-1 text-center lg:text-left">
-                    <h3 className="text-2xl font-semibold text-gray-900 mb-2 group-hover:text-orange-700 transition-colors duration-300 text-glass">
+                    <h3 className="text-2xl font-semibold text-gray-900 mb-2">
                       {step.title}
                     </h3>
-                    <p className="text-gray-700 text-lg leading-relaxed group-hover:text-gray-800 transition-colors duration-300">
+                    <p className="text-gray-600 text-lg leading-relaxed">
                       {step.description}
                     </p>
                   </div>
@@ -508,10 +508,10 @@ function App() {
       <section id="testimonials" className="py-20 relative scroll-animate section-divider">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-gray-900 mb-4 text-glass">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
               What Our Users Say
             </h2>
-            <p className="text-xl text-gray-700 text-glass">
+            <p className="text-xl text-gray-600">
               Real stories from people who transformed their speaking confidence
             </p>
           </div>
@@ -523,20 +523,20 @@ function App() {
             >
               {testimonials.map((testimonial, index) => (
                 <div key={index} className="w-full flex-shrink-0 px-4">
-                  <div className="card-glass rounded-xl p-8 shadow-glass-lg max-w-2xl mx-auto">
+                  <div className="bg-white/90 rounded-xl p-8 shadow-lg max-w-2xl mx-auto">
                     <div className="flex mb-4">
                       {[...Array(testimonial.rating)].map((_, i) => (
                         <Star key={i} className="h-5 w-5 text-yellow-400 fill-current" />
                       ))}
                     </div>
-                    <blockquote className="text-lg text-gray-800 mb-6 italic text-glass">
+                    <blockquote className="text-lg text-gray-700 mb-6 italic">
                       "{testimonial.text}"
                     </blockquote>
                     <div>
-                      <cite className="text-gray-900 font-semibold text-glass">
+                      <cite className="text-gray-900 font-semibold">
                         {testimonial.name}
                       </cite>
-                      <p className="text-gray-700 text-sm">
+                      <p className="text-gray-600 text-sm">
                         {testimonial.role}
                       </p>
                     </div>
@@ -551,7 +551,7 @@ function App() {
                   key={index}
                   onClick={() => setCurrentTestimonial(index)}
                   className={`w-3 h-3 rounded-full transition-all duration-300 ${
-                    index === currentTestimonial ? 'btn-glossy shadow-glow' : 'glass hover:glass-strong'
+                    index === currentTestimonial ? 'bg-blue-600' : 'bg-gray-300 hover:bg-gray-400'
                   }`}
                 />
               ))}
@@ -564,22 +564,22 @@ function App() {
       <section id="faq" className="py-20 scroll-animate section-divider">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-gray-900 mb-4 text-glass">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
               Frequently Asked Questions
             </h2>
-            <p className="text-xl text-gray-700 text-glass">
+            <p className="text-xl text-gray-600">
               Everything you need to know about TalkBuddy
             </p>
           </div>
 
           <div className="space-y-4">
             {faqs.map((faq, index) => (
-              <div key={index} className="card-glass rounded-lg shadow-glass transition-all duration-300">
+              <div key={index} className="bg-white/90 rounded-lg shadow-lg transition-all duration-300">
                 <button
                   onClick={() => toggleFAQ(index)}
-                  className="w-full px-6 py-4 text-left flex justify-between items-center hover:glass-strong transition-all duration-300 rounded-lg"
+                  className="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-gray-50 transition-all duration-300 rounded-lg"
                 >
-                  <span className="font-semibold text-gray-900 pr-4 text-glass">
+                  <span className="font-semibold text-gray-900 pr-4">
                     {faq.question}
                   </span>
                   <ChevronDown 
@@ -590,7 +590,7 @@ function App() {
                 </button>
                 {openFAQ === index && (
                   <div className="px-6 pb-4">
-                    <p className="text-gray-700 leading-relaxed">
+                    <p className="text-gray-600 leading-relaxed">
                       {faq.answer}
                     </p>
                   </div>
@@ -605,15 +605,15 @@ function App() {
       <footer className="py-16 relative footer-dark section-top-divider">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold mb-4 text-glass">
+            <h2 className="text-3xl font-bold mb-4 text-white">
               Ready to Start Speaking with Confidence?
             </h2>
-            <p className="text-xl mb-8 text-gray-700">
+            <p className="text-xl mb-8 text-gray-300">
               Join thousands of learners who've transformed their speaking skills with TalkBuddy
             </p>
             <button 
               onClick={() => handleAuthModal('signup')}
-              className="px-8 py-4 btn-glossy text-white rounded-lg font-semibold text-lg shadow-glass-lg"
+              className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-lg transition-colors shadow-lg"
             >
               Try Your First Conversation
             </button>
@@ -623,17 +623,17 @@ function App() {
             <div className="grid md:grid-cols-4 gap-8">
               <div className="md:col-span-2">
                 <div className="flex items-center space-x-2 mb-4">
-                  <Mic className="h-8 w-8 text-orange-400" />
-                  <span className="text-2xl font-bold text-glass">TalkBuddy</span>
+                  <Mic className="h-8 w-8 text-blue-400" />
+                  <span className="text-2xl font-bold text-white">TalkBuddy</span>
                 </div>
-                <p className="text-gray-700 leading-relaxed">
+                <p className="text-gray-300 leading-relaxed">
                   Your AI-powered language partner that helps you build real speaking confidence through personalized, judgment-free conversations.
                 </p>
               </div>
               
               <div>
-                <h3 className="font-semibold mb-4 text-glass">Product</h3>
-                <ul className="space-y-2 text-gray-700">
+                <h3 className="font-semibold mb-4 text-white">Product</h3>
+                <ul className="space-y-2 text-gray-300">
                   <li><a href="#" className="hover:text-white transition-colors">Features</a></li>
                   <li><a href="#" className="hover:text-white transition-colors">Pricing</a></li>
                   <li><a href="#" className="hover:text-white transition-colors">How It Works</a></li>
@@ -642,8 +642,8 @@ function App() {
               </div>
               
               <div>
-                <h3 className="font-semibold mb-4 text-glass">Legal</h3>
-                <ul className="space-y-2 text-gray-700">
+                <h3 className="font-semibold mb-4 text-white">Legal</h3>
+                <ul className="space-y-2 text-gray-300">
                   <li><a href="#" className="hover:text-white transition-colors">Privacy Policy</a></li>
                   <li><a href="#" className="hover:text-white transition-colors">Terms of Service</a></li>
                   <li><a href="#" className="hover:text-white transition-colors">Cookie Policy</a></li>
@@ -652,7 +652,7 @@ function App() {
               </div>
             </div>
             
-            <div className="border-t border-white/20 mt-8 pt-8 text-center text-gray-700">
+            <div className="border-t border-white/20 mt-8 pt-8 text-center text-gray-300">
               <p>&copy; 2025 TalkBuddy. All rights reserved. Built for language learners who want to speak with confidence.</p>
             </div>
           </div>
