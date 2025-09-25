@@ -57,6 +57,7 @@ interface ChatMessage {
   content: string;
   timestamp: string;
 }
+
 export default function Dashboard({ user }: DashboardProps) {
   const [showOnboarding, setShowOnboarding] = React.useState(false);
   const [onboardingData, setOnboardingData] = React.useState<OnboardingData | null>(null);
@@ -416,6 +417,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const useSuggestedResponse = (suggestion: string) => {
     setMessageInput(suggestion);
   };
+
   const sendMessage = async () => {
     if (!messageInput.trim() || isSending || !selectedConversation) return;
 
@@ -901,7 +903,7 @@ export default function Dashboard({ user }: DashboardProps) {
                           onClick={() => useSuggestedResponse(suggestion)}
                           className="block w-full text-left bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors"
                         >
-                          {suggestion}
+                          <div className="font-medium">{suggestion}</div>
                         </button>
                       ))}
                     </div>
