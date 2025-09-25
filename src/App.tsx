@@ -362,8 +362,8 @@ function App() {
               <div className="absolute inset-0 bg-gradient-to-r from-blue-100/60 to-indigo-100/60 rounded-full transform scale-110 opacity-40"></div>
               <div className="relative card-glass rounded-2xl p-8 shadow-glass-xl">
                 <img 
-                  src="https://images.pexels.com/photos/4145190/pexels-photo-4145190.jpeg?auto=compress&cs=tinysrgb&w=600&h=400&fit=crop" 
-                  alt="Professional using TalkBuddy for language practice" 
+                  src="https://images.pexels.com/photos/3184360/pexels-photo-3184360.jpeg?auto=compress&cs=tinysrgb&w=600&h=400&fit=crop" 
+                  alt="Person learning language with blue-themed technology setup" 
                   className="w-full h-64 object-cover rounded-lg mb-4"
                 />
                 <div className="space-y-3">
