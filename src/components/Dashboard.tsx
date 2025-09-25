@@ -13,7 +13,8 @@ import {
   BookOpen,
   BarChart3,
   MessageCircle,
-  Target
+  Target,
+  Bot
 } from 'lucide-react';
 import { supabase, AuthUser } from '../lib/supabase';
 import OnboardingFlow from './OnboardingFlow';
@@ -50,6 +51,12 @@ interface Conversation {
   user_id: string;
 }
 
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+}
 export default function Dashboard({ user }: DashboardProps) {
   const [showOnboarding, setShowOnboarding] = React.useState(false);
   const [onboardingData, setOnboardingData] = React.useState<OnboardingData | null>(null);
@@ -69,6 +76,10 @@ export default function Dashboard({ user }: DashboardProps) {
   const [currentView, setCurrentView] = useState<'dashboard' | 'vocab' | 'progress'>('dashboard');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [messageInput, setMessageInput] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
 
   React.useEffect(() => {
     loadOnboardingData();
@@ -187,14 +198,100 @@ export default function Dashboard({ user }: DashboardProps) {
       // Add to conversations list
       setConversations(prev => [data, ...prev]);
       
-      // Select the new conversation
-      setSelectedConversation(data.id);
+      // Start the new conversation
+      startNewConversation(data.id);
       
       // Clear input
       setConversationInput('');
     } catch (error) {
       console.error('Error creating conversation:', error);
     }
+  };
+
+  const sendMessage = async () => {
+    if (!messageInput.trim() || isSending || !selectedConversation) return;
+
+    const userMessage: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: messageInput.trim(),
+      timestamp: new Date().toISOString()
+    };
+
+    setChatMessages(prev => [...prev, userMessage]);
+    setMessageInput('');
+    setIsSending(true);
+    setIsTyping(true);
+
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [...chatMessages, userMessage].map(msg => ({
+            role: msg.role,
+            content: msg.content
+          })),
+          conversationId: selectedConversation,
+          contextLevel,
+          difficultyLevel,
+          userProfile: onboardingData ? {
+            germanLevel: onboardingData.germanLevel,
+            goals: onboardingData.goals,
+            personalityTraits: onboardingData.personalityTraits,
+            conversationTopics: onboardingData.conversationTopics
+          } : undefined
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get response');
+      }
+
+      const data = await response.json();
+      
+      const assistantMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: data.message,
+        timestamp: new Date().toISOString()
+      };
+
+      setChatMessages(prev => [...prev, assistantMessage]);
+
+    } catch (error) {
+      console.error('Error sending message:', error);
+      const errorMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: 'Entschuldigung, ich hatte ein technisches Problem. Können Sie das bitte wiederholen? (Sorry, I had a technical issue. Could you please repeat that?)',
+        timestamp: new Date().toISOString()
+      };
+      setChatMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsSending(false);
+      setIsTyping(false);
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
+  const startNewConversation = (conversationId: string) => {
+    setSelectedConversation(conversationId);
+    setChatMessages([{
+      id: '1',
+      role: 'assistant',
+      content: 'Hallo! Ich bin Ihr KI-Sprachpartner. Worüber möchten Sie heute sprechen? (Hello! I\'m your AI language partner. What would you like to talk about today?)',
+      timestamp: new Date().toISOString()
+    }]);
   };
 
   const handleLogout = async () => {
@@ -425,7 +522,7 @@ export default function Dashboard({ user }: DashboardProps) {
                 {filteredConversations.map((conversation) => (
                   <button
                     key={conversation.id}
-                    onClick={() => setSelectedConversation(conversation.id)}
+                    onClick={() => startNewConversation(conversation.id)}
                     className={`w-full text-left p-3 rounded-lg transition-colors ${
                       selectedConversation === conversation.id
                         ? 'bg-blue-50 border border-blue-200'
@@ -503,16 +600,41 @@ export default function Dashboard({ user }: DashboardProps) {
 
             {/* Conversation Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              <div className="flex justify-start">
-                <div className="apple-card rounded-2xl rounded-tl-md px-4 py-3 max-w-xs">
-                  <p className="text-sm apple-text-primary">Hello! I'm your AI language partner. What would you like to practice today?</p>
+              {chatMessages.map((message) => (
+                <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-xs lg:max-w-md px-4 py-3 rounded-2xl ${
+                    message.role === 'user'
+                      ? 'bg-blue-500 text-white rounded-tr-md'
+                      : 'apple-card rounded-tl-md'
+                  }`}>
+                    {message.role === 'assistant' && (
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Bot className="h-4 w-4 text-blue-500" />
+                        <span className="text-xs font-medium text-blue-600">AI Language Partner</span>
+                      </div>
+                    )}
+                    <p className={`text-sm ${message.role === 'user' ? 'text-white' : 'apple-text-primary'}`}>
+                      {message.content}
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <div className="flex justify-end">
-                <div className="bg-blue-500 text-white rounded-2xl rounded-tr-md px-4 py-3 max-w-xs">
-                  <p className="text-sm">{conversations.find(c => c.id === selectedConversation)?.preview}</p>
+              ))}
+              
+              {isTyping && (
+                <div className="flex justify-start">
+                  <div className="apple-card rounded-2xl rounded-tl-md px-4 py-3 max-w-xs">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <Bot className="h-4 w-4 text-blue-500" />
+                      <span className="text-xs font-medium text-blue-600">AI Language Partner</span>
+                    </div>
+                    <div className="flex space-x-1">
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Message Input */}
@@ -522,11 +644,23 @@ export default function Dashboard({ user }: DashboardProps) {
                   <input
                     type="text"
                     placeholder="Type your message..."
+                    value={messageInput}
+                    onChange={(e) => setMessageInput(e.target.value)}
+                    onKeyPress={handleKeyPress}
+                    disabled={isSending}
                     className="w-full px-4 py-3 apple-input rounded-full text-sm"
                   />
                 </div>
-                <button className="apple-button p-3 rounded-full">
-                  <Send className="h-4 w-4 text-white" />
+                <button 
+                  onClick={sendMessage}
+                  disabled={!messageInput.trim() || isSending}
+                  className="apple-button p-3 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSending ? (
+                    <Loader2 className="h-4 w-4 text-white animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4 text-white" />
+                  )}
                 </button>
                 <button className="bg-green-500 hover:bg-green-600 text-white p-3 rounded-full transition-colors">
                   <Mic className="h-4 w-4" />
@@ -602,6 +736,7 @@ export default function Dashboard({ user }: DashboardProps) {
                           <button
                             onClick={() => {
                               setConversationInput(conversation.preview);
+                              startNewConversation(conversation.id);
                               setCurrentView('dashboard');
                             }}
                             className="px-3 py-1 text-sm bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors"
