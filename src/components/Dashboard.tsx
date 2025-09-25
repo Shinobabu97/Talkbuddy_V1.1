@@ -212,15 +212,15 @@ export default function Dashboard({ user }: DashboardProps) {
   const startConversationWithUserMessage = (conversationId: string, userMessage: string) => {
     setSelectedConversation(conversationId);
     
-    // Set initial messages with user's topic as first message
-    const initialUserMessage: ChatMessage = {
+    // Set initial messages with topic display and encouragement
+    const topicMessage: ChatMessage = {
       id: '1',
-      role: 'user',
-      content: userMessage,
+      role: 'assistant',
+      content: `**Topic: ${userMessage}**\n\nLet's start practicing this scenario together in German! I'll guide you through the conversation.`,
       timestamp: new Date().toISOString()
     };
     
-    setChatMessages([initialUserMessage]);
+    setChatMessages([topicMessage]);
     
     // Immediately send the user's message to get AI response
     sendInitialMessage(conversationId, userMessage);
@@ -240,7 +240,7 @@ export default function Dashboard({ user }: DashboardProps) {
         body: JSON.stringify({
           messages: [{
             role: 'user',
-            content: userMessage
+            content: `I want to practice this scenario: ${userMessage}. Please start the conversation by asking me the first question in German.`
           }],
           conversationId,
           contextLevel,
@@ -681,17 +681,36 @@ export default function Dashboard({ user }: DashboardProps) {
                   <div className={`max-w-xs lg:max-w-md px-4 py-3 rounded-2xl ${
                     message.role === 'user'
                       ? 'bg-blue-500 text-white rounded-tr-md'
+                      : message.content.startsWith('**Topic:')
+                      ? 'apple-card rounded-tl-md border-l-4 border-blue-500'
                       : 'apple-card rounded-tl-md'
                   }`}>
-                    {message.role === 'assistant' && (
+                    {message.role === 'assistant' && !message.content.startsWith('**Topic:') && (
                       <div className="flex items-center space-x-2 mb-2">
                         <Bot className="h-4 w-4 text-blue-500" />
                         <span className="text-xs font-medium text-blue-600">AI Language Partner</span>
                       </div>
                     )}
-                    <p className={`text-sm ${message.role === 'user' ? 'text-white' : 'apple-text-primary'}`}>
-                      {message.content}
-                    </p>
+                    <div className={`text-sm ${
+                      message.role === 'user' 
+                        ? 'text-white' 
+                        : message.content.startsWith('**Topic:')
+                        ? 'apple-text-primary'
+                        : 'apple-text-primary'
+                    }`}>
+                      {message.content.startsWith('**Topic:') ? (
+                        <div>
+                          <div className="font-semibold text-blue-600 mb-2">
+                            {message.content.split('\n')[0].replace(/\*\*/g, '')}
+                          </div>
+                          <div className="text-gray-700">
+                            {message.content.split('\n').slice(2).join('\n')}
+                          </div>
+                        </div>
+                      ) : (
+                        message.content
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
