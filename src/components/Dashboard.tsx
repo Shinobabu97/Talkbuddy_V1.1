@@ -524,6 +524,9 @@ export default function Dashboard({ user }: DashboardProps) {
                     className="w-full px-4 py-3 apple-input rounded-full text-sm"
                   />
                 </div>
+                <button className="apple-button p-3 rounded-full">
+                  <Send className="h-4 w-4 text-white" />
+                </button>
                 <button className="bg-green-500 hover:bg-green-600 text-white p-3 rounded-full transition-colors">
                   <Mic className="h-4 w-4" />
                 </button>
