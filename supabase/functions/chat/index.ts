@@ -16,6 +16,7 @@ interface ChatRequest {
   conversationId: string
   contextLevel: string
   difficultyLevel: string
+  systemInstruction?: string
   userProfile?: {
     germanLevel: string
     goals: string[]
@@ -31,7 +32,7 @@ serve(async (req) => {
   }
 
   try {
-    const { messages, conversationId, contextLevel, difficultyLevel, userProfile }: ChatRequest = await req.json()
+    const { messages, conversationId, contextLevel, difficultyLevel, systemInstruction, userProfile }: ChatRequest = await req.json()
 
     // Get OpenAI API key from environment
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
@@ -40,13 +41,19 @@ serve(async (req) => {
     }
 
     // Create system prompt based on user profile and settings
-    const systemPrompt = createSystemPrompt(contextLevel, difficultyLevel, userProfile)
+    let systemPrompt = createSystemPrompt(contextLevel, difficultyLevel, userProfile)
+    
+    // Override system prompt with system instruction if provided (for stricter German-only responses)
+    if (systemInstruction) {
+      systemPrompt = `${systemInstruction}\n\nContext Level: ${contextLevel}\nDifficulty Level: ${difficultyLevel}\n\nYou are a friendly and patient German language learning assistant. Your role is to help users practice German conversation in a supportive, encouraging environment.`
+    }
 
     // Prepare messages for OpenAI
     const openaiMessages = [
       { role: 'system', content: systemPrompt },
       ...messages
     ]
+    
 
     // Call OpenAI API
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -109,8 +116,15 @@ function createSystemPrompt(contextLevel: string, difficultyLevel: string, userP
 Context Level: ${contextLevel}
 Difficulty Level: ${difficultyLevel}
 
+CRITICAL RULES:
+- Respond ONLY in German
+- NEVER include English translations in parentheses like (English translation)
+- NEVER add English text in brackets like [English text]
+- NEVER provide English explanations
+- NEVER mix German and English in the same response
+- Keep responses purely in German
+
 Guidelines:
-- Always respond in German, but provide English translations in parentheses for difficult words if the user is a beginner
 - Adapt your language complexity to the difficulty level
 - Be encouraging and patient with mistakes
 - Gently correct errors by naturally using the correct form in your response

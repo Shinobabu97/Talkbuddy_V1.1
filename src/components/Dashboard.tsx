@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Mic,
   LogOut,
@@ -14,15 +14,39 @@ import {
   BarChart3,
   MessageCircle,
   Target,
-  Bot
+  Bot,
+  Trash2
 } from 'lucide-react';
 import { supabase, AuthUser } from '../lib/supabase';
 import OnboardingFlow from './OnboardingFlow';
 import ProfilePictureModal from './ProfilePictureModal';
+import Toolbar from './Toolbar';
 
 interface DashboardProps {
   user: AuthUser;
 }
+
+// German names list
+const GERMAN_NAMES = [
+  'Anna', 'Max', 'Sophie', 'Felix', 'Emma', 'Lukas', 'Hannah', 'Jonas',
+  'Lena', 'Tim', 'Marie', 'Ben', 'Lisa', 'Tom', 'Sarah', 'Paul',
+  'Julia', 'Leon', 'Laura', 'Finn', 'Mia', 'Noah', 'Emilia', 'Liam',
+  'Clara', 'Elias', 'Lina', 'Henry', 'Amelie', 'Theo', 'Luisa', 'Anton'
+];
+
+// Helper function to get random German name
+const getRandomGermanName = () => {
+  return GERMAN_NAMES[Math.floor(Math.random() * GERMAN_NAMES.length)];
+};
+
+// Helper function to get random last seen time
+const getRandomLastSeen = () => {
+  const times = [
+    'just now', '2 minutes ago', '5 minutes ago', '10 minutes ago',
+    '15 minutes ago', '30 minutes ago', '1 hour ago', '2 hours ago'
+  ];
+  return times[Math.floor(Math.random() * times.length)];
+};
 
 interface OnboardingData {
   profilePictureUrl?: string;
@@ -84,11 +108,52 @@ export default function Dashboard({ user }: DashboardProps) {
   const [suggestedResponses, setSuggestedResponses] = useState<{[key: string]: string[]}>({});
   const [showTranslation, setShowTranslation] = useState<{[key: string]: boolean}>({});
   const [showSuggestions, setShowSuggestions] = useState<{[key: string]: boolean}>({});
+  const [hoveredConversation, setHoveredConversation] = useState<string | null>(null);
+  const [showToolbar, setShowToolbar] = useState(false);
+  const [currentAIMessage, setCurrentAIMessage] = useState<string>('');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [germanPartnerName, setGermanPartnerName] = useState<string>('');
+  const [lastSeenTime, setLastSeenTime] = useState<string>('');
+  const [toolbarOpenedViaHelp, setToolbarOpenedViaHelp] = useState<boolean>(false);
+  const [activeHelpButton, setActiveHelpButton] = useState<string | null>(null);
+  const [userAttempts, setUserAttempts] = useState<{[key: string]: number}>({});
+  const [errorMessages, setErrorMessages] = useState<{[key: string]: string}>({});
+  const [showOriginalMessage, setShowOriginalMessage] = useState<{[key: string]: boolean}>({});
+  const [originalMessages, setOriginalMessages] = useState<{[key: string]: string}>({});
+  const [waitingForCorrection, setWaitingForCorrection] = useState<boolean>(false);
+  const [messageAttempts, setMessageAttempts] = useState<{[key: string]: string[]}>({});
+  const [suggestedAnswers, setSuggestedAnswers] = useState<{[key: string]: string}>({});
+
+  // Ref for auto-scrolling to bottom of conversation
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
     loadOnboardingData();
     loadConversations();
-  }, [user.id]);
+    // Initialize German partner name and last seen time
+    if (!germanPartnerName) {
+      setGermanPartnerName(getRandomGermanName());
+      setLastSeenTime(getRandomLastSeen());
+    }
+  }, [user.id, germanPartnerName]);
+
+  // Monitor userAttempts and generate suggested answer when max attempts reached
+  React.useEffect(() => {
+    Object.keys(userAttempts).forEach(messageId => {
+      if (userAttempts[messageId] >= 3 && errorMessages[messageId]) {
+        // Find the original message content
+        const originalMessage = originalMessages[messageId];
+        if (originalMessage && !suggestedAnswers[messageId]) {
+          generateSuggestedAnswer(messageId, originalMessage);
+        }
+      }
+    });
+  }, [userAttempts, errorMessages, originalMessages, suggestedAnswers]);
+
+  // Auto-scroll to bottom when new messages are added
+  React.useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
 
   const loadOnboardingData = async () => {
     try {
@@ -216,15 +281,8 @@ export default function Dashboard({ user }: DashboardProps) {
   const startConversationWithUserMessage = (conversationId: string, userMessage: string) => {
     setSelectedConversation(conversationId);
     
-    // Set initial messages with topic display and encouragement
-    const topicMessage: ChatMessage = {
-      id: '1',
-      role: 'assistant',
-      content: `**Topic: ${userMessage}**\n\nLet's start practicing this scenario together in German! I'll guide you through the conversation.`,
-      timestamp: new Date().toISOString()
-    };
-    
-    setChatMessages([topicMessage]);
+    // Set initial messages
+    setChatMessages([]);
     
     // Immediately send the user's message to get AI response
     sendInitialMessage(conversationId, userMessage);
@@ -233,6 +291,15 @@ export default function Dashboard({ user }: DashboardProps) {
   const sendInitialMessage = async (conversationId: string, userMessage: string) => {
     setIsSending(true);
     setIsTyping(true);
+    
+    // Reset retry states for new conversation
+    setWaitingForCorrection(false);
+    setUserAttempts({});
+    setErrorMessages({});
+    setMessageAttempts({});
+    setShowOriginalMessage({});
+    setOriginalMessages({});
+    setSuggestedAnswers({});
 
     try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
@@ -244,7 +311,7 @@ export default function Dashboard({ user }: DashboardProps) {
         body: JSON.stringify({
           messages: [{
             role: 'user',
-            content: `I want to practice this scenario: ${userMessage}. Please start the conversation directly by asking me the first question in German. Don't include any English explanations or translations - just start the German conversation naturally.`
+            content: `I want to practice this scenario: ${userMessage}. Start the conversation immediately with the first question in German. Do not use any introductory phrases like "Natürlich, gerne!" or "Gerne!" - just ask the first question directly. IMPORTANT: Respond ONLY in German. Do not include any English translations in parentheses or brackets.`
           }],
           conversationId,
           contextLevel,
@@ -264,6 +331,8 @@ export default function Dashboard({ user }: DashboardProps) {
 
       const data = await response.json();
       
+      console.log('AI Response:', data.message);
+      
       const assistantMessage: ChatMessage = {
         id: '2',
         role: 'assistant',
@@ -272,6 +341,9 @@ export default function Dashboard({ user }: DashboardProps) {
       };
 
       setChatMessages(prev => [...prev, assistantMessage]);
+      
+      // Update current message but don't show toolbar automatically
+      setCurrentAIMessage(data.message);
       
       // Generate translation and suggestions for the AI message
       generateTranslationAndSuggestions(assistantMessage.id, data.message);
@@ -302,17 +374,20 @@ export default function Dashboard({ user }: DashboardProps) {
         body: JSON.stringify({
           messages: [{
             role: 'user',
-            content: `Please provide: 1) English translation of: "${germanText}" 2) Three suggested German responses that a language learner could use to reply. Format as: TRANSLATION: [translation] SUGGESTIONS: [suggestion1] | [suggestion2] | [suggestion3]`
+            content: `Please provide: 1) English translation of: "${germanText}" 2) Three suggested German responses that a language learner could use to reply. IMPORTANT: The suggestions must be ONLY in German - no English translations in parentheses or brackets. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [suggestion1] | [suggestion2] | [suggestion3]`
           }],
           conversationId: 'helper',
           contextLevel,
-          difficultyLevel
+          difficultyLevel,
+          systemInstruction: "When providing German suggestions, respond ONLY in German. Do not include any English translations in parentheses or brackets in the suggestions."
         })
       });
 
       if (response.ok) {
         const data = await response.json();
         const content = data.message;
+        
+        console.log('Translation and suggestions response:', content);
         
         // Parse translation and suggestions
         const translationMatch = content.match(/TRANSLATION:\s*(.+?)(?=SUGGESTIONS:|$)/);
@@ -326,12 +401,33 @@ export default function Dashboard({ user }: DashboardProps) {
         }
         
         if (suggestionsMatch) {
-          const suggestions = suggestionsMatch[1].split('|').map(s => s.trim());
+          const suggestions = suggestionsMatch[1].split('|').map(s => s.trim()).filter(s => s.length > 0);
+          
+          // Clean up any English translations that might be in parentheses or brackets
+          const cleanedSuggestions = suggestions.map(suggestion => {
+            // Remove English text in parentheses like (English translation)
+            let cleaned = suggestion.replace(/\([^)]*[A-Za-z][^)]*\)/g, '');
+            // Remove English text in brackets like [English translation]
+            cleaned = cleaned.replace(/\[[^\]]*[A-Za-z][^\]]*\]/g, '');
+            // Remove any remaining English text patterns
+            cleaned = cleaned.replace(/\([^)]*\)/g, '');
+            cleaned = cleaned.replace(/\[[^\]]*\]/g, '');
+            // Trim whitespace
+            return cleaned.trim();
+          }).filter(s => s.length > 0);
+          
+          console.log('Original suggestions:', suggestions);
+          console.log('Cleaned suggestions:', cleanedSuggestions);
+          
           setSuggestedResponses(prev => ({
             ...prev,
-            [messageId]: suggestions
+            [messageId]: cleanedSuggestions
           }));
+        } else {
+          console.log('No suggestions match found in:', content);
         }
+      } else {
+        console.error('Failed to get translation and suggestions:', response.status, response.statusText);
       }
     } catch (error) {
       console.error('Error generating translation and suggestions:', error);
@@ -407,14 +503,333 @@ export default function Dashboard({ user }: DashboardProps) {
   };
 
   const toggleSuggestions = (messageId: string) => {
-    setShowSuggestions(prev => ({
+    const isCurrentlyShowing = showSuggestions[messageId];
+    
+    if (isCurrentlyShowing) {
+      // Hide suggestions
+      setShowSuggestions(prev => ({
+        ...prev,
+        [messageId]: false
+      }));
+    } else {
+      // Show suggestions - translate if needed
+      setShowSuggestions(prev => ({
+        ...prev,
+        [messageId]: true
+      }));
+      
+      // If we have suggestions but they're not translated yet, translate them
+      const currentSuggestions = suggestedResponses[messageId];
+      if (currentSuggestions && Array.isArray(currentSuggestions) && currentSuggestions.length > 0) {
+        // Check if suggestions are already translated (objects with german/english)
+        const firstSuggestion = currentSuggestions[0];
+        if (typeof firstSuggestion === 'string') {
+          // They're still strings, need translation
+          translateSuggestions(messageId, currentSuggestions);
+        }
+      }
+    }
+  };
+
+  const useSuggestedResponse = (suggestion: string) => {
+    setMessageInput(suggestion);
+  };
+
+  const handleHelpClick = (messageContent: string, messageId: string) => {
+    // Set the current AI message for the toolbar
+    setCurrentAIMessage(messageContent);
+    // Show the toolbar and collapse the sidebar
+    setShowToolbar(true);
+    setSidebarCollapsed(true);
+    // Mark that toolbar was opened via help button
+    setToolbarOpenedViaHelp(true);
+    // Set the active help button
+    setActiveHelpButton(messageId);
+  };
+
+  const detectErrorsForRetry = async (userMessage: string, messageId: string) => {
+    try {
+      const errorResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [{
+            role: 'user',
+            content: `Analyze this German text for errors: "${userMessage}". Respond with "ERROR: [description]" if there are mistakes, or "CORRECT" if it's correct.`
+          }],
+          conversationId: 'error_detection',
+          contextLevel: 'beginner',
+          difficultyLevel: 'easy',
+          systemInstruction: "You are a German grammar checker. Analyze the text for grammatical errors, spelling mistakes, or incorrect word usage. If there are errors, provide a brief description. If correct, just say CORRECT."
+        })
+      });
+
+      if (errorResponse.ok) {
+        const errorData = await errorResponse.json();
+        const hasErrors = errorData.message.includes('ERROR:');
+        
+        if (hasErrors) {
+          setErrorMessages(prev => ({
+            ...prev,
+            [messageId]: errorData.message
+          }));
+          setWaitingForCorrection(true);
+          
+          // If this is the 3rd attempt, generate suggested answer
+          if (userAttempts[messageId] >= 3) {
+            generateSuggestedAnswer(messageId, userMessage);
+          }
+        } else {
+          // If no errors, clear the error state and proceed with AI response
+          setErrorMessages(prev => {
+            const newState = { ...prev };
+            delete newState[messageId];
+            return newState;
+          });
+          setWaitingForCorrection(false);
+          // Clear all retry states after successful correction
+          setUserAttempts({});
+          setErrorMessages({});
+          setMessageAttempts({});
+          setShowOriginalMessage({});
+          setOriginalMessages({});
+          // Show typing animation and trigger AI response
+          setIsSending(true);
+          setIsTyping(true);
+          await triggerAIResponse(userMessage, messageId);
+        }
+      }
+    } catch (error) {
+      console.error('Error detecting mistakes for retry:', error);
+    }
+  };
+
+  const triggerAIResponse = async (userMessage: string, messageId: string) => {
+    try {
+      // Don't show typing animation for retry responses
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [{
+            role: 'user',
+            content: userMessage
+          }],
+          conversationId: selectedConversation,
+          contextLevel: 'beginner',
+          difficultyLevel: 'easy',
+          userProfile: onboardingData ? {
+            germanLevel: onboardingData.germanLevel,
+            goals: onboardingData.goals,
+            personalityTraits: onboardingData.personalityTraits,
+            conversationTopics: onboardingData.conversationTopics
+          } : undefined,
+          systemInstruction: "CRITICAL: Respond ONLY in German. NEVER include English translations in parentheses like (English translation). NEVER add English text in brackets like [English text]. NEVER provide English explanations. NEVER mix German and English in the same response. Keep responses purely in German."
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        const assistantMessage: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: data.message,
+          timestamp: new Date().toISOString()
+        };
+
+        setChatMessages(prev => [...prev, assistantMessage]);
+        setCurrentAIMessage(data.message);
+        generateTranslationAndSuggestions(assistantMessage.id, data.message);
+      }
+    } catch (error) {
+      console.error('Error triggering AI response:', error);
+    } finally {
+      setIsSending(false);
+      setIsTyping(false);
+    }
+  };
+
+  const detectErrors = async (userMessage: string, messageId: string) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [{
+            role: 'user',
+            content: `Analyze this German text for errors: "${userMessage}". Respond with "ERROR: [description]" if there are mistakes, or "CORRECT" if it's correct.`
+          }],
+          conversationId: 'error_detection',
+          contextLevel: 'beginner',
+          difficultyLevel: 'easy',
+          systemInstruction: "You are a German grammar checker. Analyze the text for grammatical errors, spelling mistakes, or incorrect word usage. If there are errors, provide a brief description. If correct, just say CORRECT."
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const hasError = data.message.includes('ERROR:');
+        
+        if (hasError) {
+          setErrorMessages(prev => ({
+            ...prev,
+            [messageId]: data.message
+          }));
+          setUserAttempts(prev => ({
+            ...prev,
+            [messageId]: (prev[messageId] || 0) + 1
+          }));
+          setWaitingForCorrection(true);
+        } else {
+          setWaitingForCorrection(false);
+          // Clear all retry states after successful correction
+          setUserAttempts({});
+          setErrorMessages({});
+          setMessageAttempts({});
+          setShowOriginalMessage({});
+          setOriginalMessages({});
+          // Show typing animation and trigger AI response
+          setIsSending(true);
+          setIsTyping(true);
+          await triggerAIResponse(userMessage, messageId);
+        }
+      }
+    } catch (error) {
+      console.error('Error detecting mistakes:', error);
+    }
+  };
+
+  const handleErrorCorrection = (messageId: string) => {
+    // Set the error message for grammar analysis
+    setCurrentAIMessage(errorMessages[messageId]);
+    // Show the toolbar and collapse the sidebar
+    setShowToolbar(true);
+    setSidebarCollapsed(true);
+    // Mark that toolbar was opened via error correction
+    setToolbarOpenedViaHelp(true);
+    // Set the active help button
+    setActiveHelpButton(messageId);
+  };
+
+  const generateSuggestedAnswer = async (messageId: string, userMessage: string) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [{
+            role: 'user',
+            content: `The user tried to say: "${userMessage}" but made mistakes. Provide a correct German sentence that conveys the same meaning. Respond with ONLY the correct German sentence, no explanations.`
+          }],
+          conversationId: 'suggestion',
+          contextLevel: 'beginner',
+          difficultyLevel: 'easy',
+          systemInstruction: "You are a helpful German tutor. Provide a correct German sentence that conveys the same meaning as what the user was trying to say. Respond with ONLY the correct sentence, no explanations or translations."
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSuggestedAnswers(prev => ({
+          ...prev,
+          [messageId]: data.message
+        }));
+      }
+    } catch (error) {
+      console.error('Error generating suggested answer:', error);
+    }
+  };
+
+  const handleSuggestedAnswerClick = (messageId: string, suggestedAnswer: string) => {
+    // Update the message content with the suggested answer
+    setChatMessages(prev => prev.map(msg => 
+      msg.id === messageId 
+        ? { ...msg, content: suggestedAnswer }
+        : msg
+    ));
+    
+    // Clear all retry states
+    setUserAttempts(prev => {
+      const newState = { ...prev };
+      delete newState[messageId];
+      return newState;
+    });
+    setErrorMessages(prev => {
+      const newState = { ...prev };
+      delete newState[messageId];
+      return newState;
+    });
+    setSuggestedAnswers(prev => {
+      const newState = { ...prev };
+      delete newState[messageId];
+      return newState;
+    });
+    setWaitingForCorrection(false);
+    
+    // Trigger AI response for the corrected message
+    triggerAIResponse(suggestedAnswer, messageId);
+  };
+
+  // Add logic to generate suggested answer when max attempts are reached
+  const checkAndGenerateSuggestedAnswer = (messageId: string, userMessage: string) => {
+    if (userAttempts[messageId] >= 3) {
+      generateSuggestedAnswer(messageId, userMessage);
+    }
+  };
+
+  const toggleOriginalMessage = (messageId: string) => {
+    setShowOriginalMessage(prev => ({
       ...prev,
       [messageId]: !prev[messageId]
     }));
   };
 
-  const useSuggestedResponse = (suggestion: string) => {
-    setMessageInput(suggestion);
+
+  const translateSuggestions = async (messageId: string, suggestions: string[]) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/translate`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: suggestions.join(' | '),
+          targetLanguage: 'English'
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const translations = data.translation.split(' | ');
+        
+        // Store translations for each suggestion
+        const translatedSuggestions = suggestions.map((suggestion, index) => ({
+          german: suggestion,
+          english: translations[index] || suggestion
+        }));
+        
+        setSuggestedResponses(prev => ({
+          ...prev,
+          [messageId]: translatedSuggestions
+        }));
+      }
+    } catch (error) {
+      console.error('Error translating suggestions:', error);
+    }
   };
   const sendMessage = async () => {
     if (!messageInput.trim() || isSending || !selectedConversation) return;
@@ -426,65 +841,64 @@ export default function Dashboard({ user }: DashboardProps) {
       timestamp: new Date().toISOString()
     };
 
-    setChatMessages(prev => [...prev, userMessage]);
-    setMessageInput('');
-    setIsSending(true);
-    setIsTyping(true);
-
-    try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: [...chatMessages, userMessage].map(msg => ({
-            role: msg.role,
-            content: msg.content
-          })),
-          conversationId: selectedConversation,
-          contextLevel,
-          difficultyLevel,
-          userProfile: onboardingData ? {
-            germanLevel: onboardingData.germanLevel,
-            goals: onboardingData.goals,
-            personalityTraits: onboardingData.personalityTraits,
-            conversationTopics: onboardingData.conversationTopics
-          } : undefined
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to get response');
+    // Check if this is a retry attempt
+    const isRetry = waitingForCorrection;
+    
+    if (isRetry) {
+      // This is a retry - find the existing message with errors
+      const existingMessageId = Object.keys(userAttempts).find(id => userAttempts[id] > 0);
+      if (existingMessageId) {
+        // Update the existing message content
+        setChatMessages(prev => prev.map(msg => 
+          msg.id === existingMessageId 
+            ? { ...msg, content: userMessage.content }
+            : msg
+        ));
+        
+        // Add to attempt history
+        setMessageAttempts(prev => ({
+          ...prev,
+          [existingMessageId]: [...(prev[existingMessageId] || []), userMessage.content]
+        }));
+        
+        // Increment attempt counter
+        setUserAttempts(prev => ({
+          ...prev,
+          [existingMessageId]: (prev[existingMessageId] || 0) + 1
+        }));
+        
+        // Clear error messages
+        setErrorMessages(prev => {
+          const newState = { ...prev };
+          delete newState[existingMessageId];
+          return newState;
+        });
+        
+        // Detect errors on the new content (without typing animation)
+        await detectErrorsForRetry(userMessage.content, existingMessageId);
       }
-
-      const data = await response.json();
+    } else {
+      // This is a new message - add it to chat
+      setChatMessages(prev => [...prev, userMessage]);
       
-      const assistantMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: data.message,
-        timestamp: new Date().toISOString()
-      };
+      // Store original message and detect errors
+      setOriginalMessages(prev => ({
+        ...prev,
+        [userMessage.id]: userMessage.content
+      }));
+      
+      // Detect errors in the user message
+      await detectErrors(userMessage.content, userMessage.id);
+    }
 
-      setChatMessages(prev => [...prev, assistantMessage]);
-
-      // Generate translation and suggestions for the AI message
-      generateTranslationAndSuggestions(assistantMessage.id, data.message);
-
-    } catch (error) {
-      console.error('Error sending message:', error);
-      const errorMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: 'Entschuldigung, ich hatte ein technisches Problem. Können Sie das bitte wiederholen? (Sorry, I had a technical issue. Could you please repeat that?)',
-        timestamp: new Date().toISOString()
-      };
-      setChatMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setIsSending(false);
-      setIsTyping(false);
+    setMessageInput('');
+    
+    // Close toolbar when sending a new message (only for new messages, not retries)
+    if (!isRetry) {
+      setShowToolbar(false);
+      setSidebarCollapsed(false);
+      setToolbarOpenedViaHelp(false);
+      setActiveHelpButton(null);
     }
   };
 
@@ -495,14 +909,33 @@ export default function Dashboard({ user }: DashboardProps) {
     }
   };
 
+  const handleAddToVocab = (word: string, meaning: string) => {
+    // This will be handled by the Toolbar component
+    console.log('Added to vocab:', word, meaning);
+  };
+
   const startNewConversation = (conversationId: string) => {
     setSelectedConversation(conversationId);
     setChatMessages([{
       id: '1',
       role: 'assistant',
-      content: 'Hallo! Ich bin Ihr KI-Sprachpartner. Worüber möchten Sie heute sprechen? (Hello! I\'m your AI language partner. What would you like to talk about today?)',
+      content: 'Worüber möchten Sie heute sprechen?',
       timestamp: new Date().toISOString()
     }]);
+    // Close toolbar when starting new conversation
+    setShowToolbar(false);
+    setSidebarCollapsed(false);
+    setToolbarOpenedViaHelp(false);
+    setActiveHelpButton(null);
+    
+    // Reset retry states for new conversation
+    setWaitingForCorrection(false);
+    setUserAttempts({});
+    setErrorMessages({});
+    setMessageAttempts({});
+    setShowOriginalMessage({});
+    setOriginalMessages({});
+    setSuggestedAnswers({});
   };
 
   const handleLogout = async () => {
@@ -531,6 +964,32 @@ export default function Dashboard({ user }: DashboardProps) {
 
   const handleRestartOnboarding = () => {
     setShowOnboarding(true);
+  };
+
+  const deleteConversation = async (conversationId: string) => {
+    try {
+      const { error } = await supabase
+        .from('conversations')
+        .delete()
+        .eq('id', conversationId)
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('Error deleting conversation:', error);
+        return;
+      }
+
+      // Remove from local state
+      setConversations(prev => prev.filter(conv => conv.id !== conversationId));
+      
+      // If this was the selected conversation, clear it
+      if (selectedConversation === conversationId) {
+        setSelectedConversation(null);
+        setChatMessages([]);
+      }
+    } catch (error) {
+      console.error('Error deleting conversation:', error);
+    }
   };
 
   const firstName = user.user_metadata?.first_name || 'User';
@@ -587,99 +1046,160 @@ export default function Dashboard({ user }: DashboardProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="h-screen bg-gray-50 flex">
       {/* Sidebar */}
-      <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
+      <div className={`${sidebarCollapsed ? 'w-16' : 'w-80'} bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ease-in-out`}>
         {/* Sidebar Header */}
         <div className="p-4 border-b border-gray-100">
           <div className="flex items-center justify-between mb-4">
+            {!sidebarCollapsed && (
+              <div className="flex items-center space-x-2">
+                <MessageCircle className="h-6 w-6 text-blue-500" />
+                <span className="text-lg font-semibold text-gray-900 apple-text-primary">TalkBuddy</span>
+              </div>
+            )}
             <div className="flex items-center space-x-2">
-              <MessageCircle className="h-6 w-6 text-blue-500" />
-              <span className="text-lg font-semibold text-gray-900 apple-text-primary">TalkBuddy</span>
-            </div>
-            <div className="flex items-center space-x-2">
+              {sidebarCollapsed && (
+                <MessageCircle className="h-6 w-6 text-blue-500" />
+              )}
               <button
-                onClick={() => setShowProfileModal(true)}
-                className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 hover:border-blue-300 transition-colors"
-              >
-                {currentProfilePicture ? (
-                  <img src={currentProfilePicture} alt="Profile" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full bg-gray-100 flex items-center justify-center">
-                    <User className="h-4 w-4 text-gray-400" />
-                  </div>
-                )}
-              </button>
-              <button
-                onClick={handleRestartOnboarding}
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
                 className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
               >
-                <Settings className="h-4 w-4" />
+                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${sidebarCollapsed ? 'rotate-90' : '-rotate-90'}`} />
               </button>
-              <button
-                onClick={handleLogout}
-                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-              >
-                <LogOut className="h-4 w-4" />
-              </button>
+              {!sidebarCollapsed && (
+                <>
+                  <button
+                    onClick={() => setShowProfileModal(true)}
+                    className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 hover:border-blue-300 transition-colors"
+                  >
+                    {currentProfilePicture ? (
+                      <img src={currentProfilePicture} alt="Profile" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+                        <User className="h-4 w-4 text-gray-400" />
+                      </div>
+                    )}
+                  </button>
+                  <button
+                    onClick={handleRestartOnboarding}
+                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                  >
+                    <Settings className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={handleLogout}
+                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                  >
+                    <LogOut className="h-4 w-4" />
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
           {/* New Conversation Button */}
-          <button 
-            onClick={() => {
-              setSelectedConversation(null);
-              setCurrentView('dashboard');
-            }}
-            className="w-full apple-button px-4 py-2.5 flex items-center justify-center space-x-2 font-medium mb-3"
-          >
-            <Plus className="h-4 w-4" />
-            <span>New Conversation</span>
-          </button>
+          {!sidebarCollapsed && (
+            <button 
+              onClick={() => {
+                setSelectedConversation(null);
+                setCurrentView('dashboard');
+              }}
+              className="w-full apple-button px-4 py-2.5 flex items-center justify-center space-x-2 font-medium mb-3"
+            >
+              <Plus className="h-4 w-4" />
+              <span>New Conversation</span>
+            </button>
+          )}
+          {sidebarCollapsed && (
+            <button 
+              onClick={() => {
+                setSelectedConversation(null);
+                setCurrentView('dashboard');
+              }}
+              className="w-full apple-button p-2 flex items-center justify-center mb-3"
+              title="New Conversation"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          )}
 
           {/* Navigation Links */}
-          <div className="flex space-x-1">
-            <button
-              onClick={() => setCurrentView('progress')}
-              className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                currentView === 'progress'
-                  ? 'bg-blue-50 text-blue-600' 
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-              }`}
-            >
-              <BarChart3 className="h-4 w-4 inline mr-1" />
-              Progress
-            </button>
-            <button
-              onClick={() => setCurrentView('vocab')}
-              className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                currentView === 'vocab'
-                  ? 'bg-blue-50 text-blue-600'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-              }`}
-            >
-              <BookOpen className="h-4 w-4 inline mr-1" />
-              Vocab List
-            </button>
-          </div>
+          {!sidebarCollapsed && (
+            <div className="flex space-x-1">
+              <button
+                onClick={() => setCurrentView('progress')}
+                className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  currentView === 'progress'
+                    ? 'bg-blue-50 text-blue-600' 
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+              >
+                <BarChart3 className="h-4 w-4 inline mr-1" />
+                Progress
+              </button>
+              <button
+                onClick={() => setCurrentView('vocab')}
+                className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                  currentView === 'vocab'
+                    ? 'bg-blue-50 text-blue-600'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+              >
+                <BookOpen className="h-4 w-4 inline mr-1" />
+                Vocab List
+              </button>
+            </div>
+          )}
+          {sidebarCollapsed && (
+            <div className="flex flex-col space-y-1">
+              <button
+                onClick={() => setCurrentView('progress')}
+                className={`p-2 text-sm font-medium rounded-lg transition-colors ${
+                  currentView === 'progress'
+                    ? 'bg-blue-50 text-blue-600' 
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+                title="Progress"
+              >
+                <BarChart3 className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setCurrentView('vocab')}
+                className={`p-2 text-sm font-medium rounded-lg transition-colors ${
+                  currentView === 'vocab'
+                    ? 'bg-blue-50 text-blue-600'
+                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                }`}
+                title="Vocab List"
+              >
+                <BookOpen className="h-4 w-4" />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Search */}
-        <div className="p-4 border-b border-gray-100">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search conversations..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 apple-input text-sm"
-            />
+        {!sidebarCollapsed && (
+          <div className="p-4 border-b border-gray-100">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search conversations..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 apple-input text-sm"
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Recent Conversations */}
-        <div className="flex-1 overflow-hidden flex flex-col">
+        {!sidebarCollapsed && (
+          <div className="flex-1 overflow-hidden flex flex-col">
           <div className="p-4 pb-2">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-gray-700 apple-text-primary">Recent Conversations</h3>
@@ -731,23 +1251,43 @@ export default function Dashboard({ user }: DashboardProps) {
             ) : filteredConversations.length > 0 ? (
               <div className="space-y-1">
                 {filteredConversations.map((conversation) => (
-                  <button
+                  <div
                     key={conversation.id}
-                    onClick={() => startNewConversation(conversation.id)}
-                    className={`w-full text-left p-3 rounded-lg transition-colors ${
-                      selectedConversation === conversation.id
-                        ? 'bg-blue-50 border border-blue-200'
-                        : 'hover:bg-gray-50 border border-transparent'
-                    }`}
+                    className="relative group"
+                    onMouseEnter={() => setHoveredConversation(conversation.id)}
+                    onMouseLeave={() => setHoveredConversation(null)}
                   >
-                    <div className="flex items-start justify-between mb-1">
-                      <h4 className="text-sm font-medium truncate apple-text-primary">
-                        {conversation.title}
-                      </h4>
-                    </div>
-                    <p className="text-xs apple-text-secondary truncate mb-1">{conversation.preview}</p>
-                    <p className="text-xs text-gray-400">{formatTime(conversation.updated_at)}</p>
-                  </button>
+                    <button
+                      onClick={() => startNewConversation(conversation.id)}
+                      className={`w-full text-left p-3 rounded-lg transition-colors ${
+                        selectedConversation === conversation.id
+                          ? 'bg-blue-50 border border-blue-200'
+                          : 'hover:bg-gray-50 border border-transparent'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between mb-1">
+                        <h4 className="text-sm font-medium truncate apple-text-primary">
+                          {conversation.title}
+                        </h4>
+                      </div>
+                      <p className="text-xs apple-text-secondary truncate mb-1">{conversation.preview}</p>
+                      <p className="text-xs text-gray-400">{formatTime(conversation.updated_at)}</p>
+                    </button>
+                    
+                    {/* Delete button - appears on hover */}
+                    {hoveredConversation === conversation.id && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteConversation(conversation.id);
+                        }}
+                        className="absolute top-2 right-2 p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-md opacity-90 hover:opacity-100 transition-all duration-200 shadow-sm"
+                        title="Delete conversation"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
                 ))}
               </div>
             ) : (
@@ -762,70 +1302,111 @@ export default function Dashboard({ user }: DashboardProps) {
               </div>
             )}
           </div>
-        </div>
+          </div>
+        )}
 
         {/* Settings */}
-        <div className="p-4 border-t border-gray-100">
-          <h3 className="text-sm font-medium text-gray-700 mb-3 apple-text-primary">Settings</h3>
-          <button
-            onClick={() => setShowProfileModal(true)}
-            className="flex items-center space-x-3 w-full text-left p-2 hover:bg-gray-50 rounded-md transition-colors"
-          >
-            {currentProfilePicture ? (
-              <img src={currentProfilePicture} alt="Profile" className="w-8 h-8 rounded-full object-cover" />
-            ) : (
-              <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-                <User className="h-4 w-4 text-gray-400" />
+        {!sidebarCollapsed && (
+          <div className="p-4 border-t border-gray-100">
+            <h3 className="text-sm font-medium text-gray-700 mb-3 apple-text-primary">Settings</h3>
+            <button
+              onClick={() => setShowProfileModal(true)}
+              className="flex items-center space-x-3 w-full text-left p-2 hover:bg-gray-50 rounded-md transition-colors"
+            >
+              {currentProfilePicture ? (
+                <img src={currentProfilePicture} alt="Profile" className="w-8 h-8 rounded-full object-cover" />
+              ) : (
+                <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+                  <User className="h-4 w-4 text-gray-400" />
+                </div>
+              )}
+              <div>
+                <p className="text-sm font-medium apple-text-primary">{firstName}</p>
+                <p className="text-xs apple-text-secondary">Profile Settings</p>
               </div>
-            )}
-            <div>
-              <p className="text-sm font-medium apple-text-primary">{firstName}</p>
-              <p className="text-xs apple-text-secondary">Profile Settings</p>
-            </div>
-          </button>
-        </div>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         {selectedConversation ? (
           // Conversation View
-          <div className="flex-1 flex flex-col">
-            {/* Conversation Header */}
-            <div className="bg-white border-b border-gray-200 p-4">
+          <div className="flex-1 flex h-full">
+            <div className="flex-1 flex flex-col h-full">
+
+            {/* German Partner Display */}
+            <div className="bg-white border-b border-gray-200 px-4 py-3">
               <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold apple-text-primary">
-                    {conversations.find(c => c.id === selectedConversation)?.title}
-                  </h2>
-                  <p className="text-sm apple-text-secondary">AI Language Partner</p>
+                <div className="flex items-center space-x-3">
+                  <div className="relative">
+                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                      {germanPartnerName.charAt(0)}
+                    </div>
+                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">{germanPartnerName}</h3>
+                    <div className="flex items-center space-x-2">
+                      <div className="flex items-center space-x-1">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        <span className="text-xs text-green-600 font-medium">Online</span>
+                      </div>
+                      <span className="text-xs text-gray-500">•</span>
+                      <span className="text-xs text-gray-500">Last seen {lastSeenTime}</span>
+                    </div>
+                  </div>
                 </div>
-                <button 
-                  onClick={() => setSelectedConversation(null)}
-                  className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                >
-                  End Conversation
-                </button>
+                <div className="flex items-center space-x-3">
+                  <div className="text-right">
+                    <p className="text-xs text-gray-500">German Language Partner</p>
+                    <p className="text-xs text-gray-400">Native Speaker</p>
+                  </div>
+                  <button 
+                    onClick={() => setSelectedConversation(null)}
+                    className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    End Conversation
+                  </button>
+                </div>
               </div>
             </div>
 
             {/* Conversation Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0 max-h-full scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
               {chatMessages.map((message) => (
                 <div key={message.id}>
                   <div className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-xs lg:max-w-md px-4 py-3 rounded-2xl ${
+                    {/* Mistake Detection Button - Outside chat bubble for user messages */}
+                    {message.role === 'user' && errorMessages[message.id] && (
+                      <div className="flex items-center mr-2">
+                        <button
+                          onClick={() => handleErrorCorrection(message.id)}
+                          className="group relative bg-red-500 hover:bg-red-600 text-white p-2 rounded-full shadow-lg transition-all duration-200 hover:scale-110"
+                          title="Click to understand the mistake and get grammar help"
+                        >
+                          <svg className="h-4 w-4 animate-pulse" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                          {/* Tooltip */}
+                          <div className="absolute right-full mr-2 top-1/2 transform -translate-y-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap">
+                            Click to understand the mistake
+                          </div>
+                        </button>
+                      </div>
+                    )}
+                    
+                    <div className={`max-w-sm lg:max-w-lg px-4 py-3 rounded-2xl ${
                       message.role === 'user'
                         ? 'bg-blue-500 text-white rounded-tr-md'
-                        : message.content.startsWith('**Topic:')
-                        ? 'apple-card rounded-tl-md border-l-4 border-blue-500'
                         : 'apple-card rounded-tl-md'
                     }`}>
-                      {message.role === 'assistant' && !message.content.startsWith('**Topic:') && (
+                      {message.role === 'assistant' && (
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center space-x-2">
                             <Bot className="h-4 w-4 text-blue-500" />
-                            <span className="text-xs font-medium text-blue-600">AI Language Partner</span>
+                            <span className="text-xs font-medium text-blue-600">{germanPartnerName}</span>
                           </div>
                           <div className="flex items-center space-x-1">
                             <button
@@ -855,35 +1436,90 @@ export default function Dashboard({ user }: DashboardProps) {
                                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
                               </svg>
                             </button>
+                            <button
+                              onClick={() => handleHelpClick(message.content, message.id)}
+                              className={`p-1 rounded transition-colors ${
+                                activeHelpButton === message.id 
+                                  ? 'bg-blue-100' 
+                                  : 'hover:bg-gray-100'
+                              }`}
+                              title="Get Grammar Help"
+                            >
+                              <BookOpen className={`h-3 w-3 ${
+                                activeHelpButton === message.id 
+                                  ? 'text-blue-500' 
+                                  : 'text-gray-500'
+                              }`} />
+                            </button>
                           </div>
                         </div>
                       )}
                       <div className={`text-sm ${
                         message.role === 'user' 
                           ? 'text-white' 
-                          : message.content.startsWith('**Topic:')
-                          ? 'apple-text-primary'
                           : 'apple-text-primary'
                       }`}>
-                        {message.content.startsWith('**Topic:') ? (
-                          <div>
-                            <div className="font-semibold text-blue-600 mb-2">
-                              {message.content.split('\n')[0].replace(/\*\*/g, '')}
-                            </div>
-                            <div className="text-gray-700">
-                              {message.content.split('\n').slice(2).join('\n')}
-                            </div>
-                          </div>
-                        ) : (
-                          message.content
-                        )}
+                        {message.content}
                       </div>
                     </div>
                   </div>
                   
+                  {/* Error indicators for user messages - Below chat bubble */}
+                  {message.role === 'user' && errorMessages[message.id] && (
+                    <div className="flex justify-end mt-2">
+                      <div className="flex items-center space-x-2">
+                        {userAttempts[message.id] < 3 && (
+                          <div className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-lg text-xs font-medium">
+                            Attempts: {userAttempts[message.id]}/3
+                          </div>
+                        )}
+                        
+                        {userAttempts[message.id] >= 3 && (
+                          <div className="text-xs text-red-500 font-medium">
+                            Max attempts reached
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Suggested Answer - Match bot suggestions style */}
+                  {message.role === 'user' && userAttempts[message.id] >= 3 && suggestedAnswers[message.id] && (
+                    <div className="flex justify-end mt-2">
+                      <div className="max-w-sm lg:max-w-lg space-y-1">
+                        <div className="text-xs font-medium text-gray-600 mb-1">Suggested answer:</div>
+                        <button
+                          onClick={() => handleSuggestedAnswerClick(message.id, suggestedAnswers[message.id])}
+                          className="block w-full text-left bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors"
+                        >
+                          <div className="font-medium">{suggestedAnswers[message.id]}</div>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Motivation animation for wrong answers - Hide when max attempts reached */}
+                  {message.role === 'user' && errorMessages[message.id] && userAttempts[message.id] < 3 && (
+                    <div className="flex justify-end mt-2">
+                      <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-lg p-3 max-w-sm">
+                        <div className="flex items-center space-x-2">
+                          <div className="animate-bounce">
+                            <svg className="h-5 w-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                          </div>
+                          <div className="text-sm text-red-700">
+                            <div className="font-medium">Don't give up!</div>
+                            <div className="text-xs">You're learning - every mistake is progress! 💪</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
                   {/* Translation */}
-                  {message.role === 'assistant' && !message.content.startsWith('**Topic:') && showTranslation[message.id] && translatedMessages[message.id] && (
-                    <div className="ml-4 mt-2 max-w-xs lg:max-w-md">
+                  {message.role === 'assistant' && showTranslation[message.id] && translatedMessages[message.id] && (
+                    <div className="ml-4 mt-2 max-w-sm lg:max-w-lg">
                       <div className="bg-gray-100 px-3 py-2 rounded-lg text-xs text-gray-700">
                         <span className="font-medium">Translation: </span>
                         {translatedMessages[message.id]}
@@ -892,21 +1528,26 @@ export default function Dashboard({ user }: DashboardProps) {
                   )}
                   
                   {/* Suggested Responses */}
-                  {message.role === 'assistant' && !message.content.startsWith('**Topic:') && showSuggestions[message.id] && suggestedResponses[message.id] && (
-                    <div className="ml-4 mt-2 max-w-xs lg:max-w-md space-y-1">
+                  {message.role === 'assistant' && showSuggestions[message.id] && suggestedResponses[message.id] && (
+                    <div className="ml-4 mt-2 max-w-sm lg:max-w-lg space-y-1">
                       <div className="text-xs font-medium text-gray-600 mb-1">Suggested responses:</div>
-                      {suggestedResponses[message.id].map((suggestion, index) => (
-                        <button
-                          key={index}
-                          onClick={() => useSuggestedResponse(suggestion.german)}
-                          className="block w-full text-left bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors"
-                        >
-                          <div className="font-medium">{suggestion.german}</div>
-                          {showTranslation[message.id] && (
-                            <div className="text-gray-500 text-xs mt-1">{suggestion.english}</div>
-                          )}
-                        </button>
-                      ))}
+                      {suggestedResponses[message.id].map((suggestion, index) => {
+                        const suggestionText = typeof suggestion === 'string' ? suggestion : suggestion.german;
+                        const suggestionTranslation = typeof suggestion === 'object' ? suggestion.english : null;
+                        
+                        return (
+                          <button
+                            key={index}
+                            onClick={() => useSuggestedResponse(suggestionText)}
+                            className="block w-full text-left bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors"
+                          >
+                            <div className="font-medium">{suggestionText}</div>
+                            {showTranslation[message.id] && suggestionTranslation && (
+                              <div className="text-gray-500 text-xs mt-1">{suggestionTranslation}</div>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -914,19 +1555,25 @@ export default function Dashboard({ user }: DashboardProps) {
               
               {isTyping && (
                 <div className="flex justify-start">
-                  <div className="apple-card rounded-2xl rounded-tl-md px-4 py-3 max-w-xs">
+                  <div className="apple-card rounded-2xl rounded-tl-md px-4 py-3 max-w-sm lg:max-w-lg">
                     <div className="flex items-center space-x-2 mb-2">
                       <Bot className="h-4 w-4 text-blue-500" />
-                      <span className="text-xs font-medium text-blue-600">AI Language Partner</span>
+                      <span className="text-xs font-medium text-blue-600">{germanPartnerName}</span>
                     </div>
-                    <div className="flex space-x-1">
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-sm text-gray-600">{germanPartnerName} ist typing</span>
+                      <div className="flex space-x-1">
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
+              
+              {/* Auto-scroll anchor */}
+              <div ref={messagesEndRef} />
             </div>
 
             {/* Message Input */}
@@ -959,6 +1606,23 @@ export default function Dashboard({ user }: DashboardProps) {
                 </button>
               </div>
             </div>
+            </div>
+            
+            {/* Toolbar */}
+            {showToolbar && (
+              <Toolbar
+                isVisible={showToolbar}
+                onClose={() => {
+                  setShowToolbar(false);
+                  setSidebarCollapsed(false);
+                  setToolbarOpenedViaHelp(false);
+                  setActiveHelpButton(null);
+                }}
+                currentMessage={currentAIMessage}
+                onAddToVocab={handleAddToVocab}
+                autoLoadExplanations={toolbarOpenedViaHelp}
+              />
+            )}
           </div>
         ) : currentView === 'progress' ? (
           // Progress View
