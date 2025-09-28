@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Mic,
+  MicOff,
   LogOut,
   Search,
   Plus,
@@ -15,7 +16,8 @@ import {
   MessageCircle,
   Target,
   Bot,
-  Trash2
+  Trash2,
+  X,
 } from 'lucide-react';
 import { supabase, AuthUser } from '../lib/supabase';
 import OnboardingFlow from './OnboardingFlow';
@@ -80,6 +82,9 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
+  audioUrl?: string; // For voice messages
+  isAudio?: boolean; // Flag for audio messages
+  isTranscribing?: boolean; // Flag for messages being transcribed
 }
 export default function Dashboard({ user }: DashboardProps) {
   const [showOnboarding, setShowOnboarding] = React.useState(false);
@@ -123,6 +128,24 @@ export default function Dashboard({ user }: DashboardProps) {
   const [waitingForCorrection, setWaitingForCorrection] = useState<boolean>(false);
   const [messageAttempts, setMessageAttempts] = useState<{[key: string]: string[]}>({});
   const [suggestedAnswers, setSuggestedAnswers] = useState<{[key: string]: string}>({});
+  
+  // Recording state variables
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [showLanguageSelector, setShowLanguageSelector] = useState(false);
+  const [recordingLanguage, setRecordingLanguage] = useState<'german' | 'english'>('german');
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [showVocabSelector, setShowVocabSelector] = useState(false);
+  const [extractedVocab, setExtractedVocab] = useState<Array<{word: string, meaning: string, context: string}>>([]);
+  const [toolbarActiveTab, setToolbarActiveTab] = useState<'vocab' | 'explain' | 'pronunciation'>('explain');
+  const [newVocabItems, setNewVocabItems] = useState<Array<{word: string, meaning: string, context: string}>>([]);
+  const [selectedWords, setSelectedWords] = useState<Set<string>>(new Set());
+  const [wordMeanings, setWordMeanings] = useState<{[key: string]: string}>({});
+  const [loadingMeanings, setLoadingMeanings] = useState<Set<string>>(new Set());
+  
+  // Comprehensive analysis state
+  const [comprehensiveAnalysis, setComprehensiveAnalysis] = useState<{[key: string]: any}>({});
 
   // Ref for auto-scrolling to bottom of conversation
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -473,15 +496,20 @@ export default function Dashboard({ user }: DashboardProps) {
 
   const translateMessage = async (messageId: string, germanText: string) => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/translate`, {
+      // Use chat function for translation since translate function might not exist
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          text: germanText,
-          targetLanguage: 'English'
+          messages: [{
+            role: 'user',
+            content: `Translate this German text to English: "${germanText}". Provide only the English translation, nothing else.`
+          }],
+          conversationId: 'translation',
+          systemInstruction: "You are a German to English translator. Provide only the English translation of the German text. Be accurate and concise."
         })
       });
 
@@ -489,8 +517,10 @@ export default function Dashboard({ user }: DashboardProps) {
         const data = await response.json();
         setTranslatedMessages(prev => ({
           ...prev,
-          [messageId]: data.translation
+          [messageId]: data.message
         }));
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
     } catch (error) {
       console.error('Error translating message:', error);
@@ -630,7 +660,7 @@ export default function Dashboard({ user }: DashboardProps) {
             personalityTraits: onboardingData.personalityTraits,
             conversationTopics: onboardingData.conversationTopics
           } : undefined,
-          systemInstruction: "CRITICAL: Respond ONLY in German. NEVER include English translations in parentheses like (English translation). NEVER add English text in brackets like [English text]. NEVER provide English explanations. NEVER mix German and English in the same response. Keep responses purely in German."
+          systemInstruction: "Du bist ein freundlicher Gesprächspartner. Antworte kurz und natürlich (1-2 Sätze). Stelle viele Fragen. Sei neugierig und interessiert. Lass den Nutzer viel sprechen. Verwende 'Du' und umgangssprachliche Ausdrücke. KEINE englischen Übersetzungen oder Erklärungen."
         })
       });
 
@@ -889,16 +919,29 @@ export default function Dashboard({ user }: DashboardProps) {
       
       // Detect errors in the user message
       await detectErrors(userMessage.content, userMessage.id);
+      
+      // Also run comprehensive analysis for better error detection
+      await runComprehensiveAnalysis(userMessage.content, userMessage.id);
+      
+      // Check if there are pronunciation errors that should stop AI response
+      const analysis = comprehensiveAnalysis[userMessage.id];
+      if (analysis && analysis.errorTypes && analysis.errorTypes.pronunciation) {
+        // Don't send to AI for pronunciation errors - focus on practice
+        return;
+      }
     }
 
     setMessageInput('');
     
-    // Close toolbar when sending a new message (only for new messages, not retries)
+    // Only close toolbar if there are no pronunciation errors
     if (!isRetry) {
-      setShowToolbar(false);
-      setSidebarCollapsed(false);
-      setToolbarOpenedViaHelp(false);
-      setActiveHelpButton(null);
+      const analysis = comprehensiveAnalysis[userMessage.id];
+      if (!analysis || !analysis.errorTypes || !analysis.errorTypes.pronunciation) {
+        setShowToolbar(false);
+        setSidebarCollapsed(false);
+        setToolbarOpenedViaHelp(false);
+        setActiveHelpButton(null);
+      }
     }
   };
 
@@ -912,6 +955,616 @@ export default function Dashboard({ user }: DashboardProps) {
   const handleAddToVocab = (word: string, meaning: string) => {
     // This will be handled by the Toolbar component
     console.log('Added to vocab:', word, meaning);
+  };
+
+
+  // Handle word selection in sentence
+  const toggleWordSelection = async (word: string) => {
+    const newSelectedWords = new Set(selectedWords);
+    if (newSelectedWords.has(word)) {
+      newSelectedWords.delete(word);
+      setSelectedWords(newSelectedWords);
+    } else {
+      newSelectedWords.add(word);
+      setSelectedWords(newSelectedWords);
+      
+      // Fetch meaning for the word if not already loaded
+      if (!wordMeanings[word]) {
+        await fetchWordMeaning(word);
+      }
+    }
+  };
+
+  // Fetch meaning for a specific word
+  const fetchWordMeaning = async (word: string) => {
+    setLoadingMeanings(prev => new Set(prev).add(word));
+    
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [{
+            role: 'user',
+            content: `Provide the English translation for this German word: "${word}". Just return the English meaning, nothing else.`
+          }],
+          conversationId: 'word_meaning',
+          systemInstruction: "Provide only the English translation of the German word. Be concise and accurate."
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setWordMeanings(prev => ({
+          ...prev,
+          [word]: data.message.trim()
+        }));
+      }
+    } catch (error) {
+      console.error('Error fetching word meaning:', error);
+      setWordMeanings(prev => ({
+        ...prev,
+        [word]: 'Meaning not found'
+      }));
+    } finally {
+      setLoadingMeanings(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(word);
+        return newSet;
+      });
+    }
+  };
+
+  // Add selected vocabulary words to user's vocabulary
+  const addSelectedVocab = () => {
+    const selectedWordsList = Array.from(selectedWords).map(word => ({
+      word: word,
+      meaning: wordMeanings[word] || 'Meaning not found',
+      context: extractedVocab[0]?.word || ''
+    }));
+    
+    // Set new vocabulary items for the Toolbar
+    setNewVocabItems(selectedWordsList);
+    
+    // Open toolbox with vocab tab active
+    setToolbarActiveTab('vocab');
+    setShowToolbar(true);
+    
+    // Close the modal and reset state
+    setShowVocabSelector(false);
+    setExtractedVocab([]);
+    setSelectedWords(new Set());
+    setWordMeanings({});
+    setLoadingMeanings(new Set());
+  };
+
+  // Cancel vocabulary selection
+  const cancelVocabSelection = () => {
+    setShowVocabSelector(false);
+    setExtractedVocab([]);
+    setSelectedWords(new Set());
+    setWordMeanings({});
+    setLoadingMeanings(new Set());
+  };
+
+  // Clear new vocabulary items after they've been processed
+  React.useEffect(() => {
+    if (newVocabItems.length > 0) {
+      // Clear the items after they've been processed by the Toolbar
+      const timer = setTimeout(() => {
+        setNewVocabItems([]);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [newVocabItems]);
+
+  // Extract vocabulary from German text using chat function
+  const extractVocabularyFromText = async (germanText: string) => {
+    // Instead of extracting words, just show the sentence for word-by-word selection
+    setExtractedVocab([{ word: germanText, meaning: '', context: '' }]);
+    setSelectedWords(new Set());
+    setShowVocabSelector(true);
+  };
+
+  // Comprehensive analysis function
+  const runComprehensiveAnalysis = async (message: string, messageId: string, isVoice: boolean = false) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/comprehensive-analysis`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: message,
+          userLevel: 'Intermediate',
+          source: isVoice ? 'voice' : 'text'
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Store comprehensive analysis results
+        setComprehensiveAnalysis(prev => ({
+          ...prev,
+          [messageId]: data
+        }));
+        
+        // Check for errors and display them
+        if (data.hasErrors) {
+          let errorMessage = '';
+          let shouldStopAI = false;
+          
+          if (data.errorTypes.grammar && data.corrections.grammar) {
+            errorMessage += `📝 Grammar: ${data.corrections.grammar}\n`;
+          }
+          
+          if (data.errorTypes.vocabulary && data.corrections.vocabulary) {
+            const vocabErrors = data.corrections.vocabulary.map((v: any) => 
+              `"${v.wrong}" → "${v.correct}" (${v.meaning})`
+            ).join(', ');
+            errorMessage += `📚 Vocabulary: ${vocabErrors}\n`;
+            
+            // Auto-add vocabulary corrections
+            data.corrections.vocabulary.forEach((v: any) => {
+              handleAddToVocab(v.correct, v.meaning);
+            });
+          }
+          
+          if (data.errorTypes.pronunciation && data.corrections.pronunciation) {
+            errorMessage += `🗣️ Pronunciation: ${data.corrections.pronunciation}\n`;
+            shouldStopAI = true; // Stop AI response for pronunciation errors
+            
+            // Auto-open pronunciation tab for practice
+            setShowToolbar(true);
+            setCurrentAIMessage(message);
+            
+            // Set pronunciation words for practice
+            if (data.wordsForPractice && data.wordsForPractice.length > 0) {
+              const pronunciationWords = data.wordsForPractice
+                .filter((word: any) => word.errorType === 'pronunciation')
+                .map((word: any) => ({
+                  word: word.word,
+                  score: word.score || 60,
+                  needsPractice: true,
+                  feedback: `Practice pronouncing "${word.word}"`,
+                  difficulty: 'medium',
+                  soundsToFocus: ['pronunciation'],
+                  improvementTips: ['Listen to native speakers', 'Practice slowly']
+                }));
+              
+              // Store pronunciation words for practice
+              setComprehensiveAnalysis(prev => ({
+                ...prev,
+                [messageId]: {
+                  ...data,
+                  pronunciationWords
+                }
+              }));
+            }
+          }
+          
+          // Show error message
+          if (errorMessage) {
+            setErrorMessages(prev => ({
+              ...prev,
+              [messageId]: errorMessage.trim()
+            }));
+            
+            // Set user attempts for voice messages with errors
+            if (isVoice) {
+              setUserAttempts(prev => ({
+                ...prev,
+                [messageId]: (prev[messageId] || 0) + 1
+              }));
+            }
+            
+            // Auto-open toolbar to show analysis (if not already opened for pronunciation)
+            if (!data.errorTypes.pronunciation) {
+              setShowToolbar(true);
+              setCurrentAIMessage(message);
+            }
+            
+            // Stop AI response if there are errors that need attention
+            if (shouldStopAI) {
+              return; // Don't continue with AI response
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error in comprehensive analysis:', error instanceof Error ? error.message : 'Unknown error');
+    }
+  };
+
+  // Recording functions
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+      let recordingStartTime = Date.now();
+
+      // Start duration tracking
+      const durationInterval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+        setRecordingDuration(elapsed);
+        
+        // Warn at 25 seconds
+        if (elapsed >= 25) {
+          console.warn('Recording approaching 30s limit');
+        }
+      }, 1000);
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        clearInterval(durationInterval);
+        setRecordingDuration(0);
+        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+        await processAudioMessage(audioBlob);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      setMediaRecorder(recorder);
+      setIsRecording(true);
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      alert('Microphone access denied. Please allow microphone access to use voice input.');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorder && isRecording) {
+      mediaRecorder.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const processAudioMessage = async (audioBlob: Blob) => {
+    // Create audio message immediately
+    const audioMessage: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: '🎤 Voice message',
+      timestamp: new Date().toISOString(),
+      audioUrl: URL.createObjectURL(audioBlob),
+      isAudio: true,
+      isTranscribing: true
+    };
+    
+    // Add to chat immediately
+    setChatMessages(prev => [...prev, audioMessage]);
+    
+    // Process audio in background
+    await transcribeAudio(audioBlob, audioMessage.id);
+  };
+
+  const transcribeAudio = async (audioBlob: Blob, messageId: string) => {
+    setIsTranscribing(true);
+    try {
+      // Log audio info for debugging
+      console.log('Audio blob size:', audioBlob.size, 'bytes');
+      console.log('Audio blob type:', audioBlob.type);
+      console.log('Recording language:', recordingLanguage);
+      
+      // Convert blob to base64
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      
+      console.log('Base64 audio length:', base64Audio.length);
+
+      // Try the whisper function first, fallback to chat function if not available
+      let response;
+      try {
+        const language = recordingLanguage === 'german' ? 'de' : 'en';
+        
+        // Add timeout for longer recordings
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+        
+        response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whisper`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            audioData: base64Audio,
+            language: language,
+            storeForAnalysis: true
+          }),
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+      } catch (whisperError) {
+        console.log('Whisper function error:', whisperError);
+        
+        // Check if it's a timeout or size issue
+        if (whisperError.name === 'AbortError') {
+          console.log('Transcription timeout - audio might be too long');
+          setChatMessages(prev => prev.map(msg => 
+            msg.id === messageId 
+              ? { ...msg, content: '⏱️ Audio too long (30s limit). Try shorter recordings.', isTranscribing: false }
+              : msg
+          ));
+          return;
+        }
+        
+        // Check if audio is too large
+        if (audioBlob.size > 25 * 1024 * 1024) { // 25MB limit
+          console.log('Audio file too large:', audioBlob.size);
+          setChatMessages(prev => prev.map(msg => 
+            msg.id === messageId 
+              ? { ...msg, content: '📁 Audio file too large. Try shorter recordings.', isTranscribing: false }
+              : msg
+          ));
+          return;
+        }
+        
+        console.log('Whisper function not available, using fallback...');
+        // Fallback: Use chat function with a message about audio transcription
+        const fallbackMessage = recordingLanguage === 'german' 
+          ? 'I just recorded an audio message. Please respond as if I said something in German and help me practice.'
+          : 'I just recorded an audio message in English. Please help me translate it to German and suggest how to say it naturally.';
+        
+        response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            messages: [
+              {
+                role: 'user',
+                content: fallbackMessage
+              }
+            ],
+            conversationId: 'audio-fallback',
+            contextLevel: 'Intermediate',
+            difficultyLevel: 'Intermediate'
+          })
+        });
+      }
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Check if this is a whisper response or chat fallback
+        if (data.transcription) {
+          // Whisper function response
+          const transcription = data.transcription;
+          
+          // Update the audio message with transcription
+          setChatMessages(prev => prev.map(msg => 
+            msg.id === messageId 
+              ? { ...msg, content: transcription, isTranscribing: false }
+              : msg
+          ));
+          
+          if (recordingLanguage === 'german') {
+            // For German recordings, run comprehensive analysis
+            await runComprehensiveAnalysis(transcription, messageId, true);
+            
+            // Check if there are errors that should prevent AI response
+            const analysis = comprehensiveAnalysis[messageId];
+            if (analysis && analysis.hasErrors) {
+              // Don't send to AI if there are errors - focus on correction
+              console.log('Voice message has errors, not sending to AI');
+              return;
+            }
+            
+            // Send transcription to AI only if no errors
+            await sendTranscriptionToAI(transcription, messageId);
+          } else {
+            // For English recordings, translate to German and provide suggestions
+            await translateEnglishToGerman(transcription, messageId);
+          }
+        } else if (data.response) {
+          // Chat function fallback response
+          const fallbackMessage = "🎤 Audio recorded (transcription not available)";
+          
+          // Update the audio message
+          setChatMessages(prev => prev.map(msg => 
+            msg.id === messageId 
+              ? { ...msg, content: fallbackMessage, isTranscribing: false }
+              : msg
+          ));
+          
+          // Add AI response directly
+          const aiMessage: ChatMessage = {
+            id: `ai-${Date.now()}`,
+            role: 'assistant',
+            content: data.response,
+            timestamp: new Date().toISOString()
+          };
+          setChatMessages(prev => [...prev, aiMessage]);
+        }
+      } else {
+        const errorText = await response.text();
+        console.error('Transcription failed:', response.status, errorText);
+        // Update message to show error with more details
+        setChatMessages(prev => prev.map(msg => 
+          msg.id === messageId 
+            ? { ...msg, content: `❌ Transcription failed (${response.status})`, isTranscribing: false }
+            : msg
+        ));
+      }
+    } catch (error) {
+      console.error('Error transcribing audio:', error);
+      
+      // Check if it's a CORS or function not found error
+      if (error.message.includes('Failed to fetch') || error.message.includes('CORS')) {
+        // Update message to show function needs deployment
+        setChatMessages(prev => prev.map(msg => 
+          msg.id === messageId 
+            ? { 
+                ...msg, 
+                content: '⚠️ Whisper function not deployed. Audio recorded but transcription unavailable.', 
+                isTranscribing: false 
+              }
+            : msg
+        ));
+      } else {
+        // Update message to show transcription failed
+        setChatMessages(prev => prev.map(msg => 
+          msg.id === messageId 
+            ? { ...msg, content: '❌ Transcription failed', isTranscribing: false }
+            : msg
+        ));
+      }
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  // Translate English to German and provide suggestions
+  const translateEnglishToGerman = async (englishText: string, messageId: string) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/translate`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: englishText,
+          sourceLanguage: 'en',
+          targetLanguage: 'de',
+          context: 'conversation'
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const germanTranslation = data.translation;
+        
+        // Create a helpful AI response with the translation and suggestions
+        const aiResponse: ChatMessage = {
+          id: `ai-${Date.now()}`,
+          role: 'assistant',
+          content: `Ah, du möchtest sagen: "${germanTranslation}"\n\nHier sind ein paar Möglichkeiten, wie du das ausdrücken kannst:\n\n• **Formell:** "${germanTranslation}"\n• **Umgangssprachlich:** "${data.casual || germanTranslation}"\n• **Natürlicher:** "${data.natural || germanTranslation}"\n\nVersuche es nochmal auf Deutsch! 🎯`,
+          timestamp: new Date().toISOString()
+        };
+        
+        setChatMessages(prev => [...prev, aiResponse]);
+      } else {
+        // Fallback: Use chat function for translation
+        await sendTranscriptionToAI(`Translate this to German and provide suggestions: "${englishText}"`, messageId, true);
+      }
+    } catch (error) {
+      console.error('Error translating English to German:', error);
+      // Fallback: Use chat function for translation
+      await sendTranscriptionToAI(`Translate this to German and provide suggestions: "${englishText}"`, messageId, true);
+    }
+  };
+
+  // Handle voice message retry
+  const handleVoiceRetry = async (messageId: string) => {
+    const message = chatMessages.find(msg => msg.id === messageId);
+    if (!message || !message.audioUrl) return;
+
+    // Start recording again for retry
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const chunks: BlobPart[] = [];
+      const recorder = new MediaRecorder(stream);
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+        
+        // Update the existing message to show retry attempt
+        setChatMessages(prev => prev.map(msg => 
+          msg.id === messageId 
+            ? { ...msg, content: '🎤 Recording retry...', isTranscribing: true }
+            : msg
+        ));
+        
+        // Process the retry audio
+        await transcribeAudio(audioBlob, messageId);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      setMediaRecorder(recorder);
+      setIsRecording(true);
+    } catch (error) {
+      console.error('Error starting retry recording:', error);
+      alert('Microphone access denied. Please allow microphone access to retry voice input.');
+    }
+  };
+
+  const sendTranscriptionToAI = async (transcription: string, messageId: string, isEnglishTranslation: boolean = false) => {
+    if (!selectedConversation) return;
+
+    setIsSending(true);
+    setIsTyping(true);
+
+    try {
+      const systemInstruction = isEnglishTranslation 
+        ? "Du bist ein hilfreicher Deutschlehrer. Wenn der Nutzer etwas auf Englisch sagt, übersetze es ins Deutsche und gib hilfreiche Vorschläge, wie man es natürlich ausdrücken kann. Sei ermutigend und gib verschiedene Ausdrucksmöglichkeiten (formell, umgangssprachlich, natürlich)."
+        : "Du bist ein freundlicher Gesprächspartner. Antworte kurz und natürlich (1-2 Sätze). Stelle viele Fragen. Sei neugierig und interessiert. Lass den Nutzer viel sprechen. Verwende 'Du' und umgangssprachliche Ausdrücke.";
+      
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [
+            ...chatMessages.filter(msg => !msg.isAudio).map(msg => ({
+              role: msg.role,
+              content: msg.content
+            })),
+            {
+              role: 'user',
+              content: transcription
+            }
+          ],
+          conversationId: selectedConversation,
+          contextLevel,
+          difficultyLevel,
+          systemInstruction: systemInstruction,
+          userProfile: onboardingData
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const assistantMessage: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: data.message,
+          timestamp: new Date().toISOString()
+        };
+        
+        setChatMessages(prev => [...prev, assistantMessage]);
+        setCurrentAIMessage(data.message);
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+    } finally {
+      setIsSending(false);
+      setIsTyping(false);
+    }
   };
 
   const startNewConversation = (conversationId: string) => {
@@ -1459,7 +2112,41 @@ export default function Dashboard({ user }: DashboardProps) {
                           ? 'text-white' 
                           : 'apple-text-primary'
                       }`}>
-                        {message.content}
+                        {message.isAudio ? (
+                          <div className="flex items-center space-x-3">
+                            <button 
+                              onClick={() => {
+                                if (message.audioUrl) {
+                                  const audio = new Audio(message.audioUrl);
+                                  audio.play();
+                                }
+                              }}
+                              className="flex items-center space-x-2 px-3 py-2 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-colors"
+                            >
+                              <Play className="h-4 w-4" />
+                              <span className="text-sm">Play</span>
+                            </button>
+                            <span>{message.content}</span>
+                            {message.isTranscribing && (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            )}
+                            {/* Retry button for voice messages with errors */}
+                            {errorMessages[message.id] && userAttempts[message.id] < 3 && (
+                              <button
+                                onClick={() => handleVoiceRetry(message.id)}
+                                className="flex items-center space-x-1 px-2 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded text-xs transition-colors"
+                                title="Retry voice input"
+                              >
+                                <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                                <span>Retry</span>
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          message.content
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1524,6 +2211,12 @@ export default function Dashboard({ user }: DashboardProps) {
                         <span className="font-medium">Translation: </span>
                         {translatedMessages[message.id]}
                       </div>
+                      <button
+                        onClick={() => extractVocabularyFromText(message.content)}
+                        className="mt-2 text-xs text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                      >
+                        📚 Add words to vocab
+                      </button>
                     </div>
                   )}
                   
@@ -1601,9 +2294,33 @@ export default function Dashboard({ user }: DashboardProps) {
                     <Send className="h-4 w-4 text-white" />
                   )}
                 </button>
-                <button className="bg-green-500 hover:bg-green-600 text-white p-3 rounded-full transition-colors">
-                  <Mic className="h-4 w-4" />
-                </button>
+                <div className="flex items-center space-x-2">
+                  {isRecording && (
+                    <div className="text-sm text-gray-600">
+                      {recordingDuration}s
+                      {recordingDuration >= 25 && (
+                        <span className="text-orange-500 ml-1">⚠️</span>
+                      )}
+                    </div>
+                  )}
+                  <button 
+                    onClick={isRecording ? stopRecording : () => setShowLanguageSelector(true)}
+                    disabled={isTranscribing}
+                    className={`p-3 rounded-full transition-colors ${
+                      isRecording 
+                        ? 'bg-red-500 hover:bg-red-600 text-white' 
+                        : 'bg-green-500 hover:bg-green-600 text-white'
+                    } ${isTranscribing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {isTranscribing ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : isRecording ? (
+                      <MicOff className="h-4 w-4" />
+                    ) : (
+                      <Mic className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
             </div>
@@ -1621,6 +2338,10 @@ export default function Dashboard({ user }: DashboardProps) {
                 currentMessage={currentAIMessage}
                 onAddToVocab={handleAddToVocab}
                 autoLoadExplanations={toolbarOpenedViaHelp}
+                comprehensiveAnalysis={comprehensiveAnalysis[currentAIMessage]}
+                activeTab={toolbarActiveTab}
+                onTabChange={setToolbarActiveTab}
+                newVocabItems={newVocabItems}
               />
             )}
           </div>
@@ -1878,6 +2599,157 @@ export default function Dashboard({ user }: DashboardProps) {
         currentPictureUrl={currentProfilePicture}
         onPictureUpdate={handleProfilePictureUpdate}
       />
+
+      {/* Language Selector Modal */}
+      {showLanguageSelector && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-96 max-w-sm mx-4">
+            <div className="text-center mb-6">
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Choose Language</h3>
+              <p className="text-gray-600 text-sm">Select the language you want to speak in</p>
+            </div>
+            
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  setRecordingLanguage('german');
+                  setShowLanguageSelector(false);
+                  startRecording();
+                }}
+                className="w-full p-4 border-2 border-gray-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all duration-200 flex items-center space-x-3"
+              >
+                <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
+                  <span className="text-white font-bold text-lg">DE</span>
+                </div>
+                <div className="text-left">
+                  <div className="font-semibold text-gray-900">German</div>
+                  <div className="text-sm text-gray-600">Practice your German speaking</div>
+                </div>
+              </button>
+              
+              <button
+                onClick={() => {
+                  setRecordingLanguage('english');
+                  setShowLanguageSelector(false);
+                  startRecording();
+                }}
+                className="w-full p-4 border-2 border-gray-200 rounded-xl hover:border-green-500 hover:bg-green-50 transition-all duration-200 flex items-center space-x-3"
+              >
+                <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+                  <span className="text-white font-bold text-lg">EN</span>
+                </div>
+                <div className="text-left">
+                  <div className="font-semibold text-gray-900">English</div>
+                  <div className="text-sm text-gray-600">Get help translating to German</div>
+                </div>
+              </button>
+            </div>
+            
+            <button
+              onClick={() => setShowLanguageSelector(false)}
+              className="w-full mt-4 py-3 text-gray-600 hover:text-gray-800 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Vocabulary Selector Modal */}
+      {showVocabSelector && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-2xl mx-4 max-h-[80vh] overflow-y-auto">
+            <div className="text-center mb-6">
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Select Words to Add</h3>
+              <p className="text-gray-600 text-sm">Click on the words you want to add to your vocabulary</p>
+            </div>
+            
+            {/* Sentence with clickable words */}
+            <div className="mb-6">
+              <div className="bg-gray-50 rounded-xl p-4 mb-4">
+                <p className="text-sm text-gray-600 mb-2">Original sentence:</p>
+                <div className="text-lg text-gray-900 leading-relaxed">
+                  {extractedVocab[0]?.word && extractedVocab[0].word.split(' ').map((word, index) => {
+                    const cleanWord = word.replace(/[.,!?;:]/g, '');
+                    const isSelected = selectedWords.has(cleanWord);
+                    const isLoading = loadingMeanings.has(cleanWord);
+                    
+                    return (
+                      <span key={index}>
+                        <button
+                          onClick={() => toggleWordSelection(cleanWord)}
+                          className={`inline-block px-2 py-1 mx-1 my-1 rounded-lg transition-all duration-200 ${
+                            isSelected 
+                              ? 'bg-blue-500 text-white shadow-md' 
+                              : 'bg-white text-gray-700 hover:bg-blue-100 border border-gray-200'
+                          }`}
+                          disabled={isLoading}
+                        >
+                          {isLoading ? (
+                            <span className="flex items-center">
+                              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                              {cleanWord}
+                            </span>
+                          ) : (
+                            cleanWord
+                          )}
+                        </button>
+                        {word.match(/[.,!?;:]/) && <span className="text-gray-700">{word.match(/[.,!?;:]/)?.[0]}</span>}
+                        {index < extractedVocab[0].word.split(' ').length - 1 && ' '}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+              
+              {/* Selected words with meanings */}
+              {selectedWords.size > 0 && (
+                <div className="space-y-2">
+                  <h4 className="font-semibold text-gray-900 text-sm">Selected words:</h4>
+                  {Array.from(selectedWords).map((word, index) => (
+                    <div key={index} className="flex items-center justify-between bg-blue-50 rounded-lg p-3">
+                      <div className="flex-1">
+                        <span className="font-semibold text-blue-900">{word}</span>
+                        {wordMeanings[word] && (
+                          <span className="text-blue-700 ml-2">- {wordMeanings[word]}</span>
+                        )}
+                        {loadingMeanings.has(word) && (
+                          <span className="text-blue-600 ml-2 flex items-center">
+                            <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                            Loading meaning...
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => toggleWordSelection(word)}
+                        className="text-red-500 hover:text-red-700 p-1"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <div className="flex space-x-3">
+              <button
+                onClick={cancelVocabSelection}
+                className="flex-1 py-3 text-gray-600 hover:text-gray-800 transition-colors border border-gray-300 rounded-xl"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={addSelectedVocab}
+                disabled={selectedWords.size === 0}
+                className="flex-1 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white rounded-xl transition-colors disabled:cursor-not-allowed"
+              >
+                Add {selectedWords.size} word{selectedWords.size !== 1 ? 's' : ''}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

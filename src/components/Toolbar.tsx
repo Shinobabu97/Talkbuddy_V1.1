@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BookOpen, Lightbulb, Volume2, Star, X } from 'lucide-react';
+import { BookOpen, Lightbulb, Volume2, Star, X, Play, Mic, MicOff, Loader2, AlertCircle, CheckCircle, Target, Trophy } from 'lucide-react';
 
 interface ToolbarProps {
   isVisible: boolean;
@@ -7,6 +7,10 @@ interface ToolbarProps {
   currentMessage?: string;
   onAddToVocab: (word: string, meaning: string) => void;
   autoLoadExplanations?: boolean;
+  comprehensiveAnalysis?: any;
+  activeTab?: 'vocab' | 'explain' | 'pronunciation';
+  onTabChange?: (tab: 'vocab' | 'explain' | 'pronunciation') => void;
+  newVocabItems?: Array<{word: string, meaning: string, context: string}>;
 }
 
 interface VocabItem {
@@ -18,8 +22,49 @@ interface VocabItem {
   theme?: string;
 }
 
-export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVocab, autoLoadExplanations = false }: ToolbarProps) {
-  const [activeTab, setActiveTab] = useState<'vocab' | 'explain' | 'pronunciation'>('explain');
+interface PronunciationWord {
+  word: string;
+  score: number;
+  needsPractice: boolean;
+  feedback: string;
+  commonMistakes?: string[];
+  difficulty?: string;
+  soundsToFocus?: string[];
+  improvementTips?: string[];
+  userAudio?: string;
+  referenceAudio?: string;
+}
+
+interface ComprehensiveAnalysis {
+  hasErrors: boolean;
+  errorTypes: {
+    grammar: boolean;
+    vocabulary: boolean;
+    pronunciation: boolean;
+  };
+  corrections: {
+    grammar?: string;
+    vocabulary?: Array<{wrong: string, correct: string, meaning: string}>;
+    pronunciation?: string;
+  };
+  suggestions: {
+    grammar?: string;
+    vocabulary?: string;
+    pronunciation?: string;
+  };
+  wordsForPractice?: Array<{
+    word: string;
+    needsPractice: boolean;
+    score?: number;
+  }>;
+}
+
+export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVocab, autoLoadExplanations = false, comprehensiveAnalysis, activeTab: externalActiveTab, onTabChange, newVocabItems }: ToolbarProps) {
+  const [internalActiveTab, setInternalActiveTab] = useState<'vocab' | 'explain' | 'pronunciation'>('explain');
+  
+  // Use external activeTab if provided, otherwise use internal state
+  const activeTab = externalActiveTab || internalActiveTab;
+  const setActiveTab = onTabChange || setInternalActiveTab;
   const [vocabItems, setVocabItems] = useState<VocabItem[]>([]);
   const [grammarExplanation, setGrammarExplanation] = useState<string>('');
   const [speakingTips, setSpeakingTips] = useState<string>('');
@@ -28,6 +73,56 @@ export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVoc
   const [explanationCache, setExplanationCache] = useState<{[key: string]: {grammar: string, tips: string}}>({});
   const [showGrammarSection, setShowGrammarSection] = useState<boolean>(false);
   const [showSpeakingSection, setShowSpeakingSection] = useState<boolean>(false);
+  
+  // New state for comprehensive analysis
+  const [analysisData, setAnalysisData] = useState<ComprehensiveAnalysis | null>(null);
+  const [pronunciationWords, setPronunciationWords] = useState<PronunciationWord[]>([]);
+  const [practicingWord, setPracticingWord] = useState<string | null>(null);
+  const [currentAttempt, setCurrentAttempt] = useState(0);
+  const [maxAttempts] = useState(3);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [audioStorage, setAudioStorage] = useState<{[key: string]: string}>({});
+  const [practiceHistory, setPracticeHistory] = useState<Array<{
+    word: string;
+    score: number;
+    attempts: number;
+    timestamp: string;
+    audioId: string;
+  }>>([]);
+  const [masteredWords, setMasteredWords] = useState<Set<string>>(new Set());
+  const [currentSession, setCurrentSession] = useState<{
+    sessionId: string;
+    startTime: string;
+    wordsPracticed: string[];
+    totalScore: number;
+    averageScore: number;
+  } | null>(null);
+  const [userProgress, setUserProgress] = useState<{
+    level: number;
+    xp: number;
+    totalWordsMastered: number;
+    totalSessions: number;
+    streak: number;
+    achievements: string[];
+  }>({
+    level: 1,
+    xp: 0,
+    totalWordsMastered: 0,
+    totalSessions: 0,
+    streak: 0,
+    achievements: []
+  });
+
+  // Speak text function
+  const speakText = (text: string) => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'de-DE';
+      utterance.rate = 0.8;
+      window.speechSynthesis.speak(utterance);
+    }
+  };
 
   // Load vocabulary from localStorage on component mount
   useEffect(() => {
@@ -41,6 +136,51 @@ export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVoc
   useEffect(() => {
     localStorage.setItem('talkbuddy_vocab', JSON.stringify(vocabItems));
   }, [vocabItems]);
+
+  // Handle comprehensive analysis data
+  useEffect(() => {
+    if (comprehensiveAnalysis && comprehensiveAnalysis.errorTypes) {
+      // Auto-switch to pronunciation tab if pronunciation errors detected
+      if (comprehensiveAnalysis.errorTypes.pronunciation) {
+        setActiveTab('pronunciation');
+        
+        // Set pronunciation words for practice
+        if (comprehensiveAnalysis.pronunciationWords) {
+          setPronunciationWords(comprehensiveAnalysis.pronunciationWords);
+        }
+      }
+      
+      // Set comprehensive analysis data
+      setAnalysisData(comprehensiveAnalysis);
+    }
+  }, [comprehensiveAnalysis]);
+
+  // Handle new vocabulary items from Dashboard
+  useEffect(() => {
+    if (newVocabItems && newVocabItems.length > 0) {
+      const newItems: VocabItem[] = newVocabItems.map(item => ({
+        word: item.word,
+        meaning: item.meaning,
+        timestamp: new Date().toISOString(),
+        chatId: 'current_session',
+        category: 'General',
+        theme: 'Current Chat'
+      }));
+      
+      // Add new items to the top of the vocabulary list
+      setVocabItems(prev => [...newItems, ...prev]);
+    }
+  }, [newVocabItems]);
+
+  // Reset newVocabItems after processing to prevent re-processing
+  useEffect(() => {
+    if (newVocabItems && newVocabItems.length > 0) {
+      // Clear the items after processing
+      setTimeout(() => {
+        // This will be handled by the parent component
+      }, 100);
+    }
+  }, [newVocabItems]);
 
   // Load cached explanation when switching to explain tab
   useEffect(() => {
@@ -210,18 +350,467 @@ export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVoc
     }
   };
 
-  const speakText = (text: string) => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'de-DE';
-      utterance.rate = 0.8;
-      window.speechSynthesis.speak(utterance);
+  // Remove vocabulary item
+  const removeVocabItem = (index: number) => {
+    setVocabItems(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Comprehensive analysis function
+  const analyzeComprehensive = async (message: string) => {
+    setIsAnalyzing(true);
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/comprehensive-analysis`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: message,
+          userLevel: 'Intermediate',
+          source: 'text'
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setComprehensiveAnalysis(data);
+        
+        // Auto-add vocabulary words if found
+        if (data.corrections.vocabulary) {
+          data.corrections.vocabulary.forEach((word: any) => {
+            const newVocabItem: VocabItem = {
+              word: word.correct,
+              meaning: word.meaning,
+              timestamp: new Date().toISOString(),
+              chatId: 'current_session',
+              category: 'Correction',
+              theme: 'Grammar Help'
+            };
+            setVocabItems(prev => [...prev, newVocabItem]);
+            onAddToVocab(word.correct, word.meaning);
+          });
+        }
+        
+        // Set up pronunciation words for practice
+        if (data.wordsForPractice) {
+          const pronunciationData: PronunciationWord[] = data.wordsForPractice.map((word: any) => ({
+            word: word.word,
+            score: word.score || 0,
+            needsPractice: word.needsPractice,
+            feedback: `Practice this word for better pronunciation`,
+            commonMistakes: []
+          }));
+          setPronunciationWords(pronunciationData);
+        }
+        
+        // Show relevant sections based on errors
+        if (data.errorTypes.grammar) {
+          setShowGrammarSection(true);
+          setShowSpeakingSection(false);
+        }
+        if (data.errorTypes.pronunciation) {
+          setShowSpeakingSection(true);
+          setShowGrammarSection(false);
+        }
+      }
+    } catch (error) {
+      console.error('Error in comprehensive analysis:', error);
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
-  const removeVocabItem = (index: number) => {
-    setVocabItems(prev => prev.filter((_, i) => i !== index));
+  // Word segmentation function
+  const segmentWords = async (audioData: string, transcription: string) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/word-segmentation`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audioData,
+          transcription,
+          language: 'de'
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return data.segments;
+      }
+    } catch (error) {
+      console.error('Error segmenting words:', error);
+    }
+    return [];
+  };
+
+  // Pronunciation practice functions
+  const practiceWord = (word: string) => {
+    setPracticingWord(word);
+    setCurrentAttempt(0);
+  };
+
+  const startWordPractice = async () => {
+    if (!practicingWord) return;
+    
+    try {
+      // Start recording for specific word
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+        await processWordPractice(audioBlob, practicingWord);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      
+      // Auto-stop after 3 seconds for word practice
+      setTimeout(() => {
+        if (recorder.state === 'recording') {
+          recorder.stop();
+        }
+      }, 3000);
+      
+    } catch (error) {
+      console.error('Error starting word practice:', error);
+    }
+  };
+
+  const processWordPractice = async (audioBlob: Blob, word: string) => {
+    try {
+      // Convert to base64
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+
+      // Store audio for practice session
+      const storageResponse = await storeAudio(audioBlob, word, 'word');
+      
+      // Send to pronunciation analysis
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pronunciation-analysis`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audioData: base64Audio,
+          transcription: word,
+          language: 'de'
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const wordScore = data.words?.[0]?.score || 0;
+        
+        // Update the word score
+        updateWordScore(word, wordScore);
+        
+        // Update progress tracking
+        updateProgress(word, wordScore);
+        
+        // Update session progress
+        updateSessionProgress(word, wordScore);
+        
+        // Store practice history
+        const practiceEntry = {
+          word,
+          score: wordScore,
+          attempts: currentAttempt + 1,
+          timestamp: new Date().toISOString(),
+          audioId: storageResponse.audioId
+        };
+        setPracticeHistory(prev => [...prev, practiceEntry]);
+        
+        // Check if word is mastered or max attempts reached
+        if (wordScore >= 80 || currentAttempt >= maxAttempts - 1) {
+          setPracticingWord(null);
+          setCurrentAttempt(0);
+          
+          // Check if all words are mastered
+          const allWordsMastered = pronunciationWords.every(w => 
+            w.word === word ? wordScore >= 80 : w.score >= 80
+          );
+          
+          if (allWordsMastered) {
+            // End practice session
+            endPracticeSession();
+          }
+        } else {
+          setCurrentAttempt(prev => prev + 1);
+        }
+      }
+    } catch (error) {
+      console.error('Error processing word practice:', error);
+    }
+  };
+
+  const storeAudio = async (audioBlob: Blob, word: string, practiceType: string) => {
+    try {
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/audio-storage`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audioData: base64Audio,
+          word,
+          practiceType,
+          metadata: {
+            timestamp: new Date().toISOString(),
+            attempts: currentAttempt + 1
+          }
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setAudioStorage(prev => ({
+          ...prev,
+          [data.audioId]: data.url
+        }));
+        return data;
+      }
+    } catch (error) {
+      console.error('Error storing audio:', error);
+    }
+    return { audioId: '', url: '' };
+  };
+
+  const getAudioUrl = (audioId: string) => {
+    return audioStorage[audioId] || '';
+  };
+
+  // Visual feedback components
+  const ErrorBadge = ({ type, hasError }: { type: string, hasError: boolean }) => {
+    if (!hasError) return null;
+    
+    const badgeConfig = {
+      grammar: { color: 'bg-red-100 text-red-800', icon: AlertCircle, label: 'Grammar' },
+      vocabulary: { color: 'bg-blue-100 text-blue-800', icon: BookOpen, label: 'Vocabulary' },
+      pronunciation: { color: 'bg-green-100 text-green-800', icon: Volume2, label: 'Pronunciation' }
+    };
+    
+    const config = badgeConfig[type as keyof typeof badgeConfig];
+    if (!config) return null;
+    
+    const Icon = config.icon;
+    
+    return (
+      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${config.color}`}>
+        <Icon className="h-3 w-3 mr-1" />
+        {config.label}
+      </span>
+    );
+  };
+
+  const ProgressBar = ({ score, maxScore = 100 }: { score: number, maxScore?: number }) => {
+    const percentage = Math.min((score / maxScore) * 100, 100);
+    const color = percentage >= 80 ? 'bg-green-500' : percentage >= 60 ? 'bg-yellow-500' : 'bg-red-500';
+    
+    return (
+      <div className="w-full bg-gray-200 rounded-full h-2">
+        <div 
+          className={`h-2 rounded-full transition-all duration-300 ${color}`}
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+    );
+  };
+
+  const ScoreDisplay = ({ score, label }: { score: number, label: string }) => {
+    const color = score >= 80 ? 'text-green-600' : score >= 60 ? 'text-yellow-600' : 'text-red-600';
+    
+    return (
+      <div className="flex items-center space-x-2">
+        <span className="text-sm font-medium text-gray-700">{label}:</span>
+        <span className={`text-sm font-bold ${color}`}>{score}/100</span>
+        {score >= 80 && <CheckCircle className="h-4 w-4 text-green-500" />}
+      </div>
+    );
+  };
+
+  const AchievementBadge = ({ type, unlocked }: { type: string, unlocked: boolean }) => {
+    if (!unlocked) return null;
+    
+    const achievements = {
+      'first_practice': { icon: Target, label: 'First Practice', color: 'bg-blue-100 text-blue-800' },
+      'perfect_score': { icon: Trophy, label: 'Perfect Score', color: 'bg-yellow-100 text-yellow-800' },
+      'word_master': { icon: Star, label: 'Word Master', color: 'bg-purple-100 text-purple-800' }
+    };
+    
+    const achievement = achievements[type as keyof typeof achievements];
+    if (!achievement) return null;
+    
+    const Icon = achievement.icon;
+    
+    return (
+      <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${achievement.color} animate-pulse`}>
+        <Icon className="h-4 w-4 mr-2" />
+        {achievement.label}
+      </div>
+    );
+  };
+
+  const updateWordScore = (word: string, score: number) => {
+    setPronunciationWords(prev => prev.map(w => 
+      w.word === word 
+        ? { ...w, score, needsPractice: score < 80 }
+        : w
+    ));
+    
+    // Check if word is mastered
+    if (score >= 80) {
+      setMasteredWords(prev => new Set([...prev, word]));
+    }
+  };
+
+  // Session management functions
+  const startPracticeSession = () => {
+    const sessionId = `session_${Date.now()}`;
+    const newSession = {
+      sessionId,
+      startTime: new Date().toISOString(),
+      wordsPracticed: [],
+      totalScore: 0,
+      averageScore: 0
+    };
+    setCurrentSession(newSession);
+    return sessionId;
+  };
+
+  const endPracticeSession = () => {
+    if (currentSession) {
+      const sessionData = {
+        ...currentSession,
+        endTime: new Date().toISOString(),
+        duration: Date.now() - new Date(currentSession.startTime).getTime()
+      };
+      
+      // Store session in localStorage
+      const savedSessions = JSON.parse(localStorage.getItem('practice_sessions') || '[]');
+      savedSessions.push(sessionData);
+      localStorage.setItem('practice_sessions', JSON.stringify(savedSessions));
+      
+      setCurrentSession(null);
+      return sessionData;
+    }
+    return null;
+  };
+
+  const updateSessionProgress = (word: string, score: number) => {
+    if (currentSession) {
+      const updatedSession = {
+        ...currentSession,
+        wordsPracticed: [...currentSession.wordsPracticed, word],
+        totalScore: currentSession.totalScore + score,
+        averageScore: (currentSession.totalScore + score) / (currentSession.wordsPracticed.length + 1)
+      };
+      setCurrentSession(updatedSession);
+    }
+  };
+
+  const getSessionStats = () => {
+    if (!currentSession) return null;
+    
+    return {
+      wordsPracticed: currentSession.wordsPracticed.length,
+      averageScore: Math.round(currentSession.averageScore),
+      duration: Date.now() - new Date(currentSession.startTime).getTime(),
+      masteredInSession: currentSession.wordsPracticed.filter(word => masteredWords.has(word)).length
+    };
+  };
+
+  // Progress tracking and gamification functions
+  const addXP = (amount: number) => {
+    setUserProgress(prev => {
+      const newXP = prev.xp + amount;
+      const newLevel = Math.floor(newXP / 100) + 1;
+      const leveledUp = newLevel > prev.level;
+      
+      return {
+        ...prev,
+        xp: newXP,
+        level: newLevel,
+        achievements: leveledUp ? [...prev.achievements, 'level_up'] : prev.achievements
+      };
+    });
+  };
+
+  const checkAchievements = (newWord: string, score: number) => {
+    const newAchievements: string[] = [];
+    
+    // First word mastered
+    if (score >= 80 && !userProgress.achievements.includes('first_mastery')) {
+      newAchievements.push('first_mastery');
+    }
+    
+    // Perfect score
+    if (score >= 100 && !userProgress.achievements.includes('perfect_score')) {
+      newAchievements.push('perfect_score');
+    }
+    
+    // Streak achievements
+    if (userProgress.streak >= 5 && !userProgress.achievements.includes('streak_5')) {
+      newAchievements.push('streak_5');
+    }
+    
+    if (newAchievements.length > 0) {
+      setUserProgress(prev => ({
+        ...prev,
+        achievements: [...prev.achievements, ...newAchievements]
+      }));
+    }
+  };
+
+  const updateProgress = (word: string, score: number) => {
+    // Add XP based on score
+    const xpGained = Math.floor(score / 10);
+    addXP(xpGained);
+    
+    // Update word mastery count
+    if (score >= 80) {
+      setUserProgress(prev => ({
+        ...prev,
+        totalWordsMastered: prev.totalWordsMastered + 1,
+        streak: prev.streak + 1
+      }));
+    } else {
+      setUserProgress(prev => ({
+        ...prev,
+        streak: 0
+      }));
+    }
+    
+    // Check for achievements
+    checkAchievements(word, score);
+  };
+
+  const getProgressStats = () => {
+    return {
+      level: userProgress.level,
+      xp: userProgress.xp,
+      xpToNextLevel: (userProgress.level * 100) - userProgress.xp,
+      totalWordsMastered: userProgress.totalWordsMastered,
+      streak: userProgress.streak,
+      achievements: userProgress.achievements
+    };
   };
 
   if (!isVisible) return null;
@@ -280,19 +869,7 @@ export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVoc
       <div className="flex-1 overflow-y-auto p-4">
         {activeTab === 'vocab' && (
           <div className="space-y-6">
-            <div className="text-center py-8">
-              <BookOpen className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-sm text-gray-600 mb-6">
-                Vocabulary collection feature will be available soon
-              </p>
-              <div className="bg-gray-50 rounded-xl p-8 text-center">
-                <p className="text-sm text-gray-500">
-                  Vocabulary management coming soon
-                </p>
-              </div>
-            </div>
-
-            {vocabItems.length > 0 && (
+            {vocabItems.length > 0 ? (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h4 className="font-semibold text-gray-900 text-base">Collected Vocabulary</h4>
@@ -335,6 +912,19 @@ export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVoc
                       </div>
                     </div>
                   ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <BookOpen className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">No Vocabulary Yet</h3>
+                <p className="text-sm text-gray-600 mb-6">
+                  Start a conversation and use the translate feature to collect German words
+                </p>
+                <div className="bg-blue-50 rounded-xl p-6 text-center">
+                  <p className="text-sm text-blue-700">
+                    💡 Click the "EN" button on any AI message, then "Add words to vocab" to start building your vocabulary!
+                  </p>
+                </div>
               </div>
             )}
           </div>
@@ -436,7 +1026,119 @@ export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVoc
           <div className="space-y-6">
             {currentMessage ? (
               <div className="space-y-6">
-                <h4 className="font-semibold text-gray-900 text-base">Pronunciation Practice</h4>
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold text-gray-900 text-base">Pronunciation Practice</h4>
+                  <div className="flex space-x-2">
+                    {!currentSession ? (
+                      <button
+                        onClick={startPracticeSession}
+                        className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 flex items-center space-x-2"
+                      >
+                        <Target className="h-4 w-4" />
+                        <span>Start Session</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={endPracticeSession}
+                        className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center space-x-2"
+                      >
+                        <Trophy className="h-4 w-4" />
+                        <span>End Session</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={() => analyzeComprehensive(currentMessage)}
+                      disabled={isAnalyzing}
+                      className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 flex items-center space-x-2"
+                    >
+                      {isAnalyzing ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Volume2 className="h-4 w-4" />
+                      )}
+                      <span>Analyze</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Progress Stats */}
+                <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-4">
+                  <h5 className="font-semibold text-purple-900 mb-3 flex items-center">
+                    <Trophy className="h-5 w-5 mr-2" />
+                    Your Progress
+                  </h5>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-purple-700">Level:</span>
+                      <span className="ml-2 font-bold text-purple-900">{getProgressStats().level}</span>
+                    </div>
+                    <div>
+                      <span className="text-purple-700">XP:</span>
+                      <span className="ml-2 font-bold text-purple-900">{getProgressStats().xp}</span>
+                    </div>
+                    <div>
+                      <span className="text-purple-700">Words Mastered:</span>
+                      <span className="ml-2 font-bold text-green-600">{getProgressStats().totalWordsMastered}</span>
+                    </div>
+                    <div>
+                      <span className="text-purple-700">Streak:</span>
+                      <span className="ml-2 font-bold text-orange-600">{getProgressStats().streak}</span>
+                    </div>
+                  </div>
+                  
+                  {/* XP Progress Bar */}
+                  <div className="mt-3">
+                    <div className="flex justify-between text-xs text-purple-600 mb-1">
+                      <span>Level {getProgressStats().level}</span>
+                      <span>{getProgressStats().xpToNextLevel} XP to next level</span>
+                    </div>
+                    <div className="w-full bg-purple-200 rounded-full h-2">
+                      <div 
+                        className="bg-gradient-to-r from-purple-500 to-blue-500 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${(getProgressStats().xp % 100) / 100 * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Recent Achievements */}
+                  {getProgressStats().achievements.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-purple-200">
+                      <p className="text-xs text-purple-600 mb-2">Recent Achievements:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {getProgressStats().achievements.slice(-3).map((achievement, idx) => (
+                          <AchievementBadge key={idx} type={achievement} unlocked={true} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Session Stats */}
+                {currentSession && (
+                  <div className="bg-blue-50 rounded-xl p-4">
+                    <h5 className="font-semibold text-blue-900 mb-2">Practice Session</h5>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-blue-700">Words Practiced:</span>
+                        <span className="ml-2 font-bold">{getSessionStats()?.wordsPracticed || 0}</span>
+                      </div>
+                      <div>
+                        <span className="text-blue-700">Average Score:</span>
+                        <span className="ml-2 font-bold">{getSessionStats()?.averageScore || 0}/100</span>
+                      </div>
+                      <div>
+                        <span className="text-blue-700">Mastered:</span>
+                        <span className="ml-2 font-bold text-green-600">{getSessionStats()?.masteredInSession || 0}</span>
+                      </div>
+                      <div>
+                        <span className="text-blue-700">Duration:</span>
+                        <span className="ml-2 font-bold">{Math.round((getSessionStats()?.duration || 0) / 1000 / 60)}m</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Current Message */}
                 <div className="bg-gray-50 rounded-xl p-6">
                   <div className="flex items-center justify-between mb-4">
                     <span className="text-sm font-semibold text-gray-700">Current Message</span>
@@ -450,7 +1152,166 @@ export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVoc
                   </div>
                   <p className="text-sm text-gray-700 leading-relaxed">{currentMessage}</p>
                 </div>
-                
+
+                {/* Error Badges */}
+                {analysisData && (
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    <ErrorBadge type="grammar" hasError={analysisData.errorTypes.grammar} />
+                    <ErrorBadge type="vocabulary" hasError={analysisData.errorTypes.vocabulary} />
+                    <ErrorBadge type="pronunciation" hasError={analysisData.errorTypes.pronunciation} />
+                  </div>
+                )}
+
+                {/* Words for Practice */}
+                {pronunciationWords.length > 0 && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h5 className="text-sm font-semibold text-gray-700">Words to Practice</h5>
+                      <div className="flex space-x-2">
+                        <AchievementBadge type="first_practice" unlocked={practiceHistory.length > 0} />
+                        <AchievementBadge type="perfect_score" unlocked={pronunciationWords.some(w => w.score >= 100)} />
+                      </div>
+                    </div>
+                    {pronunciationWords.map((wordData, index) => (
+                      <div key={index} className="bg-gray-50 rounded-xl p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-lg font-semibold">{wordData.word}</span>
+                          <div className="flex items-center space-x-2">
+                            <ScoreDisplay score={wordData.score} label="Score" />
+                            {wordData.needsPractice && (
+                              <button
+                                onClick={() => practiceWord(wordData.word)}
+                                className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 flex items-center space-x-1"
+                              >
+                                <Mic className="h-3 w-3" />
+                                <span>Practice</span>
+                              </button>
+                            )}
+                            {wordData.score >= 80 && (
+                              <AchievementBadge type="word_master" unlocked={true} />
+                            )}
+                          </div>
+                        </div>
+                        
+                        {/* Enhanced Progress bar */}
+                        <div className="mb-3">
+                          <ProgressBar score={wordData.score} />
+                          <div className="flex justify-between text-xs text-gray-500 mt-1">
+                            <span>0</span>
+                            <span>50</span>
+                            <span>100</span>
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <p className="text-sm text-gray-600">{wordData.feedback}</p>
+                          
+                          {/* Difficulty and sounds to focus on */}
+                          {wordData.difficulty && (
+                            <div className="flex items-center space-x-2">
+                              <span className="text-xs text-gray-500">Difficulty:</span>
+                              <span className={`text-xs px-2 py-1 rounded ${
+                                wordData.difficulty === 'easy' ? 'bg-green-100 text-green-800' :
+                                wordData.difficulty === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-red-100 text-red-800'
+                              }`}>
+                                {wordData.difficulty}
+                              </span>
+                            </div>
+                          )}
+                          
+                          {wordData.soundsToFocus && wordData.soundsToFocus.length > 0 && (
+                            <div className="flex items-center space-x-2">
+                              <span className="text-xs text-gray-500">Focus on:</span>
+                              <div className="flex space-x-1">
+                                {wordData.soundsToFocus.map((sound, idx) => (
+                                  <span key={idx} className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded">
+                                    {sound}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Common mistakes */}
+                          {wordData.commonMistakes && wordData.commonMistakes.length > 0 && (
+                            <div className="mt-2">
+                              <p className="text-xs text-gray-500 mb-1">Common mistakes:</p>
+                              <ul className="text-xs text-gray-600 space-y-1">
+                                {wordData.commonMistakes.map((mistake, idx) => (
+                                  <li key={idx} className="flex items-start">
+                                    <span className="text-red-500 mr-1">•</span>
+                                    {mistake}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          
+                          {/* Improvement tips */}
+                          {wordData.improvementTips && wordData.improvementTips.length > 0 && (
+                            <div className="mt-2">
+                              <p className="text-xs text-gray-500 mb-1">Tips:</p>
+                              <ul className="text-xs text-gray-600 space-y-1">
+                                {wordData.improvementTips.map((tip, idx) => (
+                                  <li key={idx} className="flex items-start">
+                                    <span className="text-blue-500 mr-1">•</span>
+                                    {tip}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Practice History for this word */}
+                        {practiceHistory.filter(h => h.word === wordData.word).length > 0 && (
+                          <div className="mt-3 pt-3 border-t border-gray-200">
+                            <p className="text-xs text-gray-500 mb-2">Practice History:</p>
+                            <div className="flex space-x-2">
+                              {practiceHistory
+                                .filter(h => h.word === wordData.word)
+                                .slice(-3) // Show last 3 attempts
+                                .map((history, idx) => (
+                                  <div key={idx} className="flex items-center space-x-1">
+                                    <span className={`text-xs px-2 py-1 rounded ${
+                                      history.score >= 80 ? 'bg-green-100 text-green-800' : 
+                                      history.score >= 60 ? 'bg-yellow-100 text-yellow-800' : 
+                                      'bg-red-100 text-red-800'
+                                    }`}>
+                                      {history.score}
+                                    </span>
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Practice Session */}
+                {practicingWord && (
+                  <div className="bg-blue-50 rounded-xl p-6">
+                    <h5 className="font-semibold mb-4">Practice: {practicingWord}</h5>
+                    <div className="space-y-4">
+                      <button
+                        onClick={startWordPractice}
+                        className="w-full bg-blue-500 text-white py-3 rounded-lg hover:bg-blue-600"
+                      >
+                        Record "{practicingWord}"
+                      </button>
+                      <div className="text-center">
+                        <p className="text-sm text-gray-600">
+                          Attempt {currentAttempt} of {maxAttempts}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* General Practice Tips */}
                 <div className="space-y-3">
                   <h5 className="text-sm font-semibold text-gray-700">Practice Tips</h5>
                   <ul className="text-sm text-gray-600 space-y-2">

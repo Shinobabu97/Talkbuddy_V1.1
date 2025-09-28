@@ -8,7 +8,8 @@ const corsHeaders = {
 }
 
 interface GrammarAnalysisRequest {
-  message: string
+  message: string;
+  useComprehensive?: boolean; // Flag to use comprehensive analysis
 }
 
 serve(async (req) => {
@@ -18,7 +19,7 @@ serve(async (req) => {
   }
 
   try {
-    const { message }: GrammarAnalysisRequest = await req.json()
+    const { message, useComprehensive = false }: GrammarAnalysisRequest = await req.json()
 
     // Get OpenAI API key from environment
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
@@ -26,7 +27,42 @@ serve(async (req) => {
       throw new Error('OpenAI API key not configured')
     }
 
-    // Prepare messages for OpenAI
+    if (useComprehensive) {
+      // Use comprehensive analysis for better integration
+      const comprehensiveResponse = await fetch(`${req.url.replace('/grammar-analysis', '/comprehensive-analysis')}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: message,
+          userLevel: 'Intermediate',
+          source: 'text'
+        })
+      });
+
+      if (comprehensiveResponse.ok) {
+        const comprehensiveData = await comprehensiveResponse.json();
+        
+        // Extract grammar-specific information
+        const grammarAnalysis = {
+          analysis: comprehensiveData.suggestions?.grammar || 'No grammar issues found',
+          corrections: comprehensiveData.corrections?.grammar,
+          hasErrors: comprehensiveData.errorTypes?.grammar || false,
+          comprehensive: comprehensiveData
+        };
+
+        return new Response(
+          JSON.stringify(grammarAnalysis),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
+          },
+        )
+      }
+    }
+
+    // Fallback to original grammar analysis
     const openaiMessages = [
       { role: 'system', content: GRAMMAR_ANALYSIS_SYSTEM_PROMPT },
       { role: 'user', content: `Analyze the grammar of this German sentence: "${message}"` }
