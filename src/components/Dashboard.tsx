@@ -87,6 +87,8 @@ interface ChatMessage {
   isTranscribing?: boolean; // Flag for messages being transcribed
   showTryAgain?: boolean; // Flag to show "Try it again" button
 }
+
+type MessageStatus = 'checking' | 'needs_correction' | 'mismatch' | 'error';
 export default function Dashboard({ user }: DashboardProps) {
   const [showOnboarding, setShowOnboarding] = React.useState(false);
   const [onboardingData, setOnboardingData] = React.useState<OnboardingData | null>(null);
@@ -149,6 +151,7 @@ export default function Dashboard({ user }: DashboardProps) {
       setShowOriginalMessage({});
       setOriginalMessages({});
       setActiveMessageId(null);
+      setMessageStatus({});
       console.log('✅ === STATES CLEARED FOR NEW CONVERSATION ===');
     }
   }, [selectedConversation]);
@@ -174,7 +177,28 @@ export default function Dashboard({ user }: DashboardProps) {
   const [messageAttempts, setMessageAttempts] = useState<{[key: string]: string[]}>({});
   const [suggestedAnswers, setSuggestedAnswers] = useState<{[key: string]: string}>({});
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
-  
+  const [messageStatus, setMessageStatus] = useState<{[key: string]: MessageStatus}>({});
+
+  const updateMessageStatus = (messageId: string, status: MessageStatus | null) => {
+    setMessageStatus(prev => {
+      if (status === null) {
+        if (!(messageId in prev)) return prev;
+        const newState = { ...prev };
+        delete newState[messageId];
+        return newState;
+      }
+
+      if (prev[messageId] === status) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        [messageId]: status
+      };
+    });
+  };
+
   // Recording state variables
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
@@ -1324,6 +1348,8 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('Message ID:', messageId);
     console.log('Is Retry:', isRetry);
     console.log('Current chat messages count:', chatMessages.length);
+
+    updateMessageStatus(messageId, 'checking');
     
     // Ensure the message content is properly updated in the chat (EXACT SAME AS VOICE)
     setChatMessages(prev => {
@@ -1360,11 +1386,13 @@ export default function Dashboard({ user }: DashboardProps) {
       // Don't send to AI if there are errors - focus on correction (EXACT SAME AS VOICE)
       console.log('🚫 === TEXT MESSAGE HAS ERRORS - NOT SENDING TO AI ===');
       console.log('Focusing on error correction instead of AI response');
+      updateMessageStatus(messageId, 'needs_correction');
       return;
     } else if (!analysis) {
       // Analysis failed - don't proceed with AI response (EXACT SAME AS VOICE)
       console.log('🚫 === ANALYSIS FAILED - NOT SENDING TO AI ===');
       console.log('Analysis returned null, not proceeding with AI response');
+      updateMessageStatus(messageId, 'error');
       return;
     }
     
@@ -1430,6 +1458,8 @@ export default function Dashboard({ user }: DashboardProps) {
       userAttempts: clearedUserAttempts
     });
 
+    updateMessageStatus(messageId, null);
+
     // Ensure the message content stays as the text content (EXACT SAME AS VOICE)
     setTimeout(() => {
       setChatMessages(prev => prev.map(msg => 
@@ -1493,8 +1523,10 @@ export default function Dashboard({ user }: DashboardProps) {
       console.log('🔄 === TEXT RETRY DETECTED ===');
       console.log('Updating existing message:', existingMessageId);
       console.log('Current attempts for this message:', userAttempts[existingMessageId] || 0);
-      
+
       messageId = existingMessageId;
+
+      updateMessageStatus(messageId, 'checking');
 
       // Update message content immediately so the retry replaces the previous attempt
       setChatMessages(prev => prev.map(msg =>
@@ -1535,7 +1567,9 @@ export default function Dashboard({ user }: DashboardProps) {
       };
 
       messageId = userMessage.id;
-      
+
+      updateMessageStatus(messageId, 'checking');
+
       // Add to chat immediately (EXACT SAME AS VOICE)
       setChatMessages(prev => {
         console.log('🆕 === ADDING NEW MESSAGE TO CHAT ===');
@@ -2410,6 +2444,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
       messageId = existingMessageId;
 
+      updateMessageStatus(messageId, 'checking');
+
       // Update the existing message to show retry attempt
       setChatMessages(prev => {
         console.log('🔄 === UPDATING EXISTING MESSAGE FOR RETRY ===');
@@ -2440,6 +2476,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         console.log('🎤 === VOICE CORRECTION MODE - SKIPPING NEW MESSAGE CREATION ===');
         console.log('Will replace original message:', mismatchMessageId);
         messageId = mismatchMessageId; // Use the original message ID
+
+        updateMessageStatus(messageId, 'checking');
       } else {
         // This is a new message - create new message
         console.log('🆕 === NEW VOICE MESSAGE ===');
@@ -2459,6 +2497,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         };
         
         messageId = audioMessage.id;
+
+        updateMessageStatus(messageId, 'checking');
         
         // Add to chat immediately
         setChatMessages(prev => {
@@ -2684,6 +2724,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   userAttempts: clearedUserAttempts
                 });
 
+                updateMessageStatus(mismatchMessageId, null);
+
                 console.log('🔍 === AFTER SEND TRANSCRIPTION TO AI ===');
                 console.log('Chat messages after AI call:', chatMessages.length);
                 return;
@@ -2759,15 +2801,17 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               console.log('Message ID:', messageId);
               console.log('Mismatch message ID:', mismatchMessageId);
               await sendTranscriptionToAI(transcription, messageId);
-              
+
               // Ensure the message content stays as the transcription
               setTimeout(() => {
-                setChatMessages(prev => prev.map(msg => 
-                  msg.id === messageId 
+                setChatMessages(prev => prev.map(msg =>
+                  msg.id === messageId
                     ? { ...msg, content: transcription }
                     : msg
                 ));
               }, 500);
+
+              updateMessageStatus(messageId, null);
               return;
               }
             } else {
@@ -2815,28 +2859,31 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               // Generate German suggestion for practice
               if (detectedLanguage === 'english') {
                 console.log('English detected, generating German suggestion for:', transcription);
-                
+
                 // Use API as primary method - no fallback until API fails
                 generateGermanSuggestion(transcription);
-                
+
                 // Set a timeout fallback in case API fails
                 const timeoutId = setTimeout(() => {
                   console.log('API timeout, using simple fallback');
                   setGermanSuggestion('Entschuldigung, ich kann das nicht übersetzen.');
                 }, 5000); // 5 second timeout
-                
+
                 // Store timeout ID to clear it if API succeeds
                 (window as any).germanSuggestionTimeout = timeoutId;
               }
-              
+
               console.log('🚀 Setting showLanguageMismatchModal to TRUE');
               setShowLanguageMismatchModal(true);
-              
-              console.log('🗑️ Removing audio message from chat (ID:', messageId, ')');
-              // Don't add English transcription to chat - just show practice modal
-              // Remove the audio message from chat since we're going to practice
-              setChatMessages(prev => prev.filter(msg => msg.id !== messageId));
-              
+
+              setChatMessages(prev => prev.map(msg =>
+                msg.id === messageId
+                  ? { ...msg, content: transcription, isTranscribing: false }
+                  : msg
+              ));
+
+              updateMessageStatus(messageId, 'mismatch');
+
               // Clear any loading states
               setIsTranscribing(false);
               console.log('🏁 === TRANSCRIBE AUDIO END (MODAL SHOWN) ===');
@@ -2920,17 +2967,19 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             console.log('Error messages for this message:', errorMessages[messageId]);
             console.log('Waiting for correction:', waitingForCorrection);
             
-            if (analysis && analysis.hasErrors) {
-              // Don't send to AI if there are errors - focus on correction
-              console.log('🚫 === VOICE MESSAGE HAS ERRORS - NOT SENDING TO AI ===');
-              console.log('Focusing on error correction instead of AI response');
-              return;
-            } else if (!analysis) {
-              // Analysis failed - don't proceed with AI response
-              console.log('🚫 === ANALYSIS FAILED - NOT SENDING TO AI ===');
-              console.log('Analysis returned null, not proceeding with AI response');
-              return;
-            }
+          if (analysis && analysis.hasErrors) {
+            // Don't send to AI if there are errors - focus on correction
+            console.log('🚫 === VOICE MESSAGE HAS ERRORS - NOT SENDING TO AI ===');
+            console.log('Focusing on error correction instead of AI response');
+            updateMessageStatus(messageId, 'needs_correction');
+            return;
+          } else if (!analysis) {
+            // Analysis failed - don't proceed with AI response
+            console.log('🚫 === ANALYSIS FAILED - NOT SENDING TO AI ===');
+            console.log('Analysis returned null, not proceeding with AI response');
+            updateMessageStatus(messageId, 'error');
+            return;
+          }
             
             console.log('✅ === NO ERRORS DETECTED - PROCEEDING TO AI ===');
             console.log('🔍 === PRE-STATE CLEARING DEBUG ===');
@@ -2970,6 +3019,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               errorMessages: clearedErrorMessages,
               userAttempts: clearedUserAttempts
             });
+
+            updateMessageStatus(messageId, null);
           } else {
             // For English recordings, translate to German and provide suggestions
             await translateEnglishToGerman(transcription, messageId);
@@ -2998,15 +3049,16 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         const errorText = await response.text();
         console.error('Transcription failed:', response.status, errorText);
         // Update message to show error with more details
-        setChatMessages(prev => prev.map(msg => 
-          msg.id === messageId 
+        setChatMessages(prev => prev.map(msg =>
+          msg.id === messageId
             ? { ...msg, content: `❌ Transcription failed (${response.status})`, isTranscribing: false }
             : msg
         ));
+        updateMessageStatus(messageId, 'error');
       }
     } catch (error) {
       console.error('Error transcribing audio:', error);
-      
+
       // Check if it's a CORS or function not found error
       if (error.message.includes('Failed to fetch') || error.message.includes('CORS')) {
         // Update message to show function needs deployment
@@ -3019,13 +3071,15 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               }
             : msg
         ));
+        updateMessageStatus(messageId, 'error');
       } else {
         // Update message to show transcription failed
-        setChatMessages(prev => prev.map(msg => 
-          msg.id === messageId 
+        setChatMessages(prev => prev.map(msg =>
+          msg.id === messageId
             ? { ...msg, content: '❌ Transcription failed', isTranscribing: false }
             : msg
         ));
+        updateMessageStatus(messageId, 'error');
       }
     } finally {
       console.log('🏁 === TRANSCRIBE AUDIO END (NORMAL PROCESSING) ===');
@@ -3073,6 +3127,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           console.log('Updated chat messages:', updated.map(msg => ({ id: msg.id, content: msg.content, role: msg.role })));
           return updated;
         });
+
+        updateMessageStatus(messageId, 'needs_correction');
       } else {
         // Fallback: Use chat function for translation
         await sendTranscriptionToAI(`Translate this to German and provide suggestions: "${englishText}"`, messageId, true);
@@ -3248,6 +3304,14 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     } finally {
       setIsSending(false);
       setIsTyping(false);
+      setMessageStatus(prev => {
+        if (prev[messageId] !== 'checking') {
+          return prev;
+        }
+        const newState = { ...prev };
+        delete newState[messageId];
+        return newState;
+      });
     }
   };
 
@@ -3293,6 +3357,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     setOriginalMessages({});
     setWaitingForCorrection(false);
     setSuggestedAnswers({});
+    setMessageStatus({});
     
     // Reset translation and suggestion states
     setShowTranslation({});
@@ -3880,9 +3945,42 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                           message.content
                         )}
                       </div>
+                  </div>
+                </div>
+
+                {message.role === 'user' && messageStatus[message.id] === 'checking' && (
+                  <div className="flex justify-end mt-2">
+                    <div className="flex items-center space-x-2 text-xs text-gray-500">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <span>Checking your message...</span>
                     </div>
                   </div>
-                  
+                )}
+
+                {message.role === 'user' && messageStatus[message.id] === 'needs_correction' && (
+                  <div className="flex justify-end mt-2">
+                    <div className="bg-yellow-50 text-yellow-700 px-3 py-1 rounded-lg text-xs font-medium">
+                      Let's fix this before moving on.
+                    </div>
+                  </div>
+                )}
+
+                {message.role === 'user' && messageStatus[message.id] === 'mismatch' && (
+                  <div className="flex justify-end mt-2">
+                    <div className="bg-red-50 text-red-600 px-3 py-1 rounded-lg text-xs font-medium">
+                      English detected – check the practice prompt.
+                    </div>
+                  </div>
+                )}
+
+                {message.role === 'user' && messageStatus[message.id] === 'error' && (
+                  <div className="flex justify-end mt-2">
+                    <div className="bg-red-50 text-red-600 px-3 py-1 rounded-lg text-xs font-medium">
+                      We couldn't check this message. Please try again.
+                    </div>
+                  </div>
+                )}
+
                   {/* Error indicators for user messages - Below chat bubble */}
                   {message.role === 'user' && comprehensiveAnalysis[message.id] && comprehensiveAnalysis[message.id].hasErrors && (
                     <div className="flex justify-end mt-2">
