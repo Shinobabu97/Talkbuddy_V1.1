@@ -219,18 +219,20 @@ export default function Dashboard({ user }: DashboardProps) {
   
   // Debug errorMessages state changes
   React.useEffect(() => {
-    console.log('🚨 === ERROR MESSAGES STATE CHANGED ===');
-    console.log('New errorMessages:', errorMessages);
-    console.log('Error messages keys:', Object.keys(errorMessages));
-    console.log('Error messages values:', Object.values(errorMessages));
+    const errorKeys = Object.keys(errorMessages);
+    if (errorKeys.length > 0) {
+      console.log('🚨 === ERROR MESSAGES STATE CHANGED ===');
+      console.log('Error messages keys:', errorKeys);
+    }
   }, [errorMessages]);
   
   // Debug userAttempts state changes
   React.useEffect(() => {
-    console.log('🔄 === USER ATTEMPTS STATE CHANGED ===');
-    console.log('New userAttempts:', userAttempts);
-    console.log('User attempts keys:', Object.keys(userAttempts));
-    console.log('User attempts values:', Object.values(userAttempts));
+    const attemptKeys = Object.keys(userAttempts);
+    if (attemptKeys.length > 0) {
+      console.log('🔄 === USER ATTEMPTS STATE CHANGED ===');
+      console.log('User attempts keys:', attemptKeys);
+    }
   }, [userAttempts]);
   
   // Debug waitingForCorrection state changes
@@ -241,20 +243,22 @@ export default function Dashboard({ user }: DashboardProps) {
   
   // Debug comprehensiveAnalysis state changes
   React.useEffect(() => {
-    console.log('🔍 === COMPREHENSIVE ANALYSIS STATE CHANGED ===');
-    console.log('New comprehensiveAnalysis:', comprehensiveAnalysis);
-    console.log('Comprehensive analysis keys:', Object.keys(comprehensiveAnalysis));
-    console.log('Comprehensive analysis values:', Object.values(comprehensiveAnalysis));
-    
-    // Debug each message's analysis state
-    Object.entries(comprehensiveAnalysis).forEach(([messageId, analysis]) => {
-      console.log(`📊 Message ${messageId}:`, {
-        hasErrors: analysis?.hasErrors,
-        errorTypes: analysis?.errorTypes,
-        userAttempts: userAttempts[messageId],
-        errorMessages: errorMessages[messageId]
+    // Only log when there are actual changes, not on every render
+    const analysisKeys = Object.keys(comprehensiveAnalysis);
+    if (analysisKeys.length > 0) {
+      console.log('🔍 === COMPREHENSIVE ANALYSIS STATE CHANGED ===');
+      console.log('Analysis keys:', analysisKeys);
+      
+      // Only debug messages that have errors
+      Object.entries(comprehensiveAnalysis).forEach(([messageId, analysis]) => {
+        if (analysis?.hasErrors) {
+          console.log(`📊 Message ${messageId} has errors:`, {
+            hasErrors: analysis?.hasErrors,
+            errorTypes: analysis?.errorTypes
+          });
+        }
       });
-    });
+    }
   }, [comprehensiveAnalysis]);
 
   // Ref for auto-scrolling to bottom of conversation
@@ -718,10 +722,11 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('Expanding AI grammar help toolbar');
     // Set the current AI message for the toolbar
     setCurrentAIMessage(messageContent);
-    // Show the toolbar and collapse the sidebar
+    // Show the toolbar without affecting sidebar
     setShowToolbar(true);
     setToolbarCollapsed(false); // Expand toolbar
-    setSidebarCollapsed(true);
+    // Don't automatically collapse sidebar - let user control it
+    // setSidebarCollapsed(true); // REMOVED - let user control sidebar
     // Mark that toolbar was opened via help button
     setToolbarOpenedViaHelp(true);
     // Set the active help button
@@ -966,10 +971,11 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('Expanding toolbar for grammar help');
     // Set the user message content for grammar analysis
     setCurrentAIMessage(userMessage.content);
-    // Show the toolbar and collapse the sidebar
+    // Show the toolbar without affecting sidebar
     setShowToolbar(true);
     setToolbarCollapsed(false); // Expand toolbar
-    setSidebarCollapsed(true);
+    // Don't automatically collapse sidebar - let user control it
+    // setSidebarCollapsed(true); // REMOVED - let user control sidebar
     // Mark that toolbar was opened via error correction
     setToolbarOpenedViaHelp(true);
     // Set the active help button for highlighting
@@ -1435,9 +1441,30 @@ export default function Dashboard({ user }: DashboardProps) {
     }
   };
 
+  // Track vocabulary additions to prevent duplicates - optimized
+  const [vocabAdditionTracker, setVocabAdditionTracker] = useState<Set<string>>(new Set());
+  const [pendingVocabItems, setPendingVocabItems] = useState<Set<string>>(new Set());
+
   const handleAddToVocab = (word: string, meaning: string) => {
-    // This will be handled by the Toolbar component
-    console.log('Added to vocab:', word, meaning);
+    const wordKey = `${word}-${selectedConversation}`;
+    const itemKey = `${word}-${meaning}`;
+    
+    // Quick duplicate check - if already processed or pending, skip immediately
+    if (vocabAdditionTracker.has(wordKey) || 
+        persistentVocab.some(item => item.word === word) ||
+        pendingVocabItems.has(itemKey)) {
+      return;
+    }
+    
+    // Mark as pending to prevent duplicate calls
+    setPendingVocabItems(prev => new Set([...prev, itemKey]));
+    
+    // Mark this word as processed
+    setVocabAdditionTracker(prev => new Set([...prev, wordKey]));
+    
+    // Add to new vocab items for Toolbar processing
+    const newVocabItem = { word, meaning, context: '' };
+    setNewVocabItems(prev => [...prev, newVocabItem]);
   };
 
 
@@ -1542,10 +1569,11 @@ export default function Dashboard({ user }: DashboardProps) {
       // Clear the items after they've been processed by the Toolbar
       const timer = setTimeout(() => {
         setNewVocabItems([]);
-      }, 2000);
+        setPendingVocabItems(new Set());
+      }, 1000);
       return () => clearTimeout(timer);
     }
-  }, [newVocabItems]);
+  }, [newVocabItems.length]); // Only depend on length, not the entire array
 
   // Close language menu when clicking outside
   useEffect(() => {
@@ -1814,10 +1842,24 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
   // Extract vocabulary from German text using chat function
   const extractVocabularyFromText = async (germanText: string) => {
+    console.log('📚 === EXTRACTING VOCABULARY DEBUG ===');
+    console.log('German text:', germanText);
+    console.log('Current selected conversation:', selectedConversation);
+    console.log('Current persistent vocab count:', persistentVocab.length);
+    console.log('Current vocabAdditionTracker:', Array.from(vocabAdditionTracker));
+    console.log('Current persistent vocab words:', persistentVocab.map(item => item.word));
+    console.log('Chat messages count:', chatMessages.length);
+    console.log('Is first AI message:', chatMessages.length <= 1);
+    console.log('Current showVocabSelector:', showVocabSelector);
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('Stack trace:', new Error().stack);
+    
     // Instead of extracting words, just show the sentence for word-by-word selection
     setExtractedVocab([{ word: germanText, meaning: '', context: '' }]);
     setSelectedWords(new Set());
     setShowVocabSelector(true);
+    
+    console.log('📚 === VOCABULARY SELECTOR OPENED ===');
   };
 
   // Comprehensive analysis function
@@ -1826,10 +1868,12 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     console.log('Message:', message);
     console.log('Message ID:', messageId);
     console.log('Is Voice:', isVoice);
+    console.log('Timestamp:', new Date().toISOString());
     console.log('🔍 === CURRENT STATE BEFORE ANALYSIS ===');
     console.log('waitingForCorrection:', waitingForCorrection);
     console.log('errorMessages:', errorMessages);
     console.log('userAttempts:', userAttempts);
+    console.log('Current comprehensive analysis for this message:', comprehensiveAnalysis[messageId]);
 
     // Prevent re-analysis of messages that have already been cleared
     if (comprehensiveAnalysis[messageId] && !comprehensiveAnalysis[messageId].hasErrors) {
@@ -1916,10 +1960,36 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             errorMessage += `📚 Vocabulary: ${vocabErrors}\n`;
             console.log('Vocabulary errors detected:', data.corrections.vocabulary);
             
-            // Auto-add vocabulary corrections
-            data.corrections.vocabulary.forEach((v: any) => {
-              handleAddToVocab(v.correct, v.meaning);
-            });
+            // Auto-add vocabulary corrections (only for current session and avoid duplicates)
+            if (selectedConversation) {
+              console.log('📚 === AUTO-ADDING VOCABULARY FROM ERRORS ===');
+              console.log('Vocabulary corrections count:', data.corrections.vocabulary.length);
+              console.log('Current persistent vocab count:', persistentVocab.length);
+              console.log('Current vocabAdditionTracker:', Array.from(vocabAdditionTracker));
+              console.log('Timestamp:', new Date().toISOString());
+              console.log('Stack trace:', new Error().stack);
+              
+              data.corrections.vocabulary.forEach((v: any, index: number) => {
+                console.log(`📚 Processing vocabulary ${index + 1}:`, v.correct, v.meaning);
+                // Check if word already exists in persistent vocab to avoid duplicates
+                const wordExists = persistentVocab.some(item => item.word === v.correct);
+                console.log(`📚 Word "${v.correct}" exists:`, wordExists);
+                console.log(`📚 Current persistent vocab words:`, persistentVocab.map(item => item.word));
+                
+                // Also check if word is already in tracker
+                const wordKey = `${v.correct}-${selectedConversation}`;
+                const inTracker = vocabAdditionTracker.has(wordKey);
+                console.log(`📚 Word "${v.correct}" in tracker:`, inTracker);
+                console.log(`📚 Word key:`, wordKey);
+                
+                if (!wordExists && !inTracker) {
+                  console.log(`📚 Adding word "${v.correct}" to vocabulary`);
+                  handleAddToVocab(v.correct, v.meaning);
+                } else {
+                  console.log(`📚 Skipping duplicate word "${v.correct}" - exists: ${wordExists}, in tracker: ${inTracker}`);
+                }
+              });
+            }
           }
           
           if (data.errorTypes.pronunciation && data.corrections.pronunciation) {
@@ -2265,7 +2335,12 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           
           // Detect language mismatch
           const detectedLanguage = detectLanguage(transcription);
-          console.log('Detected language:', detectedLanguage, 'Selected language:', recordingLanguage);
+          console.log('🔍 === LANGUAGE DETECTION DEBUG ===');
+          console.log('Transcription:', transcription);
+          console.log('Detected language:', detectedLanguage);
+          console.log('Selected language:', recordingLanguage);
+          console.log('Language mismatch:', detectedLanguage !== recordingLanguage);
+          console.log('Show language mismatch modal state:', showLanguageMismatchModal);
           
           // Check if we're in practice modal mode
           if (showLanguageMismatchModal && germanSuggestion) {
@@ -2371,17 +2446,19 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             console.log('Detected language:', detectedLanguage);
             console.log('Recording language:', recordingLanguage);
             console.log('Transcription:', transcription);
+            console.log('🔍 === CHECKING MISMATCH CONDITIONS ===');
             
             // Additional checks for reliability
             const wordCount = transcription.trim().split(/\s+/).length;
             const hasSubstantialContent = wordCount > 2;
             const hasClearLanguageIndicators = transcription.length > 10; // At least 10 characters
             
-            console.log('Content checks:');
-            console.log('- Word count:', wordCount, '(needs > 2)');
-            console.log('- Has substantial content:', hasSubstantialContent);
-            console.log('- Length:', transcription.length, '(needs > 10)');
-            console.log('- Has clear language indicators:', hasClearLanguageIndicators);
+            console.log('🔍 === CONTENT CHECKS ===');
+            console.log('Word count:', wordCount, '(needs > 2)');
+            console.log('Has substantial content:', hasSubstantialContent);
+            console.log('Length:', transcription.length, '(needs > 10)');
+            console.log('Has clear language indicators:', hasClearLanguageIndicators);
+            console.log('All conditions met:', hasSubstantialContent && hasClearLanguageIndicators);
             
             if (hasSubstantialContent && hasClearLanguageIndicators) {
               console.log('✅ === SHOWING LANGUAGE MISMATCH MODAL ===');
@@ -2430,6 +2507,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               console.log('❌ === LANGUAGE MISMATCH BUT CONTENT TOO SHORT ===');
               console.log('Word count:', wordCount, 'Length:', transcription.length);
               console.log('Not showing modal - content insufficient');
+              console.log('Has substantial content:', hasSubstantialContent);
+              console.log('Has clear language indicators:', hasClearLanguageIndicators);
             }
           } else {
             console.log('✅ === LANGUAGES MATCH - PROCEEDING WITH NORMAL PROCESSING ===');
@@ -2857,6 +2936,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     setSelectedWords(new Set());
     setWordMeanings({});
     setLoadingMeanings(new Set());
+    setVocabAdditionTracker(new Set());
+    setPendingVocabItems(new Set());
     setNewVocabItems([]);
     
     // Reset comprehensive analysis

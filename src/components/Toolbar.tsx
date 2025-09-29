@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BookOpen, Lightbulb, Volume2, Star, X, Play, Mic, MicOff, Loader2, AlertCircle, CheckCircle, Target, Trophy } from 'lucide-react';
 
 interface ToolbarProps {
@@ -154,12 +154,31 @@ export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVoc
     }
   }, [comprehensiveAnalysis]);
 
-  // Handle new vocabulary items from Dashboard
+  // Track processed vocabulary items to prevent infinite loops
+  const processedVocabRef = useRef<Set<string>>(new Set());
+
+  // Handle new vocabulary items from Dashboard - optimized
   useEffect(() => {
     if (newVocabItems && newVocabItems.length > 0 && onUpdatePersistentVocab) {
-      // Add new items to the top of the persistent vocabulary
-      const updatedVocab = [...newVocabItems, ...persistentVocab];
-      onUpdatePersistentVocab(updatedVocab);
+      // Create a unique key for this batch of items
+      const itemsKey = newVocabItems.map(item => `${item.word}-${item.meaning}`).join('|');
+      
+      // Check if we've already processed this batch
+      if (!processedVocabRef.current.has(itemsKey)) {
+        // Mark this batch as processed
+        processedVocabRef.current.add(itemsKey);
+        
+        // Filter out duplicates from new items before adding
+        const uniqueNewItems = newVocabItems.filter(newItem => 
+          !persistentVocab.some(existing => existing.word === newItem.word)
+        );
+        
+        if (uniqueNewItems.length > 0) {
+          // Add new items to the top of the persistent vocabulary
+          const updatedVocab = [...uniqueNewItems, ...persistentVocab];
+          onUpdatePersistentVocab(updatedVocab);
+        }
+      }
     }
   }, [newVocabItems, onUpdatePersistentVocab, persistentVocab]);
 
@@ -172,6 +191,13 @@ export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVoc
       }, 100);
     }
   }, [newVocabItems]);
+
+  // Cleanup processed items when component unmounts
+  useEffect(() => {
+    return () => {
+      processedVocabRef.current.clear();
+    };
+  }, []);
 
   // Load cached explanation when switching to explain tab
   useEffect(() => {
