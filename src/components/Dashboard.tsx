@@ -295,29 +295,32 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('Original messages:', originalMessages);
     console.log('Suggested answers:', suggestedAnswers);
     console.log('Comprehensive analysis:', comprehensiveAnalysis);
-    
+
     Object.keys(userAttempts).forEach(messageId => {
       console.log(`🔍 === CHECKING MESSAGE ${messageId} ===`);
+      const messageEntry = chatMessages.find(msg => msg.id === messageId);
+
       console.log('User attempts for this message:', userAttempts[messageId]);
       console.log('Error messages for this message:', errorMessages[messageId]);
       console.log('Original message for this message:', originalMessages[messageId]);
       console.log('Suggested answer for this message:', suggestedAnswers[messageId]);
       console.log('Comprehensive analysis for this message:', comprehensiveAnalysis[messageId]);
-      
+      console.log('Message entry for this message:', messageEntry);
+
       // Check if we have errors from either errorMessages or comprehensiveAnalysis
       const hasErrors = errorMessages[messageId] || (comprehensiveAnalysis[messageId] && comprehensiveAnalysis[messageId].hasErrors);
       console.log('Has errors (combined check):', hasErrors);
-      
+
       if (userAttempts[messageId] >= 3 && hasErrors) {
         console.log('✅ === MAX ATTEMPTS REACHED WITH ERRORS ===');
         // Find the original message content
         const originalMessage = originalMessages[messageId];
         console.log('Original message found:', originalMessage);
-        
+
         // Check if this is a voice input (has comprehensive analysis with errors)
-        const isVoiceInput = comprehensiveAnalysis[messageId] && comprehensiveAnalysis[messageId].hasErrors;
+        const isVoiceInput = Boolean(messageEntry?.isAudio);
         console.log('Is voice input:', isVoiceInput);
-        
+
         if (isVoiceInput && originalMessage) {
           console.log('🎤 === VOICE INPUT - SHOWING LANGUAGE MISMATCH MODAL ===');
           console.log('Original message (transcribed text):', originalMessage);
@@ -374,7 +377,7 @@ export default function Dashboard({ user }: DashboardProps) {
         console.log('Has any errors:', hasErrors);
       }
     });
-  }, [userAttempts, errorMessages, originalMessages, suggestedAnswers, comprehensiveAnalysis]);
+  }, [userAttempts, errorMessages, originalMessages, suggestedAnswers, comprehensiveAnalysis, chatMessages]);
 
   // Auto-scroll to bottom when new messages are added
   React.useEffect(() => {
