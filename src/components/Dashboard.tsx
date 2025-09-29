@@ -148,6 +148,7 @@ export default function Dashboard({ user }: DashboardProps) {
       setMessageAttempts({});
       setShowOriginalMessage({});
       setOriginalMessages({});
+      setActiveMessageId(null);
       console.log('✅ === STATES CLEARED FOR NEW CONVERSATION ===');
     }
   }, [selectedConversation]);
@@ -172,6 +173,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [waitingForCorrection, setWaitingForCorrection] = useState<boolean>(false);
   const [messageAttempts, setMessageAttempts] = useState<{[key: string]: string[]}>({});
   const [suggestedAnswers, setSuggestedAnswers] = useState<{[key: string]: string}>({});
+  const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   
   // Recording state variables
   const [isRecording, setIsRecording] = useState(false);
@@ -233,6 +235,17 @@ export default function Dashboard({ user }: DashboardProps) {
       console.log('🔄 === USER ATTEMPTS STATE CHANGED ===');
       console.log('User attempts keys:', attemptKeys);
     }
+  }, [userAttempts]);
+
+  // Track which message is currently awaiting correction so retries replace it
+  React.useEffect(() => {
+    const activeEntry = Object.entries(userAttempts).find(([, attempts]) => attempts > 0);
+    const nextActiveId = activeEntry ? activeEntry[0] : null;
+
+    setActiveMessageId(prev => (prev === nextActiveId ? prev : nextActiveId));
+
+    const shouldWait = Boolean(nextActiveId);
+    setWaitingForCorrection(prev => (prev === shouldWait ? prev : shouldWait));
   }, [userAttempts]);
   
   // Debug waitingForCorrection state changes
@@ -1328,6 +1341,7 @@ export default function Dashboard({ user }: DashboardProps) {
     setUserAttempts(clearedUserAttempts);
     setErrorMessages(clearedErrorMessages);
     setWaitingForCorrection(false);
+    setActiveMessageId(prev => (prev === messageId ? null : prev));
     
     // Clear comprehensive analysis for this message to remove error symbols from UI
     console.log('🧹 === CLEARING COMPREHENSIVE ANALYSIS FOR UI ===');
@@ -1388,10 +1402,12 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('Selected conversation:', selectedConversation);
     console.log('Chat messages count:', chatMessages.length);
 
-    if (!messageInput.trim() || isSending || !selectedConversation) {
+    const trimmedInput = messageInput.trim();
+
+    if (!trimmedInput || isSending || !selectedConversation) {
       console.log('🚫 === BLOCKING SEND MESSAGE ===');
       console.log('Reasons:');
-      console.log('- Empty input:', !messageInput.trim());
+      console.log('- Empty input:', !trimmedInput);
       console.log('- Is sending:', isSending);
       console.log('- No conversation:', !selectedConversation);
       return;
@@ -1404,8 +1420,8 @@ export default function Dashboard({ user }: DashboardProps) {
     }
 
     // Check if this is a retry attempt - be more robust in detection
-    const isRetry = waitingForCorrection || Object.keys(userAttempts).length > 0;
-    const existingMessageId = isRetry ? Object.keys(userAttempts).find(id => userAttempts[id] > 0) : null;
+    const isRetry = Boolean(activeMessageId);
+    const existingMessageId = activeMessageId;
 
     console.log('🔍 === RETRY DETECTION DEBUG ===');
     console.log('Is retry:', isRetry);
@@ -1423,15 +1439,20 @@ export default function Dashboard({ user }: DashboardProps) {
       console.log('Current attempts for this message:', userAttempts[existingMessageId] || 0);
       
       messageId = existingMessageId;
-      
-      // Message content will be updated in processTextMessage (EXACT SAME AS VOICE)
-      
+
+      // Update message content immediately so the retry replaces the previous attempt
+      setChatMessages(prev => prev.map(msg =>
+        msg.id === messageId
+          ? { ...msg, content: trimmedInput, timestamp: new Date().toISOString() }
+          : msg
+      ));
+
       // If this is a retry, clear previous error states for this message (EXACT SAME AS VOICE)
       console.log('🔄 === CLEARING PREVIOUS ERROR STATES FOR RETRY ===');
       console.log('Message ID for retry:', messageId);
       console.log('Current error messages:', errorMessages);
       console.log('Current user attempts:', userAttempts);
-      
+
       setErrorMessages(prev => {
         const newState = { ...prev };
         delete newState[messageId];
@@ -1439,7 +1460,7 @@ export default function Dashboard({ user }: DashboardProps) {
         console.log('Remaining error messages:', newState);
         return newState;
       });
-      
+
       // Don't clear waitingForCorrection here - let the analysis determine if we still need to wait (EXACT SAME AS VOICE)
       console.log('🔄 === KEEPING WAITING FOR CORRECTION STATE ===');
     } else {
@@ -1453,10 +1474,10 @@ export default function Dashboard({ user }: DashboardProps) {
       const userMessage: ChatMessage = {
         id: Date.now().toString(),
         role: 'user',
-        content: messageInput.trim(),
+        content: trimmedInput,
         timestamp: new Date().toISOString()
       };
-      
+
       messageId = userMessage.id;
       
       // Add to chat immediately (EXACT SAME AS VOICE)
@@ -1475,31 +1496,15 @@ export default function Dashboard({ user }: DashboardProps) {
         [messageId]: userMessage.content
       }));
     }
-    
+
     // Process text message (EXACT SAME AS VOICE)
-    await processTextMessage(messageInput.trim(), messageId, isRetry);
-    
-    // Ensure the message content stays as the input content (EXACT SAME AS VOICE)
-    setTimeout(() => {
-      setChatMessages(prev => prev.map(msg => 
-        msg.id === messageId 
-          ? { ...msg, content: messageInput.trim() }
-          : msg
-      ));
-    }, 200);
-    
+    await processTextMessage(trimmedInput, messageId, isRetry);
+
     // Clear the input after processing
     console.log('🧹 === CLEARING MESSAGE INPUT ===');
     console.log('Input before clearing:', messageInput);
     setMessageInput('');
     console.log('Input after clearing:', messageInput);
-
-    // Force input clearing by setting it again after a brief delay
-    setTimeout(() => {
-      setMessageInput('');
-      console.log('🧹 === FORCE CLEARING INPUT ===');
-      console.log('Input after force clearing:', messageInput);
-    }, 0);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -2269,8 +2274,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     setPracticeAudioBlob(audioBlob);
     
     // Check if we're in a retry state - be more robust in detection
-    const isRetry = waitingForCorrection || Object.keys(userAttempts).length > 0;
-    const existingMessageId = isRetry ? Object.keys(userAttempts).find(id => userAttempts[id] > 0) : null;
+    const isRetry = Boolean(activeMessageId);
+    const existingMessageId = activeMessageId;
 
     console.log('🎤 === PROCESSING AUDIO MESSAGE ===');
     console.log('Is retry:', isRetry);
@@ -2293,9 +2298,9 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       console.log('🔄 === VOICE RETRY DETECTED ===');
       console.log('Updating existing message:', existingMessageId);
       console.log('Current attempts for this message:', userAttempts[existingMessageId] || 0);
-      
+
       messageId = existingMessageId;
-      
+
       // Update the existing message to show retry attempt
       setChatMessages(prev => {
         console.log('🔄 === UPDATING EXISTING MESSAGE FOR RETRY ===');
@@ -2310,11 +2315,11 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           }
           return msg;
         });
-        
+
         console.log('Updated messages count after retry:', updatedMessages.length);
         return updatedMessages;
       });
-      
+
       // Ensure we maintain the retry state
       setWaitingForCorrection(true);
     } else {
@@ -2735,7 +2740,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             setUserAttempts(clearedUserAttempts);
             setErrorMessages(clearedErrorMessages);
             setWaitingForCorrection(false);
-            
+            setActiveMessageId(prev => (prev === messageId ? null : prev));
+
             console.log('⏰ === CALLING AI RESPONSE WITH CLEARED STATE ===');
             // Call AI response directly with cleared state
             await sendTranscriptionToAI(transcription, messageId, false, analysis, {
@@ -3030,6 +3036,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     setSelectedConversation(null);
     setChatMessages([]);
     setCurrentAIMessage('');
+    setActiveMessageId(null);
     
     // Reset toolbar states
     setShowToolbar(false);
