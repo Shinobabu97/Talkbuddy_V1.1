@@ -253,31 +253,52 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
               });
             });
             
-            // Update only the items that need meanings in the persistent vocabulary
-            const updatedVocab = persistentVocab.map(existingItem => {
-              const updatedItem = itemsWithMeanings.find(newItem => newItem.word === existingItem.word);
-              if (updatedItem && updatedItem.meaning && updatedItem.meaning.trim() !== '') {
-                console.log(`📚 === UPDATING MEANING FOR ${existingItem.word} ===`);
-                console.log(`Old meaning: "${existingItem.meaning}"`);
-                console.log(`New meaning: "${updatedItem.meaning}"`);
-                return updatedItem;
-              }
-              return existingItem;
+            // Only update items that don't already have meanings in persistentVocab
+            const itemsToUpdate = itemsWithMeanings.filter(newItem => {
+              const existingItem = persistentVocab.find(existing => existing.word === newItem.word);
+              const needsUpdate = !existingItem || !existingItem.meaning || existingItem.meaning.trim() === '';
+              console.log(`📚 === CHECKING IF ${newItem.word} NEEDS UPDATE ===`);
+              console.log(`Existing item:`, existingItem);
+              console.log(`Needs update:`, needsUpdate);
+              return needsUpdate;
             });
             
-            console.log('📚 === UPDATING PERSISTENT VOCAB ===');
-            console.log('Updated vocab count:', updatedVocab.length);
-            console.log('Updated vocab items:');
-            updatedVocab.forEach((item, index) => {
-              console.log(`Updated item ${index}:`, {
-                word: item.word,
-                meaning: item.meaning,
-                context: item.context
+            console.log('📚 === ITEMS THAT NEED UPDATING ===');
+            console.log('Items to update:', itemsToUpdate);
+            
+            if (itemsToUpdate.length > 0) {
+              // Add new items or update existing ones that need meanings
+              const updatedVocab = [...persistentVocab];
+              
+              itemsToUpdate.forEach(itemToUpdate => {
+                const existingIndex = updatedVocab.findIndex(existing => existing.word === itemToUpdate.word);
+                if (existingIndex >= 0) {
+                  // Update existing item
+                  console.log(`📚 === UPDATING EXISTING ITEM: ${itemToUpdate.word} ===`);
+                  updatedVocab[existingIndex] = itemToUpdate;
+                } else {
+                  // Add new item
+                  console.log(`📚 === ADDING NEW ITEM: ${itemToUpdate.word} ===`);
+                  updatedVocab.unshift(itemToUpdate);
+                }
               });
-            });
-            console.log('Calling onUpdatePersistentVocab with:', updatedVocab);
-            onUpdatePersistentVocab(updatedVocab);
-            console.log('📚 === ONUPDATE PERSISTENT VOCAB CALLED ===');
+              
+              console.log('📚 === UPDATING PERSISTENT VOCAB ===');
+              console.log('Updated vocab count:', updatedVocab.length);
+              console.log('Updated vocab items:');
+              updatedVocab.forEach((item, index) => {
+                console.log(`Updated item ${index}:`, {
+                  word: item.word,
+                  meaning: item.meaning,
+                  context: item.context
+                });
+              });
+              console.log('Calling onUpdatePersistentVocab with:', updatedVocab);
+              onUpdatePersistentVocab(updatedVocab);
+              console.log('📚 === ONUPDATE PERSISTENT VOCAB CALLED ===');
+            } else {
+              console.log('📚 === NO ITEMS NEED UPDATING - SKIPPING ===');
+            }
           }
         } else {
           console.log('📚 === SKIPPING ALREADY PROCESSED BATCH ===');

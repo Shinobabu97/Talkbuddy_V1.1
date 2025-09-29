@@ -281,6 +281,7 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('Error messages:', errorMessages);
     console.log('Original messages:', originalMessages);
     console.log('Suggested answers:', suggestedAnswers);
+    console.log('Comprehensive analysis:', comprehensiveAnalysis);
     
     Object.keys(userAttempts).forEach(messageId => {
       console.log(`🔍 === CHECKING MESSAGE ${messageId} ===`);
@@ -288,14 +289,64 @@ export default function Dashboard({ user }: DashboardProps) {
       console.log('Error messages for this message:', errorMessages[messageId]);
       console.log('Original message for this message:', originalMessages[messageId]);
       console.log('Suggested answer for this message:', suggestedAnswers[messageId]);
+      console.log('Comprehensive analysis for this message:', comprehensiveAnalysis[messageId]);
       
-      if (userAttempts[messageId] >= 3 && errorMessages[messageId]) {
+      // Check if we have errors from either errorMessages or comprehensiveAnalysis
+      const hasErrors = errorMessages[messageId] || (comprehensiveAnalysis[messageId] && comprehensiveAnalysis[messageId].hasErrors);
+      console.log('Has errors (combined check):', hasErrors);
+      
+      if (userAttempts[messageId] >= 3 && hasErrors) {
         console.log('✅ === MAX ATTEMPTS REACHED WITH ERRORS ===');
         // Find the original message content
         const originalMessage = originalMessages[messageId];
         console.log('Original message found:', originalMessage);
-        if (originalMessage && !suggestedAnswers[messageId]) {
-          console.log('🚀 === GENERATING SUGGESTED ANSWER ===');
+        
+        // Check if this is a voice input (has comprehensive analysis with errors)
+        const isVoiceInput = comprehensiveAnalysis[messageId] && comprehensiveAnalysis[messageId].hasErrors;
+        console.log('Is voice input:', isVoiceInput);
+        
+        if (isVoiceInput && originalMessage) {
+          console.log('🎤 === VOICE INPUT - SHOWING LANGUAGE MISMATCH MODAL ===');
+          console.log('Original message (transcribed text):', originalMessage);
+          console.log('🔍 === VOICE CORRECTION TRIGGER DEBUG ===');
+          console.log('User attempts for this message:', userAttempts[messageId]);
+          console.log('Has comprehensive analysis errors:', !!(comprehensiveAnalysis[messageId] && comprehensiveAnalysis[messageId].hasErrors));
+          console.log('Current chat messages count:', chatMessages.length);
+          console.log('Current chat messages:', chatMessages.map(msg => ({ id: msg.id, content: msg.content, role: msg.role })));
+          
+          // Show language mismatch modal for voice input (like English mismatch flow)
+          setDetectedLanguage('german'); // Treat as German practice
+          setMismatchTranscription(originalMessage);
+          setMismatchMessageId(messageId);
+          
+          // Generate German suggestion for practice
+          console.log('Generating German suggestion for practice:', originalMessage);
+          generateGermanSuggestion(originalMessage);
+          
+          // Show the modal
+          setShowLanguageMismatchModal(true);
+          
+          // Clear retry states since we're switching to practice mode
+          setWaitingForCorrection(false);
+          setUserAttempts(prev => {
+            const newState = { ...prev };
+            delete newState[messageId];
+            return newState;
+          });
+          setErrorMessages(prev => {
+            const newState = { ...prev };
+            delete newState[messageId];
+            return newState;
+          });
+          // Also clear comprehensive analysis to prevent blocking
+          setComprehensiveAnalysis(prev => {
+            const newState = { ...prev };
+            delete newState[messageId];
+            return newState;
+          });
+          
+        } else if (originalMessage && !suggestedAnswers[messageId]) {
+          console.log('🚀 === GENERATING TEXT SUGGESTED ANSWER ===');
           generateSuggestedAnswer(messageId, originalMessage);
         } else if (suggestedAnswers[messageId]) {
           console.log('✅ === SUGGESTED ANSWER ALREADY EXISTS ===');
@@ -306,9 +357,11 @@ export default function Dashboard({ user }: DashboardProps) {
         console.log('❌ === CONDITIONS NOT MET ===');
         console.log('User attempts >= 3:', userAttempts[messageId] >= 3);
         console.log('Has error messages:', !!errorMessages[messageId]);
+        console.log('Has comprehensive analysis errors:', !!(comprehensiveAnalysis[messageId] && comprehensiveAnalysis[messageId].hasErrors));
+        console.log('Has any errors:', hasErrors);
       }
     });
-  }, [userAttempts, errorMessages, originalMessages, suggestedAnswers]);
+  }, [userAttempts, errorMessages, originalMessages, suggestedAnswers, comprehensiveAnalysis]);
 
   // Auto-scroll to bottom when new messages are added
   React.useEffect(() => {
@@ -1559,10 +1612,23 @@ export default function Dashboard({ user }: DashboardProps) {
       return newSet;
     });
     
-    // Add to new vocab items for Toolbar processing
+    // Create the new vocab item
     const newVocabItem = { word, meaning, context: '' };
-    console.log('📚 === ADDING TO NEW VOCAB ITEMS ===');
+    console.log('📚 === ADDING TO PERSISTENT VOCAB IMMEDIATELY ===');
     console.log('New vocab item:', newVocabItem);
+    
+    // Add to persistent vocabulary immediately (for session persistence)
+    setPersistentVocab(prev => {
+      const updated = [newVocabItem, ...prev];
+      console.log('📚 === UPDATED PERSISTENT VOCAB ===');
+      console.log('New persistent vocab count:', updated.length);
+      console.log('New persistent vocab items:', updated);
+      console.log('📚 === VOCAB ADDED TO PERSISTENT STORAGE (WORKS EVEN WHEN TOOLBAR IS CLOSED) ===');
+      return updated;
+    });
+    
+    // Also add to new vocab items for Toolbar processing (when toolbar is open)
+    console.log('📚 === ADDING TO NEW VOCAB ITEMS FOR TOOLBAR ===');
     setNewVocabItems(prev => {
       const updated = [...prev, newVocabItem];
       console.log('📚 === UPDATED NEW VOCAB ITEMS ===');
@@ -1631,10 +1697,10 @@ export default function Dashboard({ user }: DashboardProps) {
   };
 
   // Add selected vocabulary words to user's vocabulary
-  const addSelectedVocab = () => {
+  const addSelectedVocab = async () => {
     const selectedWordsList = Array.from(selectedWords).map(word => ({
       word: word,
-      meaning: '', // Will be generated in vocab tab
+      meaning: '', // Will be generated immediately
       context: extractedVocab[0]?.word || ''
     }));
     
@@ -1644,19 +1710,58 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('Current persistent vocab before:', persistentVocab.length);
     console.log('Current newVocabItems before:', newVocabItems.length);
     
-    // Add to persistent vocabulary
+    // Generate meanings immediately for each word
+    const wordsWithMeanings = await Promise.all(selectedWordsList.map(async (item) => {
+      console.log(`📚 === GENERATING MEANING FOR: ${item.word} ===`);
+      try {
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            messages: [{
+              role: 'user',
+              content: `Provide the English translation for this German word: "${item.word}". Just return the English meaning, nothing else.`
+            }],
+            conversationId: 'word_meaning',
+            systemInstruction: "Provide only the English translation of the German word. Be concise and accurate."
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const meaning = data.message.trim();
+          console.log(`📚 === GENERATED MEANING FOR ${item.word}: ${meaning} ===`);
+          return { ...item, meaning };
+        } else {
+          console.error(`📚 === FAILED TO GET MEANING FOR ${item.word} ===`);
+          return { ...item, meaning: 'Meaning not found' };
+        }
+      } catch (error) {
+        console.error(`📚 === ERROR GENERATING MEANING FOR ${item.word} ===`);
+        console.error('Error details:', error);
+        return { ...item, meaning: 'Meaning not found' };
+      }
+    }));
+    
+    console.log('📚 === WORDS WITH MEANINGS GENERATED ===');
+    console.log('Final words with meanings:', wordsWithMeanings);
+    
+    // Add to persistent vocabulary with meanings
     setPersistentVocab(prev => {
-      const updated = [...selectedWordsList, ...prev];
-      console.log('📚 === UPDATED PERSISTENT VOCAB ===');
+      const updated = [...wordsWithMeanings, ...prev];
+      console.log('📚 === UPDATED PERSISTENT VOCAB WITH MEANINGS ===');
       console.log('New persistent vocab count:', updated.length);
       console.log('New persistent vocab items:', updated);
       return updated;
     });
     
-    // Set new vocabulary items for the Toolbar
+    // Set new vocabulary items for the Toolbar (with meanings already generated)
     console.log('📚 === SETTING NEW VOCAB ITEMS FOR TOOLBAR ===');
-    console.log('Items being sent to Toolbar:', selectedWordsList);
-    setNewVocabItems(selectedWordsList);
+    console.log('Items being sent to Toolbar:', wordsWithMeanings);
+    setNewVocabItems(wordsWithMeanings);
     
     // Open toolbox with vocab tab active
     setToolbarActiveTab('vocab');
@@ -1686,15 +1791,16 @@ export default function Dashboard({ user }: DashboardProps) {
     if (newVocabItems.length > 0) {
       console.log('📚 === DASHBOARD CLEARING NEW VOCAB ITEMS ===');
       console.log('Current newVocabItems:', newVocabItems);
-      console.log('Setting timer to clear in 1000ms');
+      console.log('Setting timer to clear in 5000ms (increased to allow meaning generation)');
       
       // Clear the items after they've been processed by the Toolbar
+      // Increased timeout to allow for meaning generation API calls
       const timer = setTimeout(() => {
         console.log('📚 === CLEARING NEW VOCAB ITEMS AFTER TIMEOUT ===');
         console.log('Clearing newVocabItems and pendingVocabItems');
         setNewVocabItems([]);
         setPendingVocabItems(new Set());
-      }, 1000);
+      }, 5000); // Increased from 1000ms to 5000ms
       return () => clearTimeout(timer);
     }
   }, [newVocabItems.length]); // Only depend on length, not the entire array
@@ -2318,34 +2424,44 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       // Ensure we maintain the retry state
       setWaitingForCorrection(true);
     } else {
-      // This is a new message - create new message
-      console.log('🆕 === NEW VOICE MESSAGE ===');
-      console.log('Creating new message because:');
-      console.log('- isRetry:', isRetry);
-      console.log('- existingMessageId:', existingMessageId);
-      console.log('- waitingForCorrection:', waitingForCorrection);
+      // Check if this is voice correction mode (mismatch modal + mismatch transcription)
+      const isVoiceCorrectionMode = showLanguageMismatchModal && mismatchTranscription && mismatchTranscription !== '🎤 Voice message';
       
-      const audioMessage: ChatMessage = {
-        id: showLanguageMismatchModal ? mismatchMessageId : Date.now().toString(),
-        role: 'user',
-        content: showLanguageMismatchModal ? '🎤 Voice message' : '🎤 Voice message',
-        timestamp: new Date().toISOString(),
-        audioUrl: URL.createObjectURL(audioBlob),
-        isAudio: true,
-        isTranscribing: true
-      };
-      
-      messageId = audioMessage.id;
-      
-      // Add to chat immediately
-      setChatMessages(prev => {
-        console.log('🆕 === ADDING NEW MESSAGE TO CHAT ===');
-        console.log('New message ID:', messageId);
-        console.log('Previous messages count:', prev.length);
-        const newMessages = [...prev, audioMessage];
-        console.log('New messages count:', newMessages.length);
-        return newMessages;
-      });
+      if (isVoiceCorrectionMode) {
+        // Voice correction mode - don't create new message, we'll replace the original
+        console.log('🎤 === VOICE CORRECTION MODE - SKIPPING NEW MESSAGE CREATION ===');
+        console.log('Will replace original message:', mismatchMessageId);
+        messageId = mismatchMessageId; // Use the original message ID
+      } else {
+        // This is a new message - create new message
+        console.log('🆕 === NEW VOICE MESSAGE ===');
+        console.log('Creating new message because:');
+        console.log('- isRetry:', isRetry);
+        console.log('- existingMessageId:', existingMessageId);
+        console.log('- waitingForCorrection:', waitingForCorrection);
+        
+        const audioMessage: ChatMessage = {
+          id: Date.now().toString(), // Always create new ID to avoid duplicates
+          role: 'user',
+          content: showLanguageMismatchModal ? '🎤 Voice message' : '🎤 Voice message',
+          timestamp: new Date().toISOString(),
+          audioUrl: URL.createObjectURL(audioBlob),
+          isAudio: true,
+          isTranscribing: true
+        };
+        
+        messageId = audioMessage.id;
+        
+        // Add to chat immediately
+        setChatMessages(prev => {
+          console.log('🆕 === ADDING NEW MESSAGE TO CHAT ===');
+          console.log('New message ID:', messageId);
+          console.log('Previous messages count:', prev.length);
+          const newMessages = [...prev, audioMessage];
+          console.log('New messages count:', newMessages.length);
+          return newMessages;
+        });
+      }
     }
     
     // Process audio in background
@@ -2482,15 +2598,67 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               // Clear any loading states
               setIsTranscribing(false);
               
-              // Debug: Log current state before replacement
-              console.log('=== MESSAGE REPLACEMENT DEBUG ===');
-              console.log('mismatchMessageId:', mismatchMessageId);
-              console.log('transcription:', transcription);
-              console.log('practiceAudioBlob:', practiceAudioBlob);
-              console.log('Current chat messages before replacement:', chatMessages);
+              // Check if this is voice correction (original message was German) or language mismatch (original was English)
+              const isVoiceCorrection = mismatchTranscription && mismatchTranscription !== '🎤 Voice message';
+              console.log('🎤 === CHECKING MODAL TYPE ===');
+              console.log('Mismatch transcription:', mismatchTranscription);
+              console.log('Is voice correction:', isVoiceCorrection);
               
-              // Replace the old English message with the new German message
-              setChatMessages(prev => {
+              if (isVoiceCorrection) {
+                // Voice correction - replace the original wrong message
+                console.log('🎤 === VOICE CORRECTION - REPLACING ORIGINAL MESSAGE ===');
+                console.log('🔍 === BEFORE REPLACING MESSAGE ===');
+                console.log('Current chat messages count:', chatMessages.length);
+                console.log('Current chat messages:', chatMessages.map(msg => ({ id: msg.id, content: msg.content, role: msg.role })));
+                console.log('Original wrong message ID:', mismatchMessageId);
+                
+                // Update the original wrong message with the corrected content
+                setChatMessages(prev => {
+                  const updated = prev.map(msg => {
+                    if (msg.id === mismatchMessageId) {
+                      console.log('🔄 === REPLACING ORIGINAL MESSAGE ===');
+                      console.log('Original content:', msg.content);
+                      console.log('New corrected content:', transcription);
+                      return {
+                        ...msg,
+                        content: transcription,
+                        audioUrl: practiceAudioBlob ? URL.createObjectURL(practiceAudioBlob) : msg.audioUrl,
+                        isTranscribing: false
+                      };
+                    }
+                    return msg;
+                  });
+                  console.log('Updated chat messages count:', updated.length);
+                  console.log('Updated chat messages:', updated.map(msg => ({ id: msg.id, content: msg.content, role: msg.role })));
+                  return updated;
+                });
+                
+                // Clear practice audio blob
+                setPracticeAudioBlob(null);
+                
+                console.log('🔍 === CALLING SEND TRANSCRIPTION TO AI ===');
+                console.log('Transcription:', transcription);
+                console.log('Original message ID:', mismatchMessageId);
+                
+                // Send to AI with the original message ID (now corrected)
+                await sendTranscriptionToAI(transcription, mismatchMessageId);
+                
+                console.log('🔍 === AFTER SEND TRANSCRIPTION TO AI ===');
+                console.log('Chat messages after AI call:', chatMessages.length);
+                return;
+              } else {
+                // Language mismatch - replace the old English message
+                console.log('🌍 === LANGUAGE MISMATCH - REPLACING MESSAGE ===');
+                
+                // Debug: Log current state before replacement
+                console.log('=== MESSAGE REPLACEMENT DEBUG ===');
+                console.log('mismatchMessageId:', mismatchMessageId);
+                console.log('transcription:', transcription);
+                console.log('practiceAudioBlob:', practiceAudioBlob);
+                console.log('Current chat messages before replacement:', chatMessages);
+                
+                // Replace the old English message with the new German message
+                setChatMessages(prev => {
                 console.log('=== MESSAGE REPLACEMENT DETAILED DEBUG ===');
                 console.log('Previous messages count:', prev.length);
                 console.log('Previous messages:', JSON.stringify(prev, null, 2));
@@ -2545,6 +2713,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               setPracticeAudioBlob(null);
               
               // Continue with normal German processing but don't override the message content
+              console.log('🎤 === SENDING CORRECTED VOICE MESSAGE TO AI ===');
+              console.log('Transcription:', transcription);
+              console.log('Message ID:', messageId);
+              console.log('Mismatch message ID:', mismatchMessageId);
               await sendTranscriptionToAI(transcription, messageId);
               
               // Ensure the message content stays as the transcription
@@ -2556,6 +2728,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 ));
               }, 500);
               return;
+              }
             } else {
               // User still said it in English - keep modal open
               console.log('Practice failed - user still said it in English');
@@ -2652,6 +2825,18 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 console.log('✅ FOUND MESSAGE TO UPDATE:', msg.id);
                 console.log('Original content:', msg.content);
                 console.log('New content:', transcription);
+                
+                // Store transcribed text as original message for suggestion generation (voice input)
+                if (!isRetry) {
+                  console.log('📝 === STORING TRANSCRIBED TEXT AS ORIGINAL MESSAGE FOR VOICE INPUT ===');
+                  console.log('Message ID:', messageId);
+                  console.log('Transcribed text:', transcription);
+                  setOriginalMessages(prev => ({
+                    ...prev,
+                    [messageId]: transcription
+                  }));
+                }
+                
                 return { ...msg, content: transcription, isTranscribing: false };
               }
               return msg;
@@ -2837,7 +3022,15 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           timestamp: new Date().toISOString()
         };
         
-        setChatMessages(prev => [...prev, aiResponse]);
+        console.log('🔍 === ADDING AI RESPONSE TO CHAT ===');
+        console.log('AI response:', aiResponse);
+        console.log('Chat messages before adding AI response:', chatMessages.length);
+        setChatMessages(prev => {
+          const updated = [...prev, aiResponse];
+          console.log('Chat messages after adding AI response:', updated.length);
+          console.log('Updated chat messages:', updated.map(msg => ({ id: msg.id, content: msg.content, role: msg.role })));
+          return updated;
+        });
       } else {
         // Fallback: Use chat function for translation
         await sendTranscriptionToAI(`Translate this to German and provide suggestions: "${englishText}"`, messageId, true);
@@ -2908,6 +3101,9 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     console.log('Transcription:', transcription);
     console.log('Message ID:', messageId);
     console.log('Is English Translation:', isEnglishTranslation);
+    console.log('🔍 === CHAT MESSAGES BEFORE AI PROCESSING ===');
+    console.log('Current chat messages count:', chatMessages.length);
+    console.log('Current chat messages:', chatMessages.map(msg => ({ id: msg.id, content: msg.content, role: msg.role })));
     console.log('🔍 === CURRENT STATE VALUES ===');
     console.log('waitingForCorrection:', waitingForCorrection);
     console.log('errorMessages:', errorMessages);
@@ -2994,7 +3190,15 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           timestamp: new Date().toISOString()
         };
         
-        setChatMessages(prev => [...prev, assistantMessage]);
+        console.log('🔍 === ADDING MAIN AI RESPONSE TO CHAT ===');
+        console.log('Assistant message:', assistantMessage);
+        console.log('Chat messages before adding assistant message:', chatMessages.length);
+        setChatMessages(prev => {
+          const updated = [...prev, assistantMessage];
+          console.log('Chat messages after adding assistant message:', updated.length);
+          console.log('Updated chat messages:', updated.map(msg => ({ id: msg.id, content: msg.content, role: msg.role })));
+          return updated;
+        });
         setCurrentAIMessage(data.message);
       }
     } catch (error) {
