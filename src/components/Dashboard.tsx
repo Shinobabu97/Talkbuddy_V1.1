@@ -3965,14 +3965,6 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   </div>
                 )}
 
-                {message.role === 'user' && messageStatus[message.id] === 'mismatch' && (
-                  <div className="flex justify-end mt-2">
-                    <div className="bg-red-50 text-red-600 px-3 py-1 rounded-lg text-xs font-medium">
-                      English detected – check the practice prompt.
-                    </div>
-                  </div>
-                )}
-
                 {message.role === 'user' && messageStatus[message.id] === 'error' && (
                   <div className="flex justify-end mt-2">
                     <div className="bg-red-50 text-red-600 px-3 py-1 rounded-lg text-xs font-medium">
