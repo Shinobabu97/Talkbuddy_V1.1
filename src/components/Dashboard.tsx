@@ -50,6 +50,17 @@ const getRandomLastSeen = () => {
   return times[Math.floor(Math.random() * times.length)];
 };
 
+const MAX_RECORDING_DURATION = 30; // seconds
+const RECORDING_WARNING_THRESHOLD = 25; // seconds
+
+const formatDuration = (totalSeconds: number) => {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes.toString().padStart(2, '0')}:${seconds
+    .toString()
+    .padStart(2, '0')}`;
+};
+
 interface OnboardingData {
   profilePictureUrl?: string;
   motivations: string[];
@@ -234,6 +245,10 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('recordingLanguage:', recordingLanguage);
   }, [showLanguageMismatchModal, detectedLanguage, mismatchTranscription, germanSuggestion, recordingLanguage]);
   const [recordingDuration, setRecordingDuration] = useState(0);
+  const [recordingLimitReached, setRecordingLimitReached] = useState(false);
+  const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasReachedMaxDurationRef = useRef(false);
   const [showVocabSelector, setShowVocabSelector] = useState(false);
   const [extractedVocab, setExtractedVocab] = useState<Array<{word: string, meaning: string, context: string}>>([]);
   const [toolbarActiveTab, setToolbarActiveTab] = useState<'vocab' | 'explain' | 'pronunciation'>('explain');
@@ -243,7 +258,25 @@ export default function Dashboard({ user }: DashboardProps) {
   const [persistentVocab, setPersistentVocab] = useState<Array<{word: string, meaning: string, context: string}>>([]);
   const [wordMeanings, setWordMeanings] = useState<{[key: string]: string}>({});
   const [loadingMeanings, setLoadingMeanings] = useState<Set<string>>(new Set());
-  
+
+  useEffect(() => {
+    return () => {
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+      }
+      if (recordingTimeoutRef.current) {
+        clearTimeout(recordingTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!recordingLimitReached) return;
+
+    const timeoutId = window.setTimeout(() => setRecordingLimitReached(false), 4000);
+    return () => clearTimeout(timeoutId);
+  }, [recordingLimitReached]);
+
   // Comprehensive analysis state
   const [comprehensiveAnalysis, setComprehensiveAnalysis] = useState<{[key: string]: any}>({});
   
@@ -2376,23 +2409,53 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
   };
 
   // Recording functions
+  const clearRecordingTimers = () => {
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+    if (recordingTimeoutRef.current) {
+      clearTimeout(recordingTimeoutRef.current);
+      recordingTimeoutRef.current = null;
+    }
+  };
+
   const startRecording = async () => {
+    if (isRecording) return;
+
     try {
+      clearRecordingTimers();
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
       const chunks: Blob[] = [];
-      let recordingStartTime = Date.now();
 
-      // Start duration tracking
-      const durationInterval = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
-        setRecordingDuration(elapsed);
-        
-        // Warn at 25 seconds
-        if (elapsed >= 25) {
-          console.warn('Recording approaching 30s limit');
-        }
+      setRecordingDuration(0);
+      setRecordingLimitReached(false);
+      hasReachedMaxDurationRef.current = false;
+
+      recordingIntervalRef.current = window.setInterval(() => {
+        setRecordingDuration((prev) => {
+          const next = Math.min(prev + 1, MAX_RECORDING_DURATION);
+
+          if (next >= RECORDING_WARNING_THRESHOLD) {
+            console.warn('Recording approaching max duration limit');
+          }
+
+          return next;
+        });
       }, 1000);
+
+      recordingTimeoutRef.current = window.setTimeout(() => {
+        if (hasReachedMaxDurationRef.current) {
+          return;
+        }
+
+        console.warn('Maximum recording duration reached. Stopping recording.');
+        hasReachedMaxDurationRef.current = true;
+        setRecordingDuration(MAX_RECORDING_DURATION);
+        setRecordingLimitReached(true);
+        recorder.stop();
+      }, MAX_RECORDING_DURATION * 1000);
 
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -2401,10 +2464,11 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       };
 
       recorder.onstop = async () => {
-        clearInterval(durationInterval);
-        setRecordingDuration(0);
+        clearRecordingTimers();
+        setIsRecording(false);
         const audioBlob = new Blob(chunks, { type: 'audio/webm' });
         await processAudioMessage(audioBlob);
+        setRecordingDuration(0);
         stream.getTracks().forEach(track => track.stop());
       };
 
@@ -2419,6 +2483,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
   const stopRecording = () => {
     if (mediaRecorder && isRecording) {
+      clearRecordingTimers();
       mediaRecorder.stop();
       setIsRecording(false);
     }
@@ -4147,14 +4212,29 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   )}
                 </button>
                 <div className="flex items-center space-x-2">
-                  {isRecording && (
-                    <div className="text-sm text-gray-600">
-                      {recordingDuration}s
-                      {recordingDuration >= 25 && (
-                        <span className="text-orange-500 ml-1">⚠️</span>
-                      )}
-                    </div>
-                  )}
+                  <div className="flex flex-col items-end min-w-[96px]">
+                    {isRecording && (
+                      <div className="text-xs text-gray-600 text-right">
+                        <div className="font-semibold text-gray-700">
+                          {formatDuration(recordingDuration)} / {formatDuration(MAX_RECORDING_DURATION)}
+                        </div>
+                        <div
+                          className={`text-[11px] ${
+                            MAX_RECORDING_DURATION - recordingDuration <= 5
+                              ? 'text-orange-500'
+                              : 'text-gray-400'
+                          }`}
+                        >
+                          Max {MAX_RECORDING_DURATION}s
+                        </div>
+                      </div>
+                    )}
+                    {!isRecording && recordingLimitReached && (
+                      <div className="text-xs text-orange-500 text-right">
+                        Maximum recording time reached. Try a shorter clip.
+                      </div>
+                    )}
+                  </div>
                   {/* Record Button - German by default */}
                   <button 
                     onClick={isRecording ? stopRecording : startRecording}
