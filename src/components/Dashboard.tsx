@@ -2640,14 +2640,47 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 
                 // Clear practice audio blob
                 setPracticeAudioBlob(null);
-                
+
+                console.log('🧹 === CLEARING VOICE CORRECTION STATES ===');
+                console.log('Message ID:', mismatchMessageId);
+
+                const clearedUserAttempts = { ...userAttempts };
+                delete clearedUserAttempts[mismatchMessageId];
+
+                const clearedErrorMessages = { ...errorMessages };
+                delete clearedErrorMessages[mismatchMessageId];
+
+                const updatedAnalysisEntry = comprehensiveAnalysis[mismatchMessageId]
+                  ? { ...comprehensiveAnalysis[mismatchMessageId], hasErrors: false }
+                  : undefined;
+
+                console.log('Cleared user attempts state:', clearedUserAttempts);
+                console.log('Cleared error messages state:', clearedErrorMessages);
+                console.log('Updated analysis entry:', updatedAnalysisEntry);
+
+                setUserAttempts(clearedUserAttempts);
+                setErrorMessages(clearedErrorMessages);
+                setWaitingForCorrection(false);
+                setActiveMessageId(prev => (prev === mismatchMessageId ? null : prev));
+
+                if (updatedAnalysisEntry) {
+                  setComprehensiveAnalysis(prev => ({
+                    ...prev,
+                    [mismatchMessageId]: updatedAnalysisEntry
+                  }));
+                }
+
                 console.log('🔍 === CALLING SEND TRANSCRIPTION TO AI ===');
                 console.log('Transcription:', transcription);
                 console.log('Original message ID:', mismatchMessageId);
-                
+
                 // Send to AI with the original message ID (now corrected)
-                await sendTranscriptionToAI(transcription, mismatchMessageId);
-                
+                await sendTranscriptionToAI(transcription, mismatchMessageId, false, updatedAnalysisEntry, {
+                  waitingForCorrection: false,
+                  errorMessages: clearedErrorMessages,
+                  userAttempts: clearedUserAttempts
+                });
+
                 console.log('🔍 === AFTER SEND TRANSCRIPTION TO AI ===');
                 console.log('Chat messages after AI call:', chatMessages.length);
                 return;
