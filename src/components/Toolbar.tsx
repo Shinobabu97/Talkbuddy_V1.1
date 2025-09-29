@@ -3,7 +3,6 @@ import { BookOpen, Lightbulb, Volume2, Star, X, Play, Mic, MicOff, Loader2, Aler
 
 interface ToolbarProps {
   isVisible: boolean;
-  onClose: () => void;
   currentMessage?: string;
   onAddToVocab: (word: string, meaning: string) => void;
   autoLoadExplanations?: boolean;
@@ -61,7 +60,7 @@ interface ComprehensiveAnalysis {
   }>;
 }
 
-export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVocab, autoLoadExplanations = false, comprehensiveAnalysis, activeTab: externalActiveTab, onTabChange, newVocabItems, persistentVocab = [], onUpdatePersistentVocab }: ToolbarProps) {
+export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoLoadExplanations = false, comprehensiveAnalysis, activeTab: externalActiveTab, onTabChange, newVocabItems, persistentVocab = [], onUpdatePersistentVocab }: ToolbarProps) {
   const [internalActiveTab, setInternalActiveTab] = useState<'vocab' | 'explain' | 'pronunciation'>('explain');
   
   // Use external activeTab if provided, otherwise use internal state
@@ -159,27 +158,134 @@ export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVoc
 
   // Handle new vocabulary items from Dashboard - optimized
   useEffect(() => {
-    if (newVocabItems && newVocabItems.length > 0 && onUpdatePersistentVocab) {
-      // Create a unique key for this batch of items
-      const itemsKey = newVocabItems.map(item => `${item.word}-${item.meaning}`).join('|');
-      
-      // Check if we've already processed this batch
-      if (!processedVocabRef.current.has(itemsKey)) {
-        // Mark this batch as processed
-        processedVocabRef.current.add(itemsKey);
+    const processVocabItems = async () => {
+      if (newVocabItems && newVocabItems.length > 0 && onUpdatePersistentVocab) {
+        console.log('📚 === TOOLBAR PROCESSING VOCAB ITEMS ===');
+        console.log('New vocab items:', newVocabItems);
         
-        // Filter out duplicates from new items before adding
-        const uniqueNewItems = newVocabItems.filter(newItem => 
-          !persistentVocab.some(existing => existing.word === newItem.word)
-        );
+        // Create a unique key for this batch of items
+        const itemsKey = newVocabItems.map(item => `${item.word}-${item.meaning}`).join('|');
         
-        if (uniqueNewItems.length > 0) {
-          // Add new items to the top of the persistent vocabulary
-          const updatedVocab = [...uniqueNewItems, ...persistentVocab];
-          onUpdatePersistentVocab(updatedVocab);
+        // Check if we've already processed this batch
+        if (!processedVocabRef.current.has(itemsKey)) {
+          console.log('📚 === PROCESSING NEW VOCAB BATCH ===');
+          // Mark this batch as processed
+          processedVocabRef.current.add(itemsKey);
+          
+          // Don't filter out items - process all new items to generate meanings
+          const uniqueNewItems = newVocabItems;
+          
+          console.log('📚 === PROCESSING ALL NEW ITEMS ===');
+          console.log('Items to process:', uniqueNewItems);
+          
+          if (uniqueNewItems.length > 0) {
+            // Generate meanings for items that don't have them
+            const itemsWithMeanings = await Promise.all(uniqueNewItems.map(async (item) => {
+              console.log(`📚 === PROCESSING ITEM: ${item.word} ===`);
+              console.log('Current meaning:', item.meaning);
+              
+              if (!item.meaning || item.meaning.trim() === '') {
+                console.log(`📚 === GENERATING MEANING FOR: ${item.word} ===`);
+                try {
+                  console.log(`📚 === MAKING API CALL FOR ${item.word} ===`);
+                  console.log('API URL:', `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`);
+                  console.log('Request body:', {
+                    messages: [{
+                      role: 'user',
+                      content: `Provide the English translation for this German word: "${item.word}". Just return the English meaning, nothing else.`
+                    }],
+                    conversationId: 'word_meaning',
+                    systemInstruction: "Provide only the English translation of the German word. Be concise and accurate."
+                  });
+                  
+                  const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                      messages: [{
+                        role: 'user',
+                        content: `Provide the English translation for this German word: "${item.word}". Just return the English meaning, nothing else.`
+                      }],
+                      conversationId: 'word_meaning',
+                      systemInstruction: "Provide only the English translation of the German word. Be concise and accurate."
+                    })
+                  });
+
+                  console.log(`📚 === API RESPONSE FOR ${item.word} ===`);
+                  console.log('Response status:', response.status);
+                  console.log('Response ok:', response.ok);
+                  console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
+                  if (response.ok) {
+                    const data = await response.json();
+                    console.log(`📚 === API DATA FOR ${item.word} ===`);
+                    console.log('Response data:', data);
+                    const meaning = data.message.trim();
+                    console.log(`📚 === GENERATED MEANING FOR ${item.word}: ${meaning} ===`);
+                    return { ...item, meaning };
+                  } else {
+                    const errorText = await response.text();
+                    console.error(`📚 === FAILED TO GET MEANING FOR ${item.word} ===`);
+                    console.error('Error response:', errorText);
+                    return { ...item, meaning: 'Meaning not found' };
+                  }
+                } catch (error) {
+                  console.error(`📚 === ERROR GENERATING MEANING FOR ${item.word} ===`);
+                  console.error('Error details:', error);
+                  return { ...item, meaning: 'Meaning not found' };
+                }
+              }
+              console.log(`📚 === ITEM ALREADY HAS MEANING: ${item.word} = ${item.meaning} ===`);
+              return item;
+            }));
+            
+            console.log('📚 === PROCESSED ITEMS WITH MEANINGS ===');
+            console.log('Final items:', itemsWithMeanings);
+            console.log('Items with meanings details:');
+            itemsWithMeanings.forEach((item, index) => {
+              console.log(`Item ${index}:`, {
+                word: item.word,
+                meaning: item.meaning,
+                context: item.context
+              });
+            });
+            
+            // Update only the items that need meanings in the persistent vocabulary
+            const updatedVocab = persistentVocab.map(existingItem => {
+              const updatedItem = itemsWithMeanings.find(newItem => newItem.word === existingItem.word);
+              if (updatedItem && updatedItem.meaning && updatedItem.meaning.trim() !== '') {
+                console.log(`📚 === UPDATING MEANING FOR ${existingItem.word} ===`);
+                console.log(`Old meaning: "${existingItem.meaning}"`);
+                console.log(`New meaning: "${updatedItem.meaning}"`);
+                return updatedItem;
+              }
+              return existingItem;
+            });
+            
+            console.log('📚 === UPDATING PERSISTENT VOCAB ===');
+            console.log('Updated vocab count:', updatedVocab.length);
+            console.log('Updated vocab items:');
+            updatedVocab.forEach((item, index) => {
+              console.log(`Updated item ${index}:`, {
+                word: item.word,
+                meaning: item.meaning,
+                context: item.context
+              });
+            });
+            console.log('Calling onUpdatePersistentVocab with:', updatedVocab);
+            onUpdatePersistentVocab(updatedVocab);
+            console.log('📚 === ONUPDATE PERSISTENT VOCAB CALLED ===');
+          }
+        } else {
+          console.log('📚 === SKIPPING ALREADY PROCESSED BATCH ===');
         }
       }
-    }
+    };
+
+    processVocabItems();
   }, [newVocabItems, onUpdatePersistentVocab, persistentVocab]);
 
   // Reset newVocabItems after processing to prevent re-processing

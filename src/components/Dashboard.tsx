@@ -504,9 +504,6 @@ export default function Dashboard({ user }: DashboardProps) {
       
       // Update current message but don't show toolbar automatically
       setCurrentAIMessage(data.message);
-      
-      // Generate translation and suggestions for the AI message
-      generateTranslationAndSuggestions(assistantMessage.id, data.message);
 
     } catch (error) {
       console.error('Error sending initial message:', error);
@@ -673,7 +670,7 @@ export default function Dashboard({ user }: DashboardProps) {
     }
   };
 
-  const toggleSuggestions = (messageId: string) => {
+  const toggleSuggestions = async (messageId: string) => {
     const isCurrentlyShowing = showSuggestions[messageId];
     
     if (isCurrentlyShowing) {
@@ -683,16 +680,22 @@ export default function Dashboard({ user }: DashboardProps) {
         [messageId]: false
       }));
     } else {
-      // Show suggestions - translate if needed
+      // Show suggestions
       setShowSuggestions(prev => ({
         ...prev,
         [messageId]: true
       }));
       
-      // If we have suggestions but they're not translated yet, translate them
+      // Check if we already have suggestions for this message
       const currentSuggestions = suggestedResponses[messageId];
-      if (currentSuggestions && Array.isArray(currentSuggestions) && currentSuggestions.length > 0) {
-        // Check if suggestions are already translated (objects with german/english)
+      if (!currentSuggestions || currentSuggestions.length === 0) {
+        // Generate suggestions on demand
+        const message = chatMessages.find(msg => msg.id === messageId);
+        if (message) {
+          await generateSuggestionsOnDemand(messageId, message.content);
+        }
+      } else {
+        // If we have suggestions but they're not translated yet, translate them
         const firstSuggestion = currentSuggestions[0];
         if (typeof firstSuggestion === 'string') {
           // They're still strings, need translation
@@ -704,6 +707,73 @@ export default function Dashboard({ user }: DashboardProps) {
 
   const useSuggestedResponse = (suggestion: string) => {
     setMessageInput(suggestion);
+  };
+
+  // Generate suggestions on demand when user clicks on suggested responses
+  const generateSuggestionsOnDemand = async (messageId: string, germanText: string) => {
+    if (suggestedResponses[messageId]) {
+      return; // Already generated
+    }
+    
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [{
+            role: 'user',
+            content: `Please provide: 1) English translation of: "${germanText}" 2) Three suggested German responses that a language learner could use to reply. IMPORTANT: The suggestions must be ONLY in German - no English translations in parentheses or brackets. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [suggestion1] | [suggestion2] | [suggestion3]`
+          }],
+          conversationId: 'helper',
+          contextLevel,
+          difficultyLevel,
+          systemInstruction: "When providing German suggestions, respond ONLY in German. Do not include any English translations in parentheses or brackets in the suggestions."
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const content = data.message;
+        
+        // Parse translation and suggestions
+        const translationMatch = content.match(/TRANSLATION:\s*(.+?)(?=SUGGESTIONS:|$)/);
+        const suggestionsMatch = content.match(/SUGGESTIONS:\s*(.+)/);
+        
+        if (translationMatch) {
+          setTranslatedMessages(prev => ({
+            ...prev,
+            [messageId]: translationMatch[1].trim()
+          }));
+        }
+        
+        if (suggestionsMatch) {
+          const suggestions = suggestionsMatch[1].split('|').map(s => s.trim()).filter(s => s.length > 0);
+          
+          // Clean up any English translations that might be in parentheses or brackets
+          const cleanedSuggestions = suggestions.map(suggestion => {
+            // Remove English text in parentheses like (English translation)
+            let cleaned = suggestion.replace(/\([^)]*[A-Za-z][^)]*\)/g, '');
+            // Remove English text in brackets like [English translation]
+            cleaned = cleaned.replace(/\[[^\]]*[A-Za-z][^\]]*\]/g, '');
+            // Remove any remaining English text patterns
+            cleaned = cleaned.replace(/\([^)]*\)/g, '');
+            cleaned = cleaned.replace(/\[[^\]]*\]/g, '');
+            // Trim whitespace
+            return cleaned.trim();
+          }).filter(s => s.length > 0);
+          
+          setSuggestedResponses(prev => ({
+            ...prev,
+            [messageId]: cleanedSuggestions
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('Error generating suggestions on demand:', error);
+    }
   };
 
   const handleHelpClick = async (messageContent: string, messageId: string) => {
@@ -845,8 +915,6 @@ export default function Dashboard({ user }: DashboardProps) {
         });
         
         setCurrentAIMessage(data.message);
-        console.log('🔄 === GENERATING TRANSLATION AND SUGGESTIONS ===');
-        generateTranslationAndSuggestions(assistantMessage.id, data.message);
         console.log('✅ === AI RESPONSE COMPLETED SUCCESSFULLY ===');
       } else {
         console.error('❌ === AI API ERROR ===');
@@ -1446,30 +1514,69 @@ export default function Dashboard({ user }: DashboardProps) {
   const [pendingVocabItems, setPendingVocabItems] = useState<Set<string>>(new Set());
 
   const handleAddToVocab = (word: string, meaning: string) => {
+    console.log('📚 === DASHBOARD HANDLE ADD TO VOCAB ===');
+    console.log('Word:', word);
+    console.log('Meaning:', meaning);
+    console.log('Selected conversation:', selectedConversation);
+    
     const wordKey = `${word}-${selectedConversation}`;
     const itemKey = `${word}-${meaning}`;
+    
+    console.log('Word key:', wordKey);
+    console.log('Item key:', itemKey);
+    console.log('Current vocabAdditionTracker:', Array.from(vocabAdditionTracker));
+    console.log('Current pendingVocabItems:', Array.from(pendingVocabItems));
+    console.log('Current persistentVocab:', persistentVocab.map(item => item.word));
     
     // Quick duplicate check - if already processed or pending, skip immediately
     if (vocabAdditionTracker.has(wordKey) || 
         persistentVocab.some(item => item.word === word) ||
         pendingVocabItems.has(itemKey)) {
+      console.log('📚 === SKIPPING DUPLICATE VOCAB ADDITION ===');
+      console.log('Reasons:', {
+        inTracker: vocabAdditionTracker.has(wordKey),
+        inPersistent: persistentVocab.some(item => item.word === word),
+        inPending: pendingVocabItems.has(itemKey)
+      });
       return;
     }
     
+    console.log('📚 === PROCESSING NEW VOCAB ADDITION ===');
+    
     // Mark as pending to prevent duplicate calls
-    setPendingVocabItems(prev => new Set([...prev, itemKey]));
+    setPendingVocabItems(prev => {
+      const newSet = new Set([...prev, itemKey]);
+      console.log('📚 === UPDATED PENDING VOCAB ITEMS ===');
+      console.log('New pending items:', Array.from(newSet));
+      return newSet;
+    });
     
     // Mark this word as processed
-    setVocabAdditionTracker(prev => new Set([...prev, wordKey]));
+    setVocabAdditionTracker(prev => {
+      const newSet = new Set([...prev, wordKey]);
+      console.log('📚 === UPDATED VOCAB ADDITION TRACKER ===');
+      console.log('New tracker:', Array.from(newSet));
+      return newSet;
+    });
     
     // Add to new vocab items for Toolbar processing
     const newVocabItem = { word, meaning, context: '' };
-    setNewVocabItems(prev => [...prev, newVocabItem]);
+    console.log('📚 === ADDING TO NEW VOCAB ITEMS ===');
+    console.log('New vocab item:', newVocabItem);
+    setNewVocabItems(prev => {
+      const updated = [...prev, newVocabItem];
+      console.log('📚 === UPDATED NEW VOCAB ITEMS ===');
+      console.log('New vocab items count:', updated.length);
+      console.log('New vocab items:', updated);
+      return updated;
+    });
+    
+    console.log('📚 === DASHBOARD HANDLE ADD TO VOCAB COMPLETED ===');
   };
 
 
-  // Handle word selection in sentence
-  const toggleWordSelection = async (word: string) => {
+  // Handle word selection in sentence - no API calls in modal
+  const toggleWordSelection = (word: string) => {
     const newSelectedWords = new Set(selectedWords);
     if (newSelectedWords.has(word)) {
       newSelectedWords.delete(word);
@@ -1477,11 +1584,6 @@ export default function Dashboard({ user }: DashboardProps) {
     } else {
       newSelectedWords.add(word);
       setSelectedWords(newSelectedWords);
-      
-      // Fetch meaning for the word if not already loaded
-      if (!wordMeanings[word]) {
-        await fetchWordMeaning(word);
-      }
     }
   };
 
@@ -1532,14 +1634,28 @@ export default function Dashboard({ user }: DashboardProps) {
   const addSelectedVocab = () => {
     const selectedWordsList = Array.from(selectedWords).map(word => ({
       word: word,
-      meaning: wordMeanings[word] || 'Meaning not found',
+      meaning: '', // Will be generated in vocab tab
       context: extractedVocab[0]?.word || ''
     }));
     
+    console.log('📚 === DASHBOARD ADDING SELECTED VOCAB ===');
+    console.log('Selected words:', Array.from(selectedWords));
+    console.log('Selected words list:', selectedWordsList);
+    console.log('Current persistent vocab before:', persistentVocab.length);
+    console.log('Current newVocabItems before:', newVocabItems.length);
+    
     // Add to persistent vocabulary
-    setPersistentVocab(prev => [...selectedWordsList, ...prev]);
+    setPersistentVocab(prev => {
+      const updated = [...selectedWordsList, ...prev];
+      console.log('📚 === UPDATED PERSISTENT VOCAB ===');
+      console.log('New persistent vocab count:', updated.length);
+      console.log('New persistent vocab items:', updated);
+      return updated;
+    });
     
     // Set new vocabulary items for the Toolbar
+    console.log('📚 === SETTING NEW VOCAB ITEMS FOR TOOLBAR ===');
+    console.log('Items being sent to Toolbar:', selectedWordsList);
     setNewVocabItems(selectedWordsList);
     
     // Open toolbox with vocab tab active
@@ -1552,6 +1668,8 @@ export default function Dashboard({ user }: DashboardProps) {
     setSelectedWords(new Set());
     setWordMeanings({});
     setLoadingMeanings(new Set());
+    
+    console.log('📚 === DASHBOARD VOCAB ADDITION COMPLETED ===');
   };
 
   // Cancel vocabulary selection
@@ -1566,8 +1684,14 @@ export default function Dashboard({ user }: DashboardProps) {
   // Clear new vocabulary items after they've been processed
   useEffect(() => {
     if (newVocabItems.length > 0) {
+      console.log('📚 === DASHBOARD CLEARING NEW VOCAB ITEMS ===');
+      console.log('Current newVocabItems:', newVocabItems);
+      console.log('Setting timer to clear in 1000ms');
+      
       // Clear the items after they've been processed by the Toolbar
       const timer = setTimeout(() => {
+        console.log('📚 === CLEARING NEW VOCAB ITEMS AFTER TIMEOUT ===');
+        console.log('Clearing newVocabItems and pendingVocabItems');
         setNewVocabItems([]);
         setPendingVocabItems(new Set());
       }, 1000);
@@ -3583,26 +3707,30 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   )}
                   
                   {/* Suggested Responses */}
-                  {message.role === 'assistant' && showSuggestions[message.id] && suggestedResponses[message.id] && (
+                  {message.role === 'assistant' && showSuggestions[message.id] && (
                     <div className="ml-4 mt-2 max-w-sm lg:max-w-lg space-y-1">
                       <div className="text-xs font-medium text-gray-600 mb-1">Suggested responses:</div>
-                      {suggestedResponses[message.id].map((suggestion, index) => {
-                        const suggestionText = typeof suggestion === 'string' ? suggestion : suggestion.german;
-                        const suggestionTranslation = typeof suggestion === 'object' ? suggestion.english : null;
-                        
-                        return (
-                          <button
-                            key={index}
-                            onClick={() => useSuggestedResponse(suggestionText)}
-                            className="block w-full text-left bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors"
-                          >
-                            <div className="font-medium">{suggestionText}</div>
-                            {showTranslation[message.id] && suggestionTranslation && (
-                              <div className="text-gray-500 text-xs mt-1">{suggestionTranslation}</div>
-                            )}
-                          </button>
-                        );
-                      })}
+                      {suggestedResponses[message.id] ? (
+                        suggestedResponses[message.id].map((suggestion, index) => {
+                          const suggestionText = typeof suggestion === 'string' ? suggestion : suggestion.german;
+                          const suggestionTranslation = typeof suggestion === 'object' ? suggestion.english : null;
+                          
+                          return (
+                            <button
+                              key={index}
+                              onClick={() => useSuggestedResponse(suggestionText)}
+                              className="block w-full text-left bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors"
+                            >
+                              <div className="font-medium">{suggestionText}</div>
+                              {showTranslation[message.id] && suggestionTranslation && (
+                                <div className="text-gray-500 text-xs mt-1">{suggestionTranslation}</div>
+                              )}
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <div className="text-xs text-gray-500 italic">Loading suggestions...</div>
+                      )}
                     </div>
                   )}
                   
@@ -3738,15 +3866,6 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     >
                       <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${toolbarCollapsed ? 'rotate-90' : '-rotate-90'}`} />
                     </button>
-                    {!toolbarCollapsed && (
-                      <button
-                        onClick={() => setShowToolbar(false)}
-                        className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-                        title="Close toolbar"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    )}
                   </div>
                 </div>
               </div>
@@ -3756,7 +3875,6 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 <div className="flex-1 overflow-y-auto">
                   <Toolbar
                     isVisible={true}
-                    onClose={() => setShowToolbar(false)}
                     currentMessage={currentAIMessage}
                     onAddToVocab={handleAddToVocab}
                     autoLoadExplanations={toolbarOpenedViaHelp}
@@ -3765,7 +3883,22 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     onTabChange={setToolbarActiveTab}
                     newVocabItems={newVocabItems}
                     persistentVocab={persistentVocab}
-                    onUpdatePersistentVocab={setPersistentVocab}
+                    onUpdatePersistentVocab={(newVocab) => {
+                      console.log('📚 === DASHBOARD ONUPDATE PERSISTENT VOCAB CALLED ===');
+                      console.log('New vocab received:', newVocab);
+                      console.log('New vocab count:', newVocab.length);
+                      console.log('New vocab items:');
+                      newVocab.forEach((item, index) => {
+                        console.log(`New item ${index}:`, {
+                          word: item.word,
+                          meaning: item.meaning,
+                          context: item.context
+                        });
+                      });
+                      console.log('Current persistent vocab before update:', persistentVocab.length);
+                      setPersistentVocab(newVocab);
+                      console.log('📚 === PERSISTENT VOCAB UPDATED ===');
+                    }}
                   />
                 </div>
               ) : (
@@ -4066,7 +4199,6 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   {extractedVocab[0]?.word && extractedVocab[0].word.split(' ').map((word, index) => {
                     const cleanWord = word.replace(/[.,!?;:]/g, '');
                     const isSelected = selectedWords.has(cleanWord);
-                    const isLoading = loadingMeanings.has(cleanWord);
                     
                     return (
                       <span key={index}>
@@ -4077,16 +4209,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                               ? 'bg-blue-500 text-white shadow-md' 
                               : 'bg-white text-gray-700 hover:bg-blue-100 border border-gray-200'
                           }`}
-                          disabled={isLoading}
                         >
-                          {isLoading ? (
-                            <span className="flex items-center">
-                              <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                              {cleanWord}
-                            </span>
-                          ) : (
-                            cleanWord
-                          )}
+                          {cleanWord}
                         </button>
                         {word.match(/[.,!?;:]/) && <span className="text-gray-700">{word.match(/[.,!?;:]/)?.[0]}</span>}
                         {index < extractedVocab[0].word.split(' ').length - 1 && ' '}
@@ -4096,7 +4220,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 </div>
               </div>
               
-              {/* Selected words with meanings */}
+              {/* Selected words */}
               {selectedWords.size > 0 && (
                 <div className="space-y-2">
                   <h4 className="font-semibold text-gray-900 text-sm">Selected words:</h4>
@@ -4104,15 +4228,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     <div key={index} className="flex items-center justify-between bg-blue-50 rounded-lg p-3">
                       <div className="flex-1">
                         <span className="font-semibold text-blue-900">{word}</span>
-                        {wordMeanings[word] && (
-                          <span className="text-blue-700 ml-2">- {wordMeanings[word]}</span>
-                        )}
-                        {loadingMeanings.has(word) && (
-                          <span className="text-blue-600 ml-2 flex items-center">
-                            <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                            Loading meaning...
-                          </span>
-                        )}
+                        <span className="text-blue-600 ml-2 text-sm">Meanings will be generated in vocab tab</span>
                       </div>
                       <button
                         onClick={() => toggleWordSelection(word)}
