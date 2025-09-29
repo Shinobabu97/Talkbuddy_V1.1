@@ -88,7 +88,7 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
   const [pronunciationWords, setPronunciationWords] = useState<PronunciationWord[]>([]);
   const [practicingWord, setPracticingWord] = useState<string | null>(null);
   const [currentAttempt, setCurrentAttempt] = useState(0);
-  const [maxAttempts] = useState(3);
+  const [maxAttempts] = useState(2);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [audioStorage, setAudioStorage] = useState<{[key: string]: string}>({});
   const [practiceHistory, setPracticeHistory] = useState<Array<{
@@ -1417,7 +1417,7 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
                             <div className="flex space-x-2">
                               {practiceHistory
                                 .filter(h => h.word === wordData.word)
-                                .slice(-3) // Show last 3 attempts
+                                .slice(-2) // Show last 2 attempts
                                 .map((history, idx) => (
                                   <div key={idx} className="flex items-center space-x-1">
                                     <span className={`text-xs px-2 py-1 rounded ${
