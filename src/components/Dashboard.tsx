@@ -142,6 +142,16 @@ export default function Dashboard({ user }: DashboardProps) {
   const [germanSuggestion, setGermanSuggestion] = useState<string>('');
   const [practiceAudioBlob, setPracticeAudioBlob] = useState<Blob | null>(null);
   const [recordingLanguage, setRecordingLanguage] = useState<'german' | 'english'>('german');
+
+  // Debug modal state changes
+  useEffect(() => {
+    console.log('🔔 === MODAL STATE CHANGED ===');
+    console.log('showLanguageMismatchModal:', showLanguageMismatchModal);
+    console.log('detectedLanguage:', detectedLanguage);
+    console.log('mismatchTranscription:', mismatchTranscription);
+    console.log('germanSuggestion:', germanSuggestion);
+    console.log('recordingLanguage:', recordingLanguage);
+  }, [showLanguageMismatchModal, detectedLanguage, mismatchTranscription, germanSuggestion, recordingLanguage]);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [showVocabSelector, setShowVocabSelector] = useState(false);
   const [extractedVocab, setExtractedVocab] = useState<Array<{word: string, meaning: string, context: string}>>([]);
@@ -998,6 +1008,11 @@ export default function Dashboard({ user }: DashboardProps) {
         // Don't send to AI for pronunciation errors - focus on practice
         return;
       }
+      
+      // Trigger AI response for new messages
+      setIsSending(true);
+      setIsTyping(true);
+      await triggerAIResponse(userMessage.content, userMessage.id);
     }
 
     setMessageInput('');
@@ -1595,6 +1610,12 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
   };
 
   const transcribeAudio = async (audioBlob: Blob, messageId: string) => {
+    console.log('🎤 === TRANSCRIBE AUDIO START ===');
+    console.log('Message ID:', messageId);
+    console.log('Recording language:', recordingLanguage);
+    console.log('Current chat messages count:', chatMessages.length);
+    console.log('Show language mismatch modal state:', showLanguageMismatchModal);
+    
     setIsTranscribing(true);
     try {
       // Log audio info for debugging
@@ -1701,7 +1722,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             // In practice modal - check if user said it correctly in German
             if (detectedLanguage === 'german') {
               // User said it in German - close modal and continue with conversation
-              console.log('Practice successful - user said it in German');
+              console.log('✅ === PRACTICE SUCCESSFUL - CLOSING MODAL ===');
+              console.log('User said it in German, closing practice modal');
               setShowLanguageMismatchModal(false);
               setDetectedLanguage(null);
               setMismatchTranscription('');
@@ -1796,13 +1818,24 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           
           // Only show mismatch modal if there's a clear difference and confidence is high
           if (detectedLanguage !== recordingLanguage) {
+            console.log('🔍 === LANGUAGE MISMATCH DETECTED ===');
+            console.log('Detected language:', detectedLanguage);
+            console.log('Recording language:', recordingLanguage);
+            console.log('Transcription:', transcription);
+            
             // Additional checks for reliability
             const wordCount = transcription.trim().split(/\s+/).length;
             const hasSubstantialContent = wordCount > 2;
             const hasClearLanguageIndicators = transcription.length > 10; // At least 10 characters
             
+            console.log('Content checks:');
+            console.log('- Word count:', wordCount, '(needs > 2)');
+            console.log('- Has substantial content:', hasSubstantialContent);
+            console.log('- Length:', transcription.length, '(needs > 10)');
+            console.log('- Has clear language indicators:', hasClearLanguageIndicators);
+            
             if (hasSubstantialContent && hasClearLanguageIndicators) {
-              console.log('Language mismatch detected - showing modal');
+              console.log('✅ === SHOWING LANGUAGE MISMATCH MODAL ===');
               console.log('Transcription:', transcription);
               console.log('Word count:', wordCount, 'Length:', transcription.length);
               
@@ -1832,21 +1865,26 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 (window as any).germanSuggestionTimeout = timeoutId;
               }
               
+              console.log('🚀 Setting showLanguageMismatchModal to TRUE');
               setShowLanguageMismatchModal(true);
               
+              console.log('🗑️ Removing audio message from chat (ID:', messageId, ')');
               // Don't add English transcription to chat - just show practice modal
               // Remove the audio message from chat since we're going to practice
               setChatMessages(prev => prev.filter(msg => msg.id !== messageId));
               
               // Clear any loading states
               setIsTranscribing(false);
+              console.log('🏁 === TRANSCRIBE AUDIO END (MODAL SHOWN) ===');
               return; // Don't proceed with AI processing
             } else {
-              console.log('Language mismatch but content too short or unclear - ignoring');
+              console.log('❌ === LANGUAGE MISMATCH BUT CONTENT TOO SHORT ===');
               console.log('Word count:', wordCount, 'Length:', transcription.length);
+              console.log('Not showing modal - content insufficient');
             }
           } else {
-            console.log('Languages match - proceeding with normal processing');
+            console.log('✅ === LANGUAGES MATCH - PROCEEDING WITH NORMAL PROCESSING ===');
+            console.log('Detected language:', detectedLanguage, 'Recording language:', recordingLanguage);
           }
           
           // Update the audio message with transcription
@@ -1928,6 +1966,9 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         ));
       }
     } finally {
+      console.log('🏁 === TRANSCRIBE AUDIO END (NORMAL PROCESSING) ===');
+      console.log('Final showLanguageMismatchModal state:', showLanguageMismatchModal);
+      console.log('Final chat messages count:', chatMessages.length);
       setIsTranscribing(false);
     }
   };
@@ -3419,7 +3460,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             
             <button
               onClick={() => {
-                console.log('Skip button clicked');
+                console.log('⏭️ === SKIP BUTTON CLICKED - CLOSING MODAL ===');
                 setShowLanguageMismatchModal(false);
                 setDetectedLanguage(null);
                 setMismatchTranscription('');
