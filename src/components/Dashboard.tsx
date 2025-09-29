@@ -347,7 +347,7 @@ export default function Dashboard({ user }: DashboardProps) {
       const hasErrors = errorMessages[messageId] || (comprehensiveAnalysis[messageId] && comprehensiveAnalysis[messageId].hasErrors);
       console.log('Has errors (combined check):', hasErrors);
 
-      if (userAttempts[messageId] >= 3 && hasErrors) {
+      if (userAttempts[messageId] >= 2 && hasErrors) {
         console.log('✅ === MAX ATTEMPTS REACHED WITH ERRORS ===');
         // Find the original message content
         const originalMessage = originalMessages[messageId];
@@ -407,7 +407,7 @@ export default function Dashboard({ user }: DashboardProps) {
         }
       } else {
         console.log('❌ === CONDITIONS NOT MET ===');
-        console.log('User attempts >= 3:', userAttempts[messageId] >= 3);
+        console.log('User attempts >= 2:', userAttempts[messageId] >= 2);
         console.log('Has error messages:', !!errorMessages[messageId]);
         console.log('Has comprehensive analysis errors:', !!(comprehensiveAnalysis[messageId] && comprehensiveAnalysis[messageId].hasErrors));
         console.log('Has any errors:', hasErrors);
@@ -1310,7 +1310,7 @@ export default function Dashboard({ user }: DashboardProps) {
 
   // Add logic to generate suggested answer when max attempts are reached
   const checkAndGenerateSuggestedAnswer = (messageId: string, userMessage: string) => {
-    if (userAttempts[messageId] >= 3) {
+    if (userAttempts[messageId] >= 2) {
       generateSuggestedAnswer(messageId, userMessage);
     }
   };
@@ -3982,13 +3982,13 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   {message.role === 'user' && comprehensiveAnalysis[message.id] && comprehensiveAnalysis[message.id].hasErrors && (
                     <div className="flex justify-end mt-2">
                       <div className="flex items-center space-x-2">
-                        {userAttempts[message.id] < 3 && (
+                        {userAttempts[message.id] < 2 && (
                           <div className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-lg text-xs font-medium">
-                            Attempts: {userAttempts[message.id]}/3
+                            Attempts: {userAttempts[message.id]}/2
                           </div>
                         )}
-                        
-                        {userAttempts[message.id] >= 3 && comprehensiveAnalysis[message.id]?.hasErrors && (
+
+                        {userAttempts[message.id] >= 2 && comprehensiveAnalysis[message.id]?.hasErrors && (
                           <div className="text-xs text-red-500 font-medium">
                             Max attempts reached
                           </div>
@@ -3999,7 +3999,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   )}
                   
                   {/* Suggested Answer - Match bot suggestions style */}
-                  {message.role === 'user' && userAttempts[message.id] >= 3 && suggestedAnswers[message.id] && (
+                  {message.role === 'user' && userAttempts[message.id] >= 2 && suggestedAnswers[message.id] && (
                     <div className="flex justify-end mt-2">
                       <div className="max-w-sm lg:max-w-lg space-y-1">
                         <div className="text-xs font-medium text-gray-600 mb-1">Suggested answer:</div>
@@ -4014,7 +4014,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   )}
 
                   {/* Motivation animation for wrong answers - Hide when max attempts reached */}
-                  {message.role === 'user' && comprehensiveAnalysis[message.id] && comprehensiveAnalysis[message.id].hasErrors && userAttempts[message.id] < 3 && (
+                  {message.role === 'user' && comprehensiveAnalysis[message.id] && comprehensiveAnalysis[message.id].hasErrors && userAttempts[message.id] < 2 && (
                     <div className="flex justify-end mt-2">
                       <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-lg p-3 max-w-sm">
                         <div className="flex items-center space-x-2">
