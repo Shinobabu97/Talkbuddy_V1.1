@@ -108,6 +108,49 @@ export default function Dashboard({ user }: DashboardProps) {
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [messageInput, setMessageInput] = useState('');
+  
+  // Debug component mount/unmount
+  React.useEffect(() => {
+    console.log('🚀 === DASHBOARD COMPONENT MOUNTED ===');
+    console.log('Initial messageInput:', messageInput);
+    console.log('Initial waitingForCorrection:', waitingForCorrection);
+    console.log('Initial userAttempts:', userAttempts);
+    console.log('Initial errorMessages:', errorMessages);
+    
+    return () => {
+      console.log('🛑 === DASHBOARD COMPONENT UNMOUNTING ===');
+      console.log('Final messageInput:', messageInput);
+      console.log('Final waitingForCorrection:', waitingForCorrection);
+      console.log('Final userAttempts:', userAttempts);
+      console.log('Final errorMessages:', errorMessages);
+    };
+  }, []);
+  
+  // Debug selectedConversation changes
+  React.useEffect(() => {
+    console.log('💬 === SELECTED CONVERSATION CHANGED ===');
+    console.log('New conversation ID:', selectedConversation);
+    console.log('Previous conversation state:');
+    console.log('- messageInput:', messageInput);
+    console.log('- waitingForCorrection:', waitingForCorrection);
+    console.log('- userAttempts:', userAttempts);
+    console.log('- errorMessages:', errorMessages);
+    console.log('- chatMessages count:', chatMessages.length);
+    
+    // Clear all retry states when switching conversations
+    if (selectedConversation) {
+      console.log('🧹 === CLEARING STATES FOR NEW CONVERSATION ===');
+      console.log('Clearing all retry states for new conversation');
+      setWaitingForCorrection(false);
+      setUserAttempts({});
+      setErrorMessages({});
+      setComprehensiveAnalysis({});
+      setMessageAttempts({});
+      setShowOriginalMessage({});
+      setOriginalMessages({});
+      console.log('✅ === STATES CLEARED FOR NEW CONVERSATION ===');
+    }
+  }, [selectedConversation]);
   const [isSending, setIsSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [translatedMessages, setTranslatedMessages] = useState<{[key: string]: string}>({});
@@ -165,6 +208,54 @@ export default function Dashboard({ user }: DashboardProps) {
   
   // Comprehensive analysis state
   const [comprehensiveAnalysis, setComprehensiveAnalysis] = useState<{[key: string]: any}>({});
+  
+  // Debug messageInput state changes
+  React.useEffect(() => {
+    console.log('📝 === MESSAGE INPUT STATE CHANGED ===');
+    console.log('New value:', messageInput);
+    console.log('Length:', messageInput.length);
+    console.log('Trimmed:', messageInput.trim());
+  }, [messageInput]);
+  
+  // Debug errorMessages state changes
+  React.useEffect(() => {
+    console.log('🚨 === ERROR MESSAGES STATE CHANGED ===');
+    console.log('New errorMessages:', errorMessages);
+    console.log('Error messages keys:', Object.keys(errorMessages));
+    console.log('Error messages values:', Object.values(errorMessages));
+  }, [errorMessages]);
+  
+  // Debug userAttempts state changes
+  React.useEffect(() => {
+    console.log('🔄 === USER ATTEMPTS STATE CHANGED ===');
+    console.log('New userAttempts:', userAttempts);
+    console.log('User attempts keys:', Object.keys(userAttempts));
+    console.log('User attempts values:', Object.values(userAttempts));
+  }, [userAttempts]);
+  
+  // Debug waitingForCorrection state changes
+  React.useEffect(() => {
+    console.log('⏳ === WAITING FOR CORRECTION STATE CHANGED ===');
+    console.log('New waitingForCorrection:', waitingForCorrection);
+  }, [waitingForCorrection]);
+  
+  // Debug comprehensiveAnalysis state changes
+  React.useEffect(() => {
+    console.log('🔍 === COMPREHENSIVE ANALYSIS STATE CHANGED ===');
+    console.log('New comprehensiveAnalysis:', comprehensiveAnalysis);
+    console.log('Comprehensive analysis keys:', Object.keys(comprehensiveAnalysis));
+    console.log('Comprehensive analysis values:', Object.values(comprehensiveAnalysis));
+    
+    // Debug each message's analysis state
+    Object.entries(comprehensiveAnalysis).forEach(([messageId, analysis]) => {
+      console.log(`📊 Message ${messageId}:`, {
+        hasErrors: analysis?.hasErrors,
+        errorTypes: analysis?.errorTypes,
+        userAttempts: userAttempts[messageId],
+        errorMessages: errorMessages[messageId]
+      });
+    });
+  }, [comprehensiveAnalysis]);
 
   // Ref for auto-scrolling to bottom of conversation
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -181,13 +272,36 @@ export default function Dashboard({ user }: DashboardProps) {
 
   // Monitor userAttempts and generate suggested answer when max attempts reached
   React.useEffect(() => {
+    console.log('🔍 === CHECKING FOR SUGGESTED ANSWER GENERATION ===');
+    console.log('User attempts:', userAttempts);
+    console.log('Error messages:', errorMessages);
+    console.log('Original messages:', originalMessages);
+    console.log('Suggested answers:', suggestedAnswers);
+    
     Object.keys(userAttempts).forEach(messageId => {
+      console.log(`🔍 === CHECKING MESSAGE ${messageId} ===`);
+      console.log('User attempts for this message:', userAttempts[messageId]);
+      console.log('Error messages for this message:', errorMessages[messageId]);
+      console.log('Original message for this message:', originalMessages[messageId]);
+      console.log('Suggested answer for this message:', suggestedAnswers[messageId]);
+      
       if (userAttempts[messageId] >= 3 && errorMessages[messageId]) {
+        console.log('✅ === MAX ATTEMPTS REACHED WITH ERRORS ===');
         // Find the original message content
         const originalMessage = originalMessages[messageId];
+        console.log('Original message found:', originalMessage);
         if (originalMessage && !suggestedAnswers[messageId]) {
+          console.log('🚀 === GENERATING SUGGESTED ANSWER ===');
           generateSuggestedAnswer(messageId, originalMessage);
+        } else if (suggestedAnswers[messageId]) {
+          console.log('✅ === SUGGESTED ANSWER ALREADY EXISTS ===');
+        } else {
+          console.log('❌ === NO ORIGINAL MESSAGE FOUND ===');
         }
+      } else {
+        console.log('❌ === CONDITIONS NOT MET ===');
+        console.log('User attempts >= 3:', userAttempts[messageId] >= 3);
+        console.log('Has error messages:', !!errorMessages[messageId]);
       }
     });
   }, [userAttempts, errorMessages, originalMessages, suggestedAnswers]);
@@ -619,69 +733,62 @@ export default function Dashboard({ user }: DashboardProps) {
     await runComprehensiveAnalysis(messageContent, messageId);
   };
 
-  const detectErrorsForRetry = async (userMessage: string, messageId: string) => {
-    try {
-      const errorResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: [{
-            role: 'user',
-            content: `Analyze this German text for errors: "${userMessage}". Respond with "ERROR: [description]" if there are mistakes, or "CORRECT" if it's correct.`
-          }],
-          conversationId: 'error_detection',
-          contextLevel: 'beginner',
-          difficultyLevel: 'easy',
-          systemInstruction: "You are a German grammar checker. Analyze the text for grammatical errors, spelling mistakes, or incorrect word usage. If there are errors, provide a brief description. If correct, just say CORRECT."
-        })
-      });
 
-      if (errorResponse.ok) {
-        const errorData = await errorResponse.json();
-        const hasErrors = errorData.message.includes('ERROR:');
-        
-        if (hasErrors) {
-          setErrorMessages(prev => ({
-            ...prev,
-            [messageId]: errorData.message
-          }));
-          setWaitingForCorrection(true);
-          
-          // If this is the 3rd attempt, generate suggested answer
-          if (userAttempts[messageId] >= 3) {
-            generateSuggestedAnswer(messageId, userMessage);
-          }
-        } else {
-          // If no errors, clear the error state and proceed with AI response
-          setErrorMessages(prev => {
-            const newState = { ...prev };
-            delete newState[messageId];
-            return newState;
-          });
-          setWaitingForCorrection(false);
-          // Clear all retry states after successful correction
-          setUserAttempts({});
-          setErrorMessages({});
-          setMessageAttempts({});
-          setShowOriginalMessage({});
-          setOriginalMessages({});
-          // Show typing animation and trigger AI response
-          setIsSending(true);
-          setIsTyping(true);
-          await triggerAIResponse(userMessage, messageId);
-        }
-      }
-    } catch (error) {
-      console.error('Error detecting mistakes for retry:', error);
+  const triggerAIResponse = async (userMessage: string, messageId: string, clearedState?: {
+    waitingForCorrection: boolean;
+    errorMessages: { [key: string]: string };
+    userAttempts: { [key: string]: number };
+  }) => {
+    console.log('🤖 === TRIGGER AI RESPONSE DEBUG ===');
+    console.log('User message:', userMessage);
+    console.log('Message ID:', messageId);
+    console.log('Cleared state passed:', clearedState);
+    console.log('🔍 === CURRENT STATE VALUES ===');
+    console.log('waitingForCorrection:', waitingForCorrection);
+    console.log('errorMessages:', errorMessages);
+    console.log('userAttempts:', userAttempts);
+    
+    // Use cleared state if provided, otherwise use current state
+    const currentWaitingForCorrection = clearedState ? clearedState.waitingForCorrection : waitingForCorrection;
+    const currentErrorMessages = clearedState ? clearedState.errorMessages : errorMessages;
+    const currentUserAttempts = clearedState ? clearedState.userAttempts : userAttempts;
+    
+    const hasErrorMessages = currentErrorMessages[messageId];
+    
+    console.log('Has error messages:', !!hasErrorMessages);
+    console.log('Error messages content:', currentErrorMessages);
+    console.log('User attempts content:', currentUserAttempts);
+    console.log('Using cleared state:', !!clearedState);
+    console.log('Current waitingForCorrection:', currentWaitingForCorrection);
+    
+    // Check if we should block AI response
+    const shouldBlockAI = hasErrorMessages || currentWaitingForCorrection;
+    
+    console.log('🚫 === AI RESPONSE BLOCKING CHECK ===');
+    console.log('Should block AI:', shouldBlockAI);
+    console.log('Blocking reasons:');
+    console.log('- hasErrorMessages:', !!hasErrorMessages);
+    console.log('- waitingForCorrection:', currentWaitingForCorrection);
+    console.log('- Error messages for this message:', currentErrorMessages[messageId]);
+    console.log('- User attempts for this message:', currentUserAttempts[messageId]);
+    
+    if (shouldBlockAI) {
+      console.log('🚫 === BLOCKING AI RESPONSE - ERRORS DETECTED ===');
+      console.log('Not sending to AI because errors need to be corrected first');
+      setIsSending(false);
+      setIsTyping(false);
+      return;
     }
-  };
-
-  const triggerAIResponse = async (userMessage: string, messageId: string) => {
+    
+    console.log('✅ === PROCEEDING WITH AI RESPONSE ===');
+    console.log('📡 === STARTING AI API CALL ===');
+    console.log('Selected conversation:', selectedConversation);
+    console.log('User message being sent:', userMessage);
+    
+    setIsSending(true);
+    setIsTyping(true);
+    
     try {
-      // Don't show typing animation for retry responses
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
         headers: {
@@ -706,8 +813,14 @@ export default function Dashboard({ user }: DashboardProps) {
         })
       });
 
+      console.log('📡 === AI API RESPONSE ===');
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
+
       if (response.ok) {
         const data = await response.json();
+        console.log('📝 === AI RESPONSE DATA ===');
+        console.log('AI message:', data.message);
         
         const assistantMessage: ChatMessage = {
           id: (Date.now() + 1).toString(),
@@ -716,13 +829,30 @@ export default function Dashboard({ user }: DashboardProps) {
           timestamp: new Date().toISOString()
         };
 
-        setChatMessages(prev => [...prev, assistantMessage]);
+        console.log('🤖 === ADDING AI MESSAGE TO CHAT ===');
+        console.log('AI message ID:', assistantMessage.id);
+        console.log('AI message content:', assistantMessage.content);
+        
+        setChatMessages(prev => {
+          const newMessages = [...prev, assistantMessage];
+          console.log('Updated chat messages count:', newMessages.length);
+          return newMessages;
+        });
+        
         setCurrentAIMessage(data.message);
+        console.log('🔄 === GENERATING TRANSLATION AND SUGGESTIONS ===');
         generateTranslationAndSuggestions(assistantMessage.id, data.message);
+        console.log('✅ === AI RESPONSE COMPLETED SUCCESSFULLY ===');
+      } else {
+        console.error('❌ === AI API ERROR ===');
+        console.error('Response status:', response.status);
+        console.error('Response status text:', response.statusText);
       }
     } catch (error) {
-      console.error('Error triggering AI response:', error);
+      console.error('❌ === AI RESPONSE ERROR ===');
+      console.error('Error:', error);
     } finally {
+      console.log('🏁 === AI RESPONSE FINALLY BLOCK ===');
       setIsSending(false);
       setIsTyping(false);
     }
@@ -763,13 +893,42 @@ export default function Dashboard({ user }: DashboardProps) {
           }));
           setWaitingForCorrection(true);
         } else {
-          setWaitingForCorrection(false);
-          // Clear all retry states after successful correction
-          setUserAttempts({});
-          setErrorMessages({});
-          setMessageAttempts({});
-          setShowOriginalMessage({});
-          setOriginalMessages({});
+          // Clear retry states only for this specific message, not all messages
+          setUserAttempts(prev => {
+            const newState = { ...prev };
+            delete newState[messageId];
+            return newState;
+          });
+          setErrorMessages(prev => {
+            const newState = { ...prev };
+            delete newState[messageId];
+            return newState;
+          });
+          setMessageAttempts(prev => {
+            const newState = { ...prev };
+            delete newState[messageId];
+            return newState;
+          });
+          setShowOriginalMessage(prev => {
+            const newState = { ...prev };
+            delete newState[messageId];
+            return newState;
+          });
+          setOriginalMessages(prev => {
+            const newState = { ...prev };
+            delete newState[messageId];
+            return newState;
+          });
+          
+          // Check if there are any other messages with errors after clearing this one
+          setTimeout(() => {
+            setUserAttempts(current => {
+              const hasOtherErrors = Object.keys(current).length > 0;
+              setWaitingForCorrection(hasOtherErrors);
+              return current;
+            });
+          }, 0);
+          
           // Show typing animation and trigger AI response
           setIsSending(true);
           setIsTyping(true);
@@ -825,6 +984,10 @@ export default function Dashboard({ user }: DashboardProps) {
   };
 
   const generateSuggestedAnswer = async (messageId: string, userMessage: string) => {
+    console.log('🚀 === GENERATING SUGGESTED ANSWER ===');
+    console.log('Message ID:', messageId);
+    console.log('User message:', userMessage);
+    
     try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
@@ -844,19 +1007,41 @@ export default function Dashboard({ user }: DashboardProps) {
         })
       });
 
+      console.log('📡 === SUGGESTED ANSWER API RESPONSE ===');
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
+
       if (response.ok) {
         const data = await response.json();
-        setSuggestedAnswers(prev => ({
-          ...prev,
-          [messageId]: data.message
-        }));
+        console.log('📝 === SUGGESTED ANSWER DATA ===');
+        console.log('Response data:', data);
+        console.log('Suggested answer:', data.message);
+        
+        setSuggestedAnswers(prev => {
+          const newState = {
+            ...prev,
+            [messageId]: data.message
+          };
+          console.log('✅ === SUGGESTED ANSWER STORED ===');
+          console.log('New suggested answers state:', newState);
+          return newState;
+        });
+      } else {
+        console.error('❌ === SUGGESTED ANSWER API ERROR ===');
+        console.error('Response status:', response.status);
+        console.error('Response status text:', response.statusText);
       }
     } catch (error) {
-      console.error('Error generating suggested answer:', error);
+      console.error('❌ === SUGGESTED ANSWER GENERATION ERROR ===');
+      console.error('Error:', error);
     }
   };
 
   const handleSuggestedAnswerClick = (messageId: string, suggestedAnswer: string) => {
+    console.log('🎯 === SUGGESTED ANSWER CLICKED ===');
+    console.log('Message ID:', messageId);
+    console.log('Suggested answer:', suggestedAnswer);
+    
     // Update the message content with the suggested answer
     setChatMessages(prev => prev.map(msg => 
       msg.id === messageId 
@@ -864,26 +1049,82 @@ export default function Dashboard({ user }: DashboardProps) {
         : msg
     ));
     
-    // Clear all retry states
+    // Clear all retry states for this specific message
+    console.log('🧹 === CLEARING ALL RETRY STATES FOR SUGGESTED ANSWER ===');
     setUserAttempts(prev => {
       const newState = { ...prev };
       delete newState[messageId];
+      console.log('Cleared userAttempts for:', messageId);
       return newState;
     });
     setErrorMessages(prev => {
       const newState = { ...prev };
       delete newState[messageId];
+      console.log('Cleared errorMessages for:', messageId);
       return newState;
     });
     setSuggestedAnswers(prev => {
       const newState = { ...prev };
       delete newState[messageId];
+      console.log('Cleared suggestedAnswers for:', messageId);
       return newState;
     });
-    setWaitingForCorrection(false);
     
-    // Trigger AI response for the corrected message
-    triggerAIResponse(suggestedAnswer, messageId);
+    // Clear comprehensive analysis for this message to remove error symbols
+    setComprehensiveAnalysis(prev => {
+      const newState = { ...prev };
+      if (newState[messageId]) {
+        newState[messageId] = { ...newState[messageId], hasErrors: false };
+        console.log('Cleared comprehensive analysis errors for:', messageId);
+      }
+      return newState;
+    });
+    
+    // Clear original messages and other retry states
+    setOriginalMessages(prev => {
+      const newState = { ...prev };
+      delete newState[messageId];
+      console.log('Cleared originalMessages for:', messageId);
+      return newState;
+    });
+    setMessageAttempts(prev => {
+      const newState = { ...prev };
+      delete newState[messageId];
+      console.log('Cleared messageAttempts for:', messageId);
+      return newState;
+    });
+    setShowOriginalMessage(prev => {
+      const newState = { ...prev };
+      delete newState[messageId];
+      console.log('Cleared showOriginalMessage for:', messageId);
+      return newState;
+    });
+    
+    // Check if there are any other messages with errors
+    const hasOtherErrors = Object.keys(userAttempts).some(id => id !== messageId && userAttempts[id] > 0);
+    console.log('Has other errors:', hasOtherErrors);
+    console.log('Setting waitingForCorrection to:', hasOtherErrors);
+    setWaitingForCorrection(hasOtherErrors);
+    
+    console.log('🚀 === TRIGGERING AI RESPONSE FOR SUGGESTED ANSWER ===');
+    console.log('Final state before AI response:');
+    console.log('- waitingForCorrection:', waitingForCorrection);
+    console.log('- errorMessages:', errorMessages);
+    console.log('- userAttempts:', userAttempts);
+    console.log('- comprehensiveAnalysis:', comprehensiveAnalysis);
+    
+    // Create cleared state object to pass to triggerAIResponse
+    const clearedState = {
+      waitingForCorrection: false,
+      errorMessages: {},
+      userAttempts: {}
+    };
+    
+    console.log('⏰ === CALLING AI RESPONSE WITH CLEARED STATE ===');
+    console.log('Cleared state being passed:', clearedState);
+    
+    // Trigger AI response immediately with cleared state
+    triggerAIResponse(suggestedAnswer, messageId, clearedState);
   };
 
   // Add logic to generate suggested answer when max attempts are reached
@@ -934,8 +1175,153 @@ export default function Dashboard({ user }: DashboardProps) {
       console.error('Error translating suggestions:', error);
     }
   };
+  const processTextMessage = async (textContent: string, messageId: string, isRetry: boolean = false) => {
+    console.log('📝 === PROCESS TEXT MESSAGE START ===');
+    console.log('Text content:', textContent);
+    console.log('Message ID:', messageId);
+    console.log('Is Retry:', isRetry);
+    console.log('Current chat messages count:', chatMessages.length);
+    
+    // Ensure the message content is properly updated in the chat (EXACT SAME AS VOICE)
+    setChatMessages(prev => {
+      console.log('🔄 === UPDATING MESSAGE WITH TEXT CONTENT ===');
+      console.log('Message ID:', messageId);
+      console.log('Is Retry:', isRetry);
+      console.log('Text content:', textContent);
+      console.log('Previous messages count:', prev.length);
+      
+      const updatedMessages = prev.map(msg => {
+        if (msg.id === messageId) {
+          console.log('✅ FOUND MESSAGE TO UPDATE:', msg.id);
+          console.log('Original content:', msg.content);
+          console.log('New content:', textContent);
+          return { ...msg, content: textContent };
+        }
+        return msg;
+      });
+      
+      console.log('Updated messages count:', updatedMessages.length);
+      return updatedMessages;
+    });
+    
+    // For text messages, run comprehensive analysis and get result immediately (EXACT SAME AS VOICE)
+    const analysis = await runComprehensiveAnalysis(textContent, messageId, false);
+    
+    console.log('🔍 === CHECKING FOR ERRORS AFTER ANALYSIS ===');
+    console.log('Analysis result:', analysis);
+    console.log('Has errors:', analysis && analysis.hasErrors);
+    console.log('Error messages for this message:', errorMessages[messageId]);
+    console.log('Waiting for correction:', waitingForCorrection);
+    
+    if (analysis && analysis.hasErrors) {
+      // Don't send to AI if there are errors - focus on correction (EXACT SAME AS VOICE)
+      console.log('🚫 === TEXT MESSAGE HAS ERRORS - NOT SENDING TO AI ===');
+      console.log('Focusing on error correction instead of AI response');
+      return;
+    } else if (!analysis) {
+      // Analysis failed - don't proceed with AI response (EXACT SAME AS VOICE)
+      console.log('🚫 === ANALYSIS FAILED - NOT SENDING TO AI ===');
+      console.log('Analysis returned null, not proceeding with AI response');
+      return;
+    }
+    
+    console.log('✅ === NO ERRORS DETECTED - PROCEEDING TO AI ===');
+    console.log('🔍 === PRE-STATE CLEARING DEBUG ===');
+    console.log('Message ID:', messageId);
+    console.log('Current waitingForCorrection:', waitingForCorrection);
+    console.log('Current errorMessages:', errorMessages);
+    console.log('Current userAttempts:', userAttempts);
+    console.log('Current comprehensiveAnalysis:', comprehensiveAnalysis);
+    
+    // Send text to AI only if no errors (EXACT SAME AS VOICE)
+    // Clear retry states immediately before AI response
+    console.log('🧹 === CLEARING RETRY STATES ===');
+    
+    // Clear states and get the updated values
+    const clearedUserAttempts = { ...userAttempts };
+    delete clearedUserAttempts[messageId];
+    const clearedErrorMessages = { ...errorMessages };
+    delete clearedErrorMessages[messageId];
+    
+    console.log('Clearing userAttempts for:', messageId);
+    console.log('Before clearing:', userAttempts);
+    console.log('After clearing:', clearedUserAttempts);
+    console.log('Clearing errorMessages for:', messageId);
+    console.log('Before clearing:', errorMessages);
+    console.log('After clearing:', clearedErrorMessages);
+    
+    // Update the state
+    setUserAttempts(clearedUserAttempts);
+    setErrorMessages(clearedErrorMessages);
+    setWaitingForCorrection(false);
+    
+    // Clear comprehensive analysis for this message to remove error symbols from UI
+    console.log('🧹 === CLEARING COMPREHENSIVE ANALYSIS FOR UI ===');
+    console.log('Clearing comprehensive analysis for message:', messageId);
+    console.log('Current comprehensive analysis before clearing:', comprehensiveAnalysis[messageId]);
+    setComprehensiveAnalysis(prev => {
+      const newState = { ...prev };
+      if (newState[messageId]) {
+        // Update the analysis to show no errors
+        newState[messageId] = { ...newState[messageId], hasErrors: false };
+        console.log('Updated comprehensive analysis for message:', messageId);
+        console.log('New analysis state:', newState[messageId]);
+        console.log('Previous state:', prev[messageId]);
+        console.log('State change:', {
+          before: prev[messageId]?.hasErrors,
+          after: newState[messageId]?.hasErrors
+        });
+      }
+      return newState;
+    });
+    
+    console.log('🔄 === STATE UPDATED ===');
+    console.log('State should now be cleared for message:', messageId);
+    
+    console.log('⏰ === CALLING AI RESPONSE WITH CLEARED STATE ===');
+    // Call AI response directly with cleared state (EXACT SAME AS VOICE)
+    await triggerAIResponse(textContent, messageId, {
+      waitingForCorrection: false,
+      errorMessages: clearedErrorMessages,
+      userAttempts: clearedUserAttempts
+    });
+
+    // Ensure the message content stays as the text content (EXACT SAME AS VOICE)
+    setTimeout(() => {
+      setChatMessages(prev => prev.map(msg => 
+        msg.id === messageId 
+          ? { ...msg, content: textContent }
+          : msg
+      ));
+    }, 100);
+
+    console.log('🏁 === AI RESPONSE COMPLETED ===');
+    console.log('Final state after AI response:');
+    console.log('- waitingForCorrection:', waitingForCorrection);
+    console.log('- errorMessages:', errorMessages);
+    console.log('- userAttempts:', userAttempts);
+    console.log('- comprehensiveAnalysis:', comprehensiveAnalysis);
+    console.log('🔍 === POST-AI STATE VERIFICATION ===');
+    console.log('Error messages for this message:', errorMessages[messageId]);
+    console.log('User attempts for this message:', userAttempts[messageId]);
+    console.log('Comprehensive analysis for this message:', comprehensiveAnalysis[messageId]);
+  };
+
   const sendMessage = async () => {
-    if (!messageInput.trim() || isSending || !selectedConversation) return;
+    console.log('📝 === SEND MESSAGE DEBUG ===');
+    console.log('Message input:', messageInput.trim());
+    console.log('Is sending:', isSending);
+    console.log('Selected conversation:', selectedConversation);
+    console.log('Chat messages count:', chatMessages.length);
+
+    if (!messageInput.trim() || isSending || !selectedConversation) {
+      console.log('🚫 === BLOCKING SEND MESSAGE ===');
+      console.log('Reasons:');
+      console.log('- Empty input:', !messageInput.trim());
+      console.log('- Is sending:', isSending);
+      console.log('- No conversation:', !selectedConversation);
+      return;
+    }
 
     // Collapse toolbar when conversation starts (first user message)
     if (chatMessages.length <= 1) { // Only AI greeting message exists
@@ -943,90 +1329,103 @@ export default function Dashboard({ user }: DashboardProps) {
       console.log('Collapsing toolbar - first user message');
     }
 
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: messageInput.trim(),
-      timestamp: new Date().toISOString()
-    };
+    // Check if this is a retry attempt - be more robust in detection
+    const isRetry = waitingForCorrection || Object.keys(userAttempts).length > 0;
+    const existingMessageId = isRetry ? Object.keys(userAttempts).find(id => userAttempts[id] > 0) : null;
 
-    // Check if this is a retry attempt
-    const isRetry = waitingForCorrection;
-    
-    if (isRetry) {
-      // This is a retry - find the existing message with errors
-      const existingMessageId = Object.keys(userAttempts).find(id => userAttempts[id] > 0);
-      if (existingMessageId) {
-        // Update the existing message content
-        setChatMessages(prev => prev.map(msg => 
-          msg.id === existingMessageId 
-            ? { ...msg, content: userMessage.content }
-            : msg
-        ));
-        
-        // Add to attempt history
-        setMessageAttempts(prev => ({
-          ...prev,
-          [existingMessageId]: [...(prev[existingMessageId] || []), userMessage.content]
-        }));
-        
-        // Increment attempt counter
-        setUserAttempts(prev => ({
-          ...prev,
-          [existingMessageId]: (prev[existingMessageId] || 0) + 1
-        }));
-        
-        // Clear error messages
-        setErrorMessages(prev => {
-          const newState = { ...prev };
-          delete newState[existingMessageId];
-          return newState;
-        });
-        
-        // Detect errors on the new content (without typing animation)
-        await detectErrorsForRetry(userMessage.content, existingMessageId);
-      }
-    } else {
-      // This is a new message - add it to chat
-      setChatMessages(prev => [...prev, userMessage]);
+    console.log('🔍 === RETRY DETECTION DEBUG ===');
+    console.log('Is retry:', isRetry);
+    console.log('Existing message ID:', existingMessageId);
+    console.log('Waiting for correction:', waitingForCorrection);
+    console.log('User attempts:', userAttempts);
+    console.log('Error messages:', errorMessages);
+
+    let messageId = '';
+
+    if (isRetry && existingMessageId) {
+      // This is a retry - update existing message (EXACT SAME AS VOICE)
+      console.log('🔄 === TEXT RETRY DETECTED ===');
+      console.log('Updating existing message:', existingMessageId);
+      console.log('Current attempts for this message:', userAttempts[existingMessageId] || 0);
       
-      // Store original message and detect errors
+      messageId = existingMessageId;
+      
+      // Message content will be updated in processTextMessage (EXACT SAME AS VOICE)
+      
+      // If this is a retry, clear previous error states for this message (EXACT SAME AS VOICE)
+      console.log('🔄 === CLEARING PREVIOUS ERROR STATES FOR RETRY ===');
+      console.log('Message ID for retry:', messageId);
+      console.log('Current error messages:', errorMessages);
+      console.log('Current user attempts:', userAttempts);
+      
+      setErrorMessages(prev => {
+        const newState = { ...prev };
+        delete newState[messageId];
+        console.log('Cleared error messages for:', messageId);
+        console.log('Remaining error messages:', newState);
+        return newState;
+      });
+      
+      // Don't clear waitingForCorrection here - let the analysis determine if we still need to wait (EXACT SAME AS VOICE)
+      console.log('🔄 === KEEPING WAITING FOR CORRECTION STATE ===');
+    } else {
+      // This is a new message - create new message (EXACT SAME AS VOICE)
+      console.log('🆕 === NEW TEXT MESSAGE ===');
+      console.log('Creating new message because:');
+      console.log('- isRetry:', isRetry);
+      console.log('- existingMessageId:', existingMessageId);
+      console.log('- waitingForCorrection:', waitingForCorrection);
+      
+      const userMessage: ChatMessage = {
+        id: Date.now().toString(),
+        role: 'user',
+        content: messageInput.trim(),
+        timestamp: new Date().toISOString()
+      };
+      
+      messageId = userMessage.id;
+      
+      // Add to chat immediately (EXACT SAME AS VOICE)
+      setChatMessages(prev => {
+        console.log('🆕 === ADDING NEW MESSAGE TO CHAT ===');
+        console.log('New message ID:', messageId);
+        console.log('Previous messages count:', prev.length);
+        const newMessages = [...prev, userMessage];
+        console.log('New messages count:', newMessages.length);
+        return newMessages;
+      });
+
+      // Store original message for suggested answer generation (EXACT SAME AS VOICE)
       setOriginalMessages(prev => ({
         ...prev,
-        [userMessage.id]: userMessage.content
+        [messageId]: userMessage.content
       }));
-      
-      // Detect errors in the user message
-      await detectErrors(userMessage.content, userMessage.id);
-      
-      // Also run comprehensive analysis for better error detection
-      await runComprehensiveAnalysis(userMessage.content, userMessage.id);
-      
-      // Check if there are pronunciation errors that should stop AI response
-      const analysis = comprehensiveAnalysis[userMessage.id];
-      if (analysis && analysis.errorTypes && analysis.errorTypes.pronunciation) {
-        // Don't send to AI for pronunciation errors - focus on practice
-        return;
-      }
-      
-      // Trigger AI response for new messages
-      setIsSending(true);
-      setIsTyping(true);
-      await triggerAIResponse(userMessage.content, userMessage.id);
     }
-
-    setMessageInput('');
     
-    // Only close toolbar if there are no pronunciation errors
-    if (!isRetry) {
-      const analysis = comprehensiveAnalysis[userMessage.id];
-      if (!analysis || !analysis.errorTypes || !analysis.errorTypes.pronunciation) {
-        setShowToolbar(false);
-        setSidebarCollapsed(false);
-        setToolbarOpenedViaHelp(false);
-        setActiveHelpButton(null);
-      }
-    }
+    // Process text message (EXACT SAME AS VOICE)
+    await processTextMessage(messageInput.trim(), messageId, isRetry);
+    
+    // Ensure the message content stays as the input content (EXACT SAME AS VOICE)
+    setTimeout(() => {
+      setChatMessages(prev => prev.map(msg => 
+        msg.id === messageId 
+          ? { ...msg, content: messageInput.trim() }
+          : msg
+      ));
+    }, 200);
+    
+    // Clear the input after processing
+    console.log('🧹 === CLEARING MESSAGE INPUT ===');
+    console.log('Input before clearing:', messageInput);
+    setMessageInput('');
+    console.log('Input after clearing:', messageInput);
+
+    // Force input clearing by setting it again after a brief delay
+    setTimeout(() => {
+      setMessageInput('');
+      console.log('🧹 === FORCE CLEARING INPUT ===');
+      console.log('Input after force clearing:', messageInput);
+    }, 0);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -1423,6 +1822,24 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
   // Comprehensive analysis function
   const runComprehensiveAnalysis = async (message: string, messageId: string, isVoice: boolean = false) => {
+    console.log('🔍 === COMPREHENSIVE ANALYSIS DEBUG ===');
+    console.log('Message:', message);
+    console.log('Message ID:', messageId);
+    console.log('Is Voice:', isVoice);
+    console.log('🔍 === CURRENT STATE BEFORE ANALYSIS ===');
+    console.log('waitingForCorrection:', waitingForCorrection);
+    console.log('errorMessages:', errorMessages);
+    console.log('userAttempts:', userAttempts);
+
+    // Prevent re-analysis of messages that have already been cleared
+    if (comprehensiveAnalysis[messageId] && !comprehensiveAnalysis[messageId].hasErrors) {
+      console.log('🚫 === SKIPPING ANALYSIS - MESSAGE ALREADY CLEARED ===');
+      console.log('Message has already been processed and cleared, returning existing analysis');
+      console.log('Current analysis state:', comprehensiveAnalysis[messageId]);
+      console.log('This prevents overriding the cleared state');
+      return comprehensiveAnalysis[messageId];
+    }
+    
     try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/comprehensive-analysis`, {
         method: 'POST',
@@ -1440,20 +1857,56 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       if (response.ok) {
         const data = await response.json();
         
-        // Store comprehensive analysis results
-        console.log('Comprehensive analysis result for message', messageId, ':', data);
-        setComprehensiveAnalysis(prev => ({
+      // Store comprehensive analysis results
+      console.log('📊 === COMPREHENSIVE ANALYSIS RESULT ===');
+      console.log('Message ID:', messageId);
+      console.log('Has errors:', data.hasErrors);
+      console.log('Error types:', data.errorTypes);
+      console.log('Full analysis data:', data);
+      console.log('🔍 === STATE AFTER ANALYSIS STORAGE ===');
+      console.log('waitingForCorrection:', waitingForCorrection);
+      console.log('errorMessages:', errorMessages);
+      console.log('userAttempts:', userAttempts);
+      console.log('🔍 === CURRENT COMPREHENSIVE ANALYSIS STATE ===');
+      console.log('Current comprehensive analysis for this message:', comprehensiveAnalysis[messageId]);
+      console.log('Will this override a cleared state?', comprehensiveAnalysis[messageId] && !comprehensiveAnalysis[messageId].hasErrors && data.hasErrors);
+
+      setComprehensiveAnalysis(prev => {
+        // CRITICAL FIX: Don't override a cleared state with new analysis
+        if (prev[messageId] && !prev[messageId].hasErrors && data.hasErrors) {
+          console.log('🚫 === PREVENTING OVERRIDE OF CLEARED STATE ===');
+          console.log('Message was already cleared, not overriding with new analysis');
+          console.log('Previous cleared state:', prev[messageId]);
+          console.log('New analysis would set hasErrors to:', data.hasErrors);
+          return prev; // Don't update the state
+        }
+        
+        const newState = {
           ...prev,
           [messageId]: data
-        }));
+        };
+        console.log('🔄 === STORING ANALYSIS RESULT ===');
+        console.log('Previous state for message:', prev[messageId]);
+        console.log('New state for message:', newState[messageId]);
+        console.log('State change:', {
+          before: prev[messageId]?.hasErrors,
+          after: newState[messageId]?.hasErrors
+        });
+        return newState;
+      });
         
         // Check for errors and display them
         if (data.hasErrors) {
+          console.log('🚨 === ERRORS DETECTED ===');
+          console.log('Error types:', data.errorTypes);
+          console.log('Corrections:', data.corrections);
+          
           let errorMessage = '';
           let shouldStopAI = false;
           
           if (data.errorTypes.grammar && data.corrections.grammar) {
             errorMessage += `📝 Grammar: ${data.corrections.grammar}\n`;
+            console.log('Grammar error detected:', data.corrections.grammar);
           }
           
           if (data.errorTypes.vocabulary && data.corrections.vocabulary) {
@@ -1461,6 +1914,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               `"${v.wrong}" → "${v.correct}" (${v.meaning})`
             ).join(', ');
             errorMessage += `📚 Vocabulary: ${vocabErrors}\n`;
+            console.log('Vocabulary errors detected:', data.corrections.vocabulary);
             
             // Auto-add vocabulary corrections
             data.corrections.vocabulary.forEach((v: any) => {
@@ -1471,6 +1925,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           if (data.errorTypes.pronunciation && data.corrections.pronunciation) {
             errorMessage += `🗣️ Pronunciation: ${data.corrections.pronunciation}\n`;
             shouldStopAI = true; // Stop AI response for pronunciation errors
+            console.log('Pronunciation error detected:', data.corrections.pronunciation);
             
             // Auto-open pronunciation tab for practice
             setShowToolbar(true);
@@ -1503,35 +1958,66 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           
           // Show error message
           if (errorMessage) {
-            console.log('Setting error message for message:', messageId, errorMessage);
+            console.log('📝 === SETTING ERROR MESSAGE ===');
+            console.log('Message ID:', messageId);
+            console.log('Error message:', errorMessage.trim());
+            console.log('Should stop AI:', shouldStopAI);
+            
             setErrorMessages(prev => ({
               ...prev,
               [messageId]: errorMessage.trim()
             }));
             
-            // Set user attempts for voice messages with errors
-            if (isVoice) {
-              setUserAttempts(prev => ({
-                ...prev,
-                [messageId]: (prev[messageId] || 0) + 1
-              }));
-            }
+        // Set user attempts for messages with errors (both voice and text)
+        console.log('📝 Message with errors - incrementing attempts');
+        console.log('Current attempts for message:', messageId, ':', userAttempts[messageId] || 0);
+        console.log('Is voice:', isVoice);
+        console.log('Waiting for correction before increment:', waitingForCorrection);
+
+        setUserAttempts(prev => {
+          const newAttempts = (prev[messageId] || 0) + 1;
+          console.log('New attempt count:', newAttempts);
+          console.log('Updated user attempts:', { ...prev, [messageId]: newAttempts });
+          return {
+            ...prev,
+            [messageId]: newAttempts
+          };
+        });
+
+        // Set waiting for correction when there are errors (both voice and text)
+        console.log('🔄 === SETTING WAITING FOR CORRECTION FOR ERRORS ===');
+        setWaitingForCorrection(true);
             
             // Auto-open toolbar to show analysis (if not already opened for pronunciation)
             if (!data.errorTypes.pronunciation) {
+              console.log('🔧 Opening toolbar for non-pronunciation errors');
               setShowToolbar(true);
               setCurrentAIMessage(message);
             }
             
             // Stop AI response if there are errors that need attention
             if (shouldStopAI) {
+              console.log('🚫 === STOPPING AI RESPONSE - ERRORS NEED ATTENTION ===');
+              console.log('Returning early to prevent AI response');
               return; // Don't continue with AI response
             }
           }
         }
+        
+        // Note: Retry state clearing is now handled in the main flow after analysis
+        
+        // Return the analysis data for immediate use
+        console.log('🔄 === RETURNING ANALYSIS DATA ===');
+        console.log('Returning data:', data);
+        console.log('🔍 === FINAL STATE BEFORE RETURN ===');
+        console.log('waitingForCorrection:', waitingForCorrection);
+        console.log('errorMessages:', errorMessages);
+        console.log('userAttempts:', userAttempts);
+        return data;
       }
     } catch (error) {
       console.error('Error in comprehensive analysis:', error instanceof Error ? error.message : 'Unknown error');
+      return null;
     }
   };
 
@@ -1588,30 +2074,94 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     // Store audio blob for practice modal use
     setPracticeAudioBlob(audioBlob);
     
-    // Always create a message, but with different content based on context
+    // Check if we're in a retry state - be more robust in detection
+    const isRetry = waitingForCorrection || Object.keys(userAttempts).length > 0;
+    const existingMessageId = isRetry ? Object.keys(userAttempts).find(id => userAttempts[id] > 0) : null;
+
+    console.log('🎤 === PROCESSING AUDIO MESSAGE ===');
+    console.log('Is retry:', isRetry);
+    console.log('Existing message ID:', existingMessageId);
+    console.log('Waiting for correction:', waitingForCorrection);
+    console.log('User attempts:', userAttempts);
+    console.log('Error messages:', errorMessages);
+    console.log('Current chat messages count:', chatMessages.length);
+    console.log('🔍 === RETRY DETECTION DETAILS ===');
+    console.log('waitingForCorrection value:', waitingForCorrection);
+    console.log('userAttempts keys:', Object.keys(userAttempts));
+    console.log('userAttempts values:', Object.values(userAttempts));
+    console.log('errorMessages keys:', Object.keys(errorMessages));
+    console.log('errorMessages values:', Object.values(errorMessages));
+    
     let messageId = '';
-    const audioMessage: ChatMessage = {
-      id: showLanguageMismatchModal ? mismatchMessageId : Date.now().toString(),
-      role: 'user',
-      content: showLanguageMismatchModal ? '🎤 Voice message' : '🎤 Voice message',
-      timestamp: new Date().toISOString(),
-      audioUrl: URL.createObjectURL(audioBlob),
-      isAudio: true,
-      isTranscribing: true
-    };
     
-    messageId = audioMessage.id;
-    
-    // Add to chat immediately
-    setChatMessages(prev => [...prev, audioMessage]);
+    if (isRetry && existingMessageId) {
+      // This is a retry - update existing message
+      console.log('🔄 === VOICE RETRY DETECTED ===');
+      console.log('Updating existing message:', existingMessageId);
+      console.log('Current attempts for this message:', userAttempts[existingMessageId] || 0);
+      
+      messageId = existingMessageId;
+      
+      // Update the existing message to show retry attempt
+      setChatMessages(prev => {
+        console.log('🔄 === UPDATING EXISTING MESSAGE FOR RETRY ===');
+        console.log('Previous messages count:', prev.length);
+        console.log('Looking for message ID:', messageId);
+        
+        const updatedMessages = prev.map(msg => {
+          if (msg.id === messageId) {
+            console.log('✅ FOUND MESSAGE TO UPDATE FOR RETRY:', msg.id);
+            console.log('Original content:', msg.content);
+            return { ...msg, content: '🎤 Recording retry...', isTranscribing: true, audioUrl: URL.createObjectURL(audioBlob) };
+          }
+          return msg;
+        });
+        
+        console.log('Updated messages count after retry:', updatedMessages.length);
+        return updatedMessages;
+      });
+      
+      // Ensure we maintain the retry state
+      setWaitingForCorrection(true);
+    } else {
+      // This is a new message - create new message
+      console.log('🆕 === NEW VOICE MESSAGE ===');
+      console.log('Creating new message because:');
+      console.log('- isRetry:', isRetry);
+      console.log('- existingMessageId:', existingMessageId);
+      console.log('- waitingForCorrection:', waitingForCorrection);
+      
+      const audioMessage: ChatMessage = {
+        id: showLanguageMismatchModal ? mismatchMessageId : Date.now().toString(),
+        role: 'user',
+        content: showLanguageMismatchModal ? '🎤 Voice message' : '🎤 Voice message',
+        timestamp: new Date().toISOString(),
+        audioUrl: URL.createObjectURL(audioBlob),
+        isAudio: true,
+        isTranscribing: true
+      };
+      
+      messageId = audioMessage.id;
+      
+      // Add to chat immediately
+      setChatMessages(prev => {
+        console.log('🆕 === ADDING NEW MESSAGE TO CHAT ===');
+        console.log('New message ID:', messageId);
+        console.log('Previous messages count:', prev.length);
+        const newMessages = [...prev, audioMessage];
+        console.log('New messages count:', newMessages.length);
+        return newMessages;
+      });
+    }
     
     // Process audio in background
-    await transcribeAudio(audioBlob, messageId);
+    await transcribeAudio(audioBlob, messageId, isRetry);
   };
 
-  const transcribeAudio = async (audioBlob: Blob, messageId: string) => {
+  const transcribeAudio = async (audioBlob: Blob, messageId: string, isRetry: boolean = false) => {
     console.log('🎤 === TRANSCRIBE AUDIO START ===');
     console.log('Message ID:', messageId);
+    console.log('Is Retry:', isRetry);
     console.log('Recording language:', recordingLanguage);
     console.log('Current chat messages count:', chatMessages.length);
     console.log('Show language mismatch modal state:', showLanguageMismatchModal);
@@ -1796,7 +2346,6 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               setPracticeAudioBlob(null);
               
               // Continue with normal German processing but don't override the message content
-              await runComprehensiveAnalysis(transcription, messageId, true);
               await sendTranscriptionToAI(transcription, messageId);
               
               // Ensure the message content stays as the transcription
@@ -1888,26 +2437,109 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           }
           
           // Update the audio message with transcription
-          setChatMessages(prev => prev.map(msg => 
-            msg.id === messageId 
-              ? { ...msg, content: transcription, isTranscribing: false }
-              : msg
-          ));
+          setChatMessages(prev => {
+            console.log('🔄 === UPDATING MESSAGE WITH TRANSCRIPTION ===');
+            console.log('Message ID:', messageId);
+            console.log('Is Retry:', isRetry);
+            console.log('Transcription:', transcription);
+            console.log('Previous messages count:', prev.length);
+            
+            const updatedMessages = prev.map(msg => {
+              if (msg.id === messageId) {
+                console.log('✅ FOUND MESSAGE TO UPDATE:', msg.id);
+                console.log('Original content:', msg.content);
+                console.log('New content:', transcription);
+                return { ...msg, content: transcription, isTranscribing: false };
+              }
+              return msg;
+            });
+            
+            console.log('Updated messages count:', updatedMessages.length);
+            return updatedMessages;
+          });
+          
+          // If this is a retry, clear previous error states for this message
+          if (isRetry) {
+            console.log('🔄 === CLEARING PREVIOUS ERROR STATES FOR RETRY ===');
+            console.log('Message ID for retry:', messageId);
+            console.log('Current error messages:', errorMessages);
+            console.log('Current user attempts:', userAttempts);
+            
+            setErrorMessages(prev => {
+              const newState = { ...prev };
+              delete newState[messageId];
+              console.log('Cleared error messages for:', messageId);
+              console.log('Remaining error messages:', newState);
+              return newState;
+            });
+            
+            // Don't clear waitingForCorrection here - let the analysis determine if we still need to wait
+            console.log('🔄 === KEEPING WAITING FOR CORRECTION STATE ===');
+          }
           
           if (recordingLanguage === 'german') {
-            // For German recordings, run comprehensive analysis
-            await runComprehensiveAnalysis(transcription, messageId, true);
+            console.log('🇩🇪 === PROCESSING GERMAN VOICE INPUT ===');
+            console.log('Transcription:', transcription);
+            console.log('Message ID:', messageId);
             
-            // Check if there are errors that should prevent AI response
-            const analysis = comprehensiveAnalysis[messageId];
+            // For German recordings, run comprehensive analysis and get result immediately
+            const analysis = await runComprehensiveAnalysis(transcription, messageId, true);
+            
+            console.log('🔍 === CHECKING FOR ERRORS AFTER ANALYSIS ===');
+            console.log('Analysis result:', analysis);
+            console.log('Has errors:', analysis && analysis.hasErrors);
+            console.log('Error messages for this message:', errorMessages[messageId]);
+            console.log('Waiting for correction:', waitingForCorrection);
+            
             if (analysis && analysis.hasErrors) {
               // Don't send to AI if there are errors - focus on correction
-              console.log('Voice message has errors, not sending to AI');
+              console.log('🚫 === VOICE MESSAGE HAS ERRORS - NOT SENDING TO AI ===');
+              console.log('Focusing on error correction instead of AI response');
+              return;
+            } else if (!analysis) {
+              // Analysis failed - don't proceed with AI response
+              console.log('🚫 === ANALYSIS FAILED - NOT SENDING TO AI ===');
+              console.log('Analysis returned null, not proceeding with AI response');
               return;
             }
             
+            console.log('✅ === NO ERRORS DETECTED - PROCEEDING TO AI ===');
+            console.log('🔍 === PRE-STATE CLEARING DEBUG ===');
+            console.log('Message ID:', messageId);
+            console.log('Current waitingForCorrection:', waitingForCorrection);
+            console.log('Current errorMessages:', errorMessages);
+            console.log('Current userAttempts:', userAttempts);
+            console.log('Current comprehensiveAnalysis:', comprehensiveAnalysis);
+            
             // Send transcription to AI only if no errors
-            await sendTranscriptionToAI(transcription, messageId);
+            // Clear retry states immediately before AI response
+            console.log('🧹 === CLEARING RETRY STATES ===');
+            
+            // Clear states and get the updated values
+            const clearedUserAttempts = { ...userAttempts };
+            delete clearedUserAttempts[messageId];
+            const clearedErrorMessages = { ...errorMessages };
+            delete clearedErrorMessages[messageId];
+            
+            console.log('Clearing userAttempts for:', messageId);
+            console.log('Before clearing:', userAttempts);
+            console.log('After clearing:', clearedUserAttempts);
+            console.log('Clearing errorMessages for:', messageId);
+            console.log('Before clearing:', errorMessages);
+            console.log('After clearing:', clearedErrorMessages);
+            
+            // Update the state
+            setUserAttempts(clearedUserAttempts);
+            setErrorMessages(clearedErrorMessages);
+            setWaitingForCorrection(false);
+            
+            console.log('⏰ === CALLING AI RESPONSE WITH CLEARED STATE ===');
+            // Call AI response directly with cleared state
+            await sendTranscriptionToAI(transcription, messageId, false, analysis, {
+              waitingForCorrection: false,
+              errorMessages: clearedErrorMessages,
+              userAttempts: clearedUserAttempts
+            });
           } else {
             // For English recordings, translate to German and provide suggestions
             await translateEnglishToGerman(transcription, messageId);
@@ -2019,6 +2651,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     const message = chatMessages.find(msg => msg.id === messageId);
     if (!message || !message.audioUrl) return;
 
+    console.log('🔄 === VOICE RETRY START ===');
+    console.log('Message ID:', messageId);
+    console.log('Current user attempts:', userAttempts[messageId] || 0);
+
     // Start recording again for retry
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -2034,6 +2670,9 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       recorder.onstop = async () => {
         const audioBlob = new Blob(chunks, { type: 'audio/webm' });
         
+        console.log('🔄 === PROCESSING VOICE RETRY ===');
+        console.log('Audio blob size:', audioBlob.size);
+        
         // Update the existing message to show retry attempt
         setChatMessages(prev => prev.map(msg => 
           msg.id === messageId 
@@ -2041,8 +2680,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             : msg
         ));
         
-        // Process the retry audio
-        await transcribeAudio(audioBlob, messageId);
+        // Process the retry audio with the same message ID
+        await transcribeAudio(audioBlob, messageId, true);
         stream.getTracks().forEach(track => track.stop());
       };
 
@@ -2055,9 +2694,61 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     }
   };
 
-  const sendTranscriptionToAI = async (transcription: string, messageId: string, isEnglishTranslation: boolean = false) => {
+  const sendTranscriptionToAI = async (transcription: string, messageId: string, isEnglishTranslation: boolean = false, analysisData?: any, clearedState?: {
+    waitingForCorrection: boolean;
+    errorMessages: { [key: string]: string };
+    userAttempts: { [key: string]: number };
+  }) => {
     if (!selectedConversation) return;
 
+    console.log('🎤 === SEND TRANSCRIPTION TO AI DEBUG ===');
+    console.log('Transcription:', transcription);
+    console.log('Message ID:', messageId);
+    console.log('Is English Translation:', isEnglishTranslation);
+    console.log('🔍 === CURRENT STATE VALUES ===');
+    console.log('waitingForCorrection:', waitingForCorrection);
+    console.log('errorMessages:', errorMessages);
+    console.log('userAttempts:', userAttempts);
+    console.log('comprehensiveAnalysis:', comprehensiveAnalysis);
+    console.log('Comprehensive analysis for this message:', comprehensiveAnalysis[messageId]);
+    console.log('Analysis data passed directly:', analysisData);
+    console.log('Cleared state passed:', clearedState);
+    console.log('🔍 === STATE OBJECTS DETAILS ===');
+    console.log('errorMessages keys:', Object.keys(errorMessages));
+    console.log('userAttempts keys:', Object.keys(userAttempts));
+    console.log('comprehensiveAnalysis keys:', Object.keys(comprehensiveAnalysis));
+    
+    // Check if we should wait for correction before sending to AI
+    const analysis = analysisData || comprehensiveAnalysis[messageId];
+    const hasErrors = analysis && analysis.hasErrors;
+    
+    // Use cleared state if provided, otherwise use current state
+    const currentWaitingForCorrection = clearedState ? clearedState.waitingForCorrection : waitingForCorrection;
+    const currentErrorMessages = clearedState ? clearedState.errorMessages : errorMessages;
+    const currentUserAttempts = clearedState ? clearedState.userAttempts : userAttempts;
+    
+    const hasErrorMessages = currentErrorMessages[messageId];
+    
+    console.log('Has errors from analysis:', hasErrors);
+    console.log('Has error messages:', !!hasErrorMessages);
+    console.log('Error messages content:', currentErrorMessages);
+    console.log('User attempts content:', currentUserAttempts);
+    console.log('Using cleared state:', !!clearedState);
+    console.log('Current waitingForCorrection:', currentWaitingForCorrection);
+    
+    if (hasErrors || hasErrorMessages || currentWaitingForCorrection) {
+      console.log('🚫 === BLOCKING AI RESPONSE - ERRORS DETECTED ===');
+      console.log('Not sending to AI because errors need to be corrected first');
+      console.log('Blocking reasons:');
+      console.log('- hasErrors:', hasErrors);
+      console.log('- hasErrorMessages:', !!hasErrorMessages);
+      console.log('- waitingForCorrection:', currentWaitingForCorrection);
+      setIsSending(false);
+      setIsTyping(false);
+      return;
+    }
+
+    console.log('✅ === PROCEEDING WITH AI RESPONSE ===');
     setIsSending(true);
     setIsTyping(true);
 
@@ -2732,19 +3423,6 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                             {message.isTranscribing && (
                               <Loader2 className="h-4 w-4 animate-spin" />
                             )}
-                            {/* Retry button for voice messages with errors */}
-                            {comprehensiveAnalysis[message.id] && comprehensiveAnalysis[message.id].hasErrors && userAttempts[message.id] < 3 && (
-                              <button
-                                onClick={() => handleVoiceRetry(message.id)}
-                                className="flex items-center space-x-1 px-2 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded text-xs transition-colors"
-                                title="Retry voice input"
-                              >
-                                <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                </svg>
-                                <span>Retry</span>
-                              </button>
-                            )}
                           </div>
                         ) : (
                           message.content
@@ -2763,11 +3441,12 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                           </div>
                         )}
                         
-                        {userAttempts[message.id] >= 3 && (
+                        {userAttempts[message.id] >= 3 && comprehensiveAnalysis[message.id]?.hasErrors && (
                           <div className="text-xs text-red-500 font-medium">
                             Max attempts reached
                           </div>
                         )}
+                        
                       </div>
                     </div>
                   )}
