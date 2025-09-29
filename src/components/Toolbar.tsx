@@ -11,6 +11,8 @@ interface ToolbarProps {
   activeTab?: 'vocab' | 'explain' | 'pronunciation';
   onTabChange?: (tab: 'vocab' | 'explain' | 'pronunciation') => void;
   newVocabItems?: Array<{word: string, meaning: string, context: string}>;
+  persistentVocab?: Array<{word: string, meaning: string, context: string}>;
+  onUpdatePersistentVocab?: (vocab: Array<{word: string, meaning: string, context: string}>) => void;
 }
 
 interface VocabItem {
@@ -59,13 +61,21 @@ interface ComprehensiveAnalysis {
   }>;
 }
 
-export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVocab, autoLoadExplanations = false, comprehensiveAnalysis, activeTab: externalActiveTab, onTabChange, newVocabItems }: ToolbarProps) {
+export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVocab, autoLoadExplanations = false, comprehensiveAnalysis, activeTab: externalActiveTab, onTabChange, newVocabItems, persistentVocab = [], onUpdatePersistentVocab }: ToolbarProps) {
   const [internalActiveTab, setInternalActiveTab] = useState<'vocab' | 'explain' | 'pronunciation'>('explain');
   
   // Use external activeTab if provided, otherwise use internal state
   const activeTab = externalActiveTab || internalActiveTab;
   const setActiveTab = onTabChange || setInternalActiveTab;
-  const [vocabItems, setVocabItems] = useState<VocabItem[]>([]);
+  // Use persistent vocabulary from props instead of local state
+  const vocabItems = persistentVocab.map(item => ({
+    word: item.word,
+    meaning: item.meaning,
+    timestamp: new Date().toISOString(),
+    chatId: 'current',
+    category: 'conversation',
+    theme: 'general'
+  }));
   const [grammarExplanation, setGrammarExplanation] = useState<string>('');
   const [speakingTips, setSpeakingTips] = useState<string>('');
   const [isLoadingExplanation, setIsLoadingExplanation] = useState(false);
@@ -73,7 +83,7 @@ export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVoc
   const [explanationCache, setExplanationCache] = useState<{[key: string]: {grammar: string, tips: string}}>({});
   const [showGrammarSection, setShowGrammarSection] = useState<boolean>(false);
   const [showSpeakingSection, setShowSpeakingSection] = useState<boolean>(false);
-  
+
   // New state for comprehensive analysis
   const [analysisData, setAnalysisData] = useState<ComprehensiveAnalysis | null>(null);
   const [pronunciationWords, setPronunciationWords] = useState<PronunciationWord[]>([]);
@@ -124,18 +134,7 @@ export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVoc
     }
   };
 
-  // Load vocabulary from localStorage on component mount
-  useEffect(() => {
-    const savedVocab = localStorage.getItem('talkbuddy_vocab');
-    if (savedVocab) {
-      setVocabItems(JSON.parse(savedVocab));
-    }
-  }, []);
-
-  // Save vocabulary to localStorage whenever it changes
-  useEffect(() => {
-    localStorage.setItem('talkbuddy_vocab', JSON.stringify(vocabItems));
-  }, [vocabItems]);
+  // Vocabulary is now conversation-specific, no localStorage persistence
 
   // Handle comprehensive analysis data
   useEffect(() => {
@@ -157,20 +156,12 @@ export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVoc
 
   // Handle new vocabulary items from Dashboard
   useEffect(() => {
-    if (newVocabItems && newVocabItems.length > 0) {
-      const newItems: VocabItem[] = newVocabItems.map(item => ({
-        word: item.word,
-        meaning: item.meaning,
-        timestamp: new Date().toISOString(),
-        chatId: 'current_session',
-        category: 'General',
-        theme: 'Current Chat'
-      }));
-      
-      // Add new items to the top of the vocabulary list
-      setVocabItems(prev => [...newItems, ...prev]);
+    if (newVocabItems && newVocabItems.length > 0 && onUpdatePersistentVocab) {
+      // Add new items to the top of the persistent vocabulary
+      const updatedVocab = [...newVocabItems, ...persistentVocab];
+      onUpdatePersistentVocab(updatedVocab);
     }
-  }, [newVocabItems]);
+  }, [newVocabItems, onUpdatePersistentVocab, persistentVocab]);
 
   // Reset newVocabItems after processing to prevent re-processing
   useEffect(() => {
@@ -201,13 +192,8 @@ export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVoc
     }
   }, [currentMessage, activeTab, explanationCache]);
 
-  // Auto-load explanations when opened via help button
-  useEffect(() => {
-    if (autoLoadExplanations && currentMessage && activeTab === 'explain' && !explanationCache[currentMessage]) {
-      // Auto-generate grammar explanation
-      generateGrammarExplanation(currentMessage);
-    }
-  }, [autoLoadExplanations, currentMessage, activeTab, explanationCache]);
+  // Auto-load explanations when opened via help button - but only if user manually clicks explain tab
+  // Removed automatic API call on toolbar expand
 
   const generateGrammarExplanation = async (message: string) => {
     setIsLoadingExplanation(true);
@@ -331,7 +317,10 @@ export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVoc
           theme: 'Current Chat'
         };
         
-        setVocabItems(prev => [...prev, newVocabItem]);
+        // Add to persistent vocabulary
+        if (onUpdatePersistentVocab) {
+          onUpdatePersistentVocab([...persistentVocab, newVocabItem]);
+        }
         onAddToVocab(newVocabItem.word, newVocabItem.meaning);
       }
     } catch (error) {
@@ -345,14 +334,20 @@ export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVoc
         category: 'General',
         theme: 'Current Chat'
       };
-      setVocabItems(prev => [...prev, newVocabItem]);
+      // Add to persistent vocabulary
+      if (onUpdatePersistentVocab) {
+        onUpdatePersistentVocab([...persistentVocab, newVocabItem]);
+      }
       onAddToVocab(word, word);
     }
   };
 
   // Remove vocabulary item
   const removeVocabItem = (index: number) => {
-    setVocabItems(prev => prev.filter((_, i) => i !== index));
+    if (onUpdatePersistentVocab) {
+      const updatedVocab = persistentVocab.filter((_, i) => i !== index);
+      onUpdatePersistentVocab(updatedVocab);
+    }
   };
 
   // Comprehensive analysis function
@@ -387,7 +382,10 @@ export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVoc
               category: 'Correction',
               theme: 'Grammar Help'
             };
-            setVocabItems(prev => [...prev, newVocabItem]);
+            // Add to persistent vocabulary
+            if (onUpdatePersistentVocab) {
+              onUpdatePersistentVocab([...persistentVocab, newVocabItem]);
+            }
             onAddToVocab(word.correct, word.meaning);
           });
         }
@@ -611,8 +609,8 @@ export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVoc
     if (!config) return null;
     
     const Icon = config.icon;
-    
-    return (
+
+  return (
       <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${config.color}`}>
         <Icon className="h-3 w-3 mr-1" />
         {config.label}
@@ -816,37 +814,32 @@ export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVoc
   if (!isVisible) return null;
 
   return (
-    <div className="w-[600px] bg-white border-l border-gray-200 flex flex-col h-full">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-gray-900">Toolbox</h3>
-        <button
-          onClick={onClose}
-          className="p-1 hover:bg-gray-100 rounded-md transition-colors"
-        >
-          <X className="h-4 w-4 text-gray-500" />
-        </button>
-      </div>
-
+    <div className="w-full bg-white flex flex-col h-full">
       {/* Tabs */}
-      <div className="flex border-b border-gray-100">
+      <div className="flex border-b border-gray-200">
         <button
           onClick={() => setActiveTab('vocab')}
           className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
             activeTab === 'vocab'
               ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
-              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
           }`}
         >
           <BookOpen className="h-4 w-4 inline mr-2" />
-          Vocab
+          Vocabulary
         </button>
         <button
-          onClick={() => setActiveTab('explain')}
+          onClick={() => {
+            setActiveTab('explain');
+            // Only call API when user manually clicks explain tab
+            if (currentMessage && !explanationCache[currentMessage]) {
+              generateGrammarExplanation(currentMessage);
+            }
+          }}
           className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
             activeTab === 'explain'
               ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
-              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
           }`}
         >
           <Lightbulb className="h-4 w-4 inline mr-2" />
@@ -857,7 +850,7 @@ export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVoc
           className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
             activeTab === 'pronunciation'
               ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
-              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
           }`}
         >
           <Volume2 className="h-4 w-4 inline mr-2" />
@@ -1027,7 +1020,7 @@ export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVoc
             {currentMessage ? (
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-semibold text-gray-900 text-base">Pronunciation Practice</h4>
+                <h4 className="font-semibold text-gray-900 text-base">Pronunciation Practice</h4>
                   <div className="flex space-x-2">
                     {!currentSession ? (
                       <button
@@ -1152,7 +1145,7 @@ export default function Toolbar({ isVisible, onClose, currentMessage, onAddToVoc
                   </div>
                   <p className="text-sm text-gray-700 leading-relaxed">{currentMessage}</p>
                 </div>
-
+                
                 {/* Error Badges */}
                 {analysisData && (
                   <div className="flex flex-wrap gap-2 mb-4">

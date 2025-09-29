@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Mic,
   MicOff,
@@ -85,6 +85,7 @@ interface ChatMessage {
   audioUrl?: string; // For voice messages
   isAudio?: boolean; // Flag for audio messages
   isTranscribing?: boolean; // Flag for messages being transcribed
+  showTryAgain?: boolean; // Flag to show "Try it again" button
 }
 export default function Dashboard({ user }: DashboardProps) {
   const [showOnboarding, setShowOnboarding] = React.useState(false);
@@ -133,7 +134,13 @@ export default function Dashboard({ user }: DashboardProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [isTranscribing, setIsTranscribing] = useState(false);
-  const [showLanguageSelector, setShowLanguageSelector] = useState(false);
+  const [showLanguageMenu, setShowLanguageMenu] = useState(false);
+  const [showLanguageMismatchModal, setShowLanguageMismatchModal] = useState(false);
+  const [detectedLanguage, setDetectedLanguage] = useState<'german' | 'english' | null>(null);
+  const [mismatchTranscription, setMismatchTranscription] = useState<string>('');
+  const [mismatchMessageId, setMismatchMessageId] = useState<string>('');
+  const [germanSuggestion, setGermanSuggestion] = useState<string>('');
+  const [practiceAudioBlob, setPracticeAudioBlob] = useState<Blob | null>(null);
   const [recordingLanguage, setRecordingLanguage] = useState<'german' | 'english'>('german');
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [showVocabSelector, setShowVocabSelector] = useState(false);
@@ -141,6 +148,8 @@ export default function Dashboard({ user }: DashboardProps) {
   const [toolbarActiveTab, setToolbarActiveTab] = useState<'vocab' | 'explain' | 'pronunciation'>('explain');
   const [newVocabItems, setNewVocabItems] = useState<Array<{word: string, meaning: string, context: string}>>([]);
   const [selectedWords, setSelectedWords] = useState<Set<string>>(new Set());
+  const [toolbarCollapsed, setToolbarCollapsed] = useState(true); // Start collapsed by default
+  const [persistentVocab, setPersistentVocab] = useState<Array<{word: string, meaning: string, context: string}>>([]);
   const [wordMeanings, setWordMeanings] = useState<{[key: string]: string}>({});
   const [loadingMeanings, setLoadingMeanings] = useState<Set<string>>(new Set());
   
@@ -462,10 +471,14 @@ export default function Dashboard({ user }: DashboardProps) {
       // Cancel any ongoing speech
       window.speechSynthesis.cancel();
       
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'de-DE'; // German language
-      utterance.rate = 0.8; // Slightly slower for learning
-      window.speechSynthesis.speak(utterance);
+      // Small delay to ensure speech synthesis is ready
+      setTimeout(() => {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'de-DE'; // German language
+        utterance.rate = 0.8; // Slightly slower for learning
+        console.log('Speaking:', text);
+        window.speechSynthesis.speak(utterance);
+      }, 200);
     }
   };
 
@@ -565,16 +578,35 @@ export default function Dashboard({ user }: DashboardProps) {
     setMessageInput(suggestion);
   };
 
-  const handleHelpClick = (messageContent: string, messageId: string) => {
+  const handleHelpClick = async (messageContent: string, messageId: string) => {
+    console.log('AI Grammar help button clicked for message:', messageId);
+    console.log('Message content:', messageContent);
+    console.log('Current state - showToolbar:', showToolbar, 'activeHelpButton:', activeHelpButton, 'toolbarCollapsed:', toolbarCollapsed);
+    
+    // Toggle toolbar collapse if it's already open for this message
+    if (showToolbar && activeHelpButton === messageId) {
+      console.log('Toggling AI grammar help toolbar collapse');
+      setToolbarCollapsed(true);
+      setActiveHelpButton(null); // Clear highlighting
+      return;
+    }
+    
+    console.log('Expanding AI grammar help toolbar');
     // Set the current AI message for the toolbar
     setCurrentAIMessage(messageContent);
     // Show the toolbar and collapse the sidebar
     setShowToolbar(true);
+    setToolbarCollapsed(false); // Expand toolbar
     setSidebarCollapsed(true);
     // Mark that toolbar was opened via help button
     setToolbarOpenedViaHelp(true);
     // Set the active help button
     setActiveHelpButton(messageId);
+    setToolbarActiveTab('explain');
+    
+    // Run comprehensive analysis for the AI message
+    console.log('Running comprehensive analysis for AI message');
+    await runComprehensiveAnalysis(messageContent, messageId);
   };
 
   const detectErrorsForRetry = async (userMessage: string, messageId: string) => {
@@ -739,16 +771,47 @@ export default function Dashboard({ user }: DashboardProps) {
     }
   };
 
-  const handleErrorCorrection = (messageId: string) => {
-    // Set the error message for grammar analysis
-    setCurrentAIMessage(errorMessages[messageId]);
+  const handleErrorCorrection = async (messageId: string) => {
+    console.log('=== GRAMMAR HELP BUTTON CLICKED ===');
+    console.log('Message ID:', messageId);
+    console.log('Comprehensive analysis for this message:', comprehensiveAnalysis[messageId]);
+    console.log('Current AI message:', currentAIMessage);
+    console.log('Show toolbar:', showToolbar, 'Toolbar collapsed:', toolbarCollapsed);
+    console.log('All comprehensive analysis:', comprehensiveAnalysis);
+    
+    // Get the user message content for analysis
+    const userMessage = chatMessages.find(msg => msg.id === messageId);
+    if (!userMessage) {
+      console.log('User message not found');
+      return;
+    }
+    
+    // Toggle toolbar collapse if it's already open for this message
+    if (showToolbar && currentAIMessage === userMessage.content && !toolbarCollapsed) {
+      console.log('Toggling toolbar collapse');
+      setToolbarCollapsed(true);
+      setActiveHelpButton(null); // Clear highlighting
+      return;
+    }
+    
+    console.log('Expanding toolbar for grammar help');
+    // Set the user message content for grammar analysis
+    setCurrentAIMessage(userMessage.content);
     // Show the toolbar and collapse the sidebar
     setShowToolbar(true);
+    setToolbarCollapsed(false); // Expand toolbar
     setSidebarCollapsed(true);
     // Mark that toolbar was opened via error correction
     setToolbarOpenedViaHelp(true);
-    // Set the active help button
+    // Set the active help button for highlighting
     setActiveHelpButton(messageId);
+    setToolbarActiveTab('explain');
+    
+    // Ensure comprehensive analysis is available for this message
+    if (!comprehensiveAnalysis[messageId]) {
+      console.log('Running comprehensive analysis for grammar help');
+      await runComprehensiveAnalysis(userMessage.content, messageId);
+    }
   };
 
   const generateSuggestedAnswer = async (messageId: string, userMessage: string) => {
@@ -863,6 +926,12 @@ export default function Dashboard({ user }: DashboardProps) {
   };
   const sendMessage = async () => {
     if (!messageInput.trim() || isSending || !selectedConversation) return;
+
+    // Collapse toolbar when conversation starts (first user message)
+    if (chatMessages.length <= 1) { // Only AI greeting message exists
+      setToolbarCollapsed(true);
+      console.log('Collapsing toolbar - first user message');
+    }
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -1026,6 +1095,9 @@ export default function Dashboard({ user }: DashboardProps) {
       context: extractedVocab[0]?.word || ''
     }));
     
+    // Add to persistent vocabulary
+    setPersistentVocab(prev => [...selectedWordsList, ...prev]);
+    
     // Set new vocabulary items for the Toolbar
     setNewVocabItems(selectedWordsList);
     
@@ -1051,7 +1123,7 @@ export default function Dashboard({ user }: DashboardProps) {
   };
 
   // Clear new vocabulary items after they've been processed
-  React.useEffect(() => {
+  useEffect(() => {
     if (newVocabItems.length > 0) {
       // Clear the items after they've been processed by the Toolbar
       const timer = setTimeout(() => {
@@ -1060,6 +1132,271 @@ export default function Dashboard({ user }: DashboardProps) {
       return () => clearTimeout(timer);
     }
   }, [newVocabItems]);
+
+  // Close language menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showLanguageMenu) {
+        const target = event.target as Element;
+        if (!target.closest('.language-menu-container')) {
+          setShowLanguageMenu(false);
+        }
+      }
+    };
+
+    if (showLanguageMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showLanguageMenu]);
+
+
+
+  // Auto-play German suggestion when modal opens
+  useEffect(() => {
+    if (showLanguageMismatchModal && germanSuggestion) {
+      // Wait for text to be fully set and rendered
+      const timer = setTimeout(() => {
+        console.log('Playing audio for:', germanSuggestion);
+        speakText(germanSuggestion);
+      }, 1500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [showLanguageMismatchModal, germanSuggestion]);
+
+  // Clear German suggestion when modal opens
+  useEffect(() => {
+    if (showLanguageMismatchModal) {
+      console.log('Modal opened, clearing German suggestion');
+      setGermanSuggestion('');
+    }
+  }, [showLanguageMismatchModal]);
+
+  // Generate German suggestion for practice modal
+  const generateGermanSuggestion = async (englishText: string) => {
+    try {
+      console.log('=== GENERATE GERMAN SUGGESTION ===');
+      console.log('Input text:', englishText);
+      console.log('Current germanSuggestion state:', germanSuggestion);
+      
+      // Simple fallback only if API completely fails
+      const simpleFallback = 'Entschuldigung, ich kann das nicht übersetzen.';
+      
+      console.log('Making API call to chat function...');
+      console.log('API URL:', `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`);
+      console.log('API Key exists:', !!import.meta.env.VITE_SUPABASE_ANON_KEY);
+      
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: 'system',
+              content: `You are a helpful German language tutor. The user said something in English: "${englishText}". 
+
+Your task is to provide ONE natural German way to express the same meaning. Do NOT translate the phrase "I wanted to say" or "I want to say" - instead, understand what the user actually wants to express and provide the natural German way to say that.
+
+For example:
+- If user says "I wanted to say I went swimming today" → respond with "Ich bin heute schwimmen gegangen"
+- If user says "I want to say I cooked chicken" → respond with "Ich habe Hühnchen gekocht"
+- If user says "I wanted to say I was lazy" → respond with "Ich war faul"
+
+Keep it simple and conversational. Just respond with the German translation, nothing else.`
+            },
+            {
+              role: 'user',
+              content: `How do I say this in German: "${englishText}"`
+            }
+          ],
+          conversationId: `german-suggestion-${Date.now()}`,
+          contextLevel: 'Intermediate',
+          difficultyLevel: 'Intermediate'
+        })
+      });
+
+      console.log('German suggestion API response status:', response.status);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('German suggestion API response:', data);
+        console.log('Response keys:', Object.keys(data));
+        console.log('Response type:', typeof data);
+
+        // Check for different possible response structures
+        let germanText = null;
+        if (data.response && data.response.trim()) {
+          germanText = data.response.trim();
+        } else if (data.message && data.message.trim()) {
+          germanText = data.message.trim();
+        } else if (data.text && data.text.trim()) {
+          germanText = data.text.trim();
+        } else if (typeof data === 'string' && data.trim()) {
+          germanText = data.trim();
+        }
+
+        if (germanText) {
+          setGermanSuggestion(germanText);
+          console.log('German suggestion generated:', germanText);
+
+          // Clear the timeout since API succeeded
+          if ((window as any).germanSuggestionTimeout) {
+            clearTimeout((window as any).germanSuggestionTimeout);
+            (window as any).germanSuggestionTimeout = null;
+          }
+        } else {
+          console.error('No valid response data found in API response');
+          console.error('Full response object:', JSON.stringify(data, null, 2));
+          setGermanSuggestion(simpleFallback);
+        }
+      } else {
+        const errorText = await response.text();
+        console.error('API call failed with status:', response.status);
+        console.error('Error response:', errorText);
+        console.error('Response headers:', response.headers);
+        setGermanSuggestion(simpleFallback);
+      }
+    } catch (error) {
+      console.error('Network error generating German suggestion:', error);
+      console.error('Error details:', error.message);
+      setGermanSuggestion(simpleFallback);
+    }
+  };
+
+  // Provide contextual German help for English input
+  const provideContextualGermanHelp = async (englishText: string, messageId: string) => {
+    try {
+      console.log('Providing contextual German help for:', englishText);
+      
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: 'system',
+              content: `You are a helpful German language tutor. The user said something in English: "${englishText}". 
+
+Your task is to:
+1. Understand what they want to express
+2. Provide ONE formal German way to say it
+3. Provide ONE informal/casual (Umgangssprachlich) way to say it
+4. Keep it concise and natural
+5. Be encouraging
+
+Format your response like this:
+**Formell:** [formal German expression]
+**Umgangssprachlich:** [informal German expression]
+
+Keep it short and helpful. Don't repeat the same phrase multiple times.`
+            },
+            {
+              role: 'user',
+              content: `I want to say this in German: "${englishText}"`
+            }
+          ],
+          conversationId: 'contextual-help',
+          contextLevel: 'Intermediate',
+          difficultyLevel: 'Intermediate'
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Add the AI response to chat with "Try it again" button
+        const aiMessage: ChatMessage = {
+          id: `ai-${Date.now()}`,
+          role: 'assistant',
+          content: data.response,
+          timestamp: new Date().toISOString(),
+          showTryAgain: true // Flag to show "Try it again" button
+        };
+        
+        setChatMessages(prev => [...prev, aiMessage]);
+        
+        // Store the comprehensive analysis for the toolbar
+        setComprehensiveAnalysis(prev => ({
+          ...prev,
+          [messageId]: {
+            hasErrors: false,
+            errorTypes: {
+              grammar: false,
+              vocabulary: false,
+              pronunciation: false
+            },
+            suggestions: [data.response],
+            explanation: `Contextual help for expressing "${englishText}" in German`
+          }
+        }));
+        
+        console.log('Contextual German help provided');
+      } else {
+        console.error('Failed to get contextual German help');
+      }
+    } catch (error) {
+      console.error('Error providing contextual German help:', error);
+    }
+  };
+
+  // Detect language of transcribed text
+  const detectLanguage = (text: string): 'german' | 'english' => {
+    // More comprehensive language detection
+    const germanWords = ['ich', 'du', 'er', 'sie', 'es', 'wir', 'ihr', 'der', 'die', 'das', 'und', 'oder', 'aber', 'mit', 'von', 'zu', 'auf', 'in', 'an', 'für', 'ist', 'sind', 'haben', 'werden', 'können', 'müssen', 'sollen', 'wollen', 'möchte', 'mögen', 'bin', 'bist', 'war', 'waren', 'wird', 'werde', 'wirst', 'werdet', 'habe', 'hast', 'hat', 'hatte', 'hatten', 'kann', 'kannst', 'könnt', 'konnte', 'konnten', 'will', 'willst', 'wollt', 'wollte', 'wollten', 'soll', 'sollst', 'sollt', 'sollte', 'sollten', 'muss', 'musst', 'müsst', 'musste', 'mussten', 'mag', 'magst', 'mögt', 'mochte', 'mochten'];
+    const englishWords = ['i', 'you', 'he', 'she', 'it', 'we', 'they', 'the', 'and', 'or', 'but', 'with', 'from', 'to', 'on', 'in', 'at', 'for', 'is', 'are', 'have', 'will', 'can', 'must', 'should', 'want', 'like', 'am', 'was', 'were', 'been', 'being', 'has', 'had', 'having', 'do', 'does', 'did', 'doing', 'done', 'go', 'goes', 'went', 'going', 'gone', 'get', 'gets', 'got', 'getting', 'make', 'makes', 'made', 'making', 'take', 'takes', 'took', 'taking', 'come', 'comes', 'came', 'coming', 'see', 'sees', 'saw', 'seeing', 'seen', 'know', 'knows', 'knew', 'knowing', 'known', 'think', 'thinks', 'thought', 'thinking', 'say', 'says', 'said', 'saying', 'tell', 'tells', 'told', 'telling', 'give', 'gives', 'gave', 'giving', 'given', 'find', 'finds', 'found', 'finding'];
+    
+    const words = text.toLowerCase().split(/\s+/);
+    let germanCount = 0;
+    let englishCount = 0;
+    
+    words.forEach(word => {
+      // Clean word of punctuation
+      const cleanWord = word.replace(/[.,!?;:]/g, '');
+      if (germanWords.includes(cleanWord)) germanCount++;
+      if (englishWords.includes(cleanWord)) englishCount++;
+    });
+    
+    // Check for German-specific characters (strong indicator)
+    const hasGermanChars = /[äöüßÄÖÜ]/.test(text);
+    if (hasGermanChars) {
+      germanCount += 5; // Strong weight for German characters
+    }
+    
+    // Check for common English patterns
+    const hasEnglishPatterns = /\b(the|and|or|but|in|on|at|to|for|of|with|by|this|that|these|those|what|where|when|why|how)\b/i.test(text);
+    if (hasEnglishPatterns) {
+      englishCount += 2;
+    }
+    
+    // Check for common German patterns
+    const hasGermanPatterns = /\b(der|die|das|und|oder|aber|mit|von|zu|auf|in|an|für|ich|du|er|sie|es|wir|ihr|diese|diese|dieses|was|wo|wann|warum|wie)\b/i.test(text);
+    if (hasGermanPatterns) {
+      germanCount += 2;
+    }
+    
+    // Check for German verb endings (strong indicator)
+    const hasGermanVerbEndings = /\b(geht|kommt|macht|sagt|weiß|kann|will|soll|muss|darf|möchte|könnte|würde|hätte|wäre|wird|war|ist|bin|bist|haben|hatten|werden|wurden)\b/i.test(text);
+    if (hasGermanVerbEndings) {
+      germanCount += 3;
+    }
+    
+    // Check for English verb endings (strong indicator)
+    const hasEnglishVerbEndings = /\b(goes|comes|makes|says|knows|can|will|should|must|may|could|would|have|had|been|was|is|am|are|were|being|doing|going|coming|seeing|knowing|thinking|saying|telling|giving|finding)\b/i.test(text);
+    if (hasEnglishVerbEndings) {
+      englishCount += 3;
+    }
+    
+    console.log('Language detection:', { text, germanCount, englishCount, hasGermanChars, detected: germanCount > englishCount ? 'german' : 'english' });
+    
+    return germanCount > englishCount ? 'german' : 'english';
+  };
 
   // Extract vocabulary from German text using chat function
   const extractVocabularyFromText = async (germanText: string) => {
@@ -1089,6 +1426,7 @@ export default function Dashboard({ user }: DashboardProps) {
         const data = await response.json();
         
         // Store comprehensive analysis results
+        console.log('Comprehensive analysis result for message', messageId, ':', data);
         setComprehensiveAnalysis(prev => ({
           ...prev,
           [messageId]: data
@@ -1150,6 +1488,7 @@ export default function Dashboard({ user }: DashboardProps) {
           
           // Show error message
           if (errorMessage) {
+            console.log('Setting error message for message:', messageId, errorMessage);
             setErrorMessages(prev => ({
               ...prev,
               [messageId]: errorMessage.trim()
@@ -1231,22 +1570,28 @@ export default function Dashboard({ user }: DashboardProps) {
   };
 
   const processAudioMessage = async (audioBlob: Blob) => {
-    // Create audio message immediately
+    // Store audio blob for practice modal use
+    setPracticeAudioBlob(audioBlob);
+    
+    // Always create a message, but with different content based on context
+    let messageId = '';
     const audioMessage: ChatMessage = {
-      id: Date.now().toString(),
+      id: showLanguageMismatchModal ? mismatchMessageId : Date.now().toString(),
       role: 'user',
-      content: '🎤 Voice message',
+      content: showLanguageMismatchModal ? '🎤 Voice message' : '🎤 Voice message',
       timestamp: new Date().toISOString(),
       audioUrl: URL.createObjectURL(audioBlob),
       isAudio: true,
       isTranscribing: true
     };
     
+    messageId = audioMessage.id;
+    
     // Add to chat immediately
     setChatMessages(prev => [...prev, audioMessage]);
     
     // Process audio in background
-    await transcribeAudio(audioBlob, audioMessage.id);
+    await transcribeAudio(audioBlob, messageId);
   };
 
   const transcribeAudio = async (audioBlob: Blob, messageId: string) => {
@@ -1266,7 +1611,8 @@ export default function Dashboard({ user }: DashboardProps) {
       // Try the whisper function first, fallback to chat function if not available
       let response;
       try {
-        const language = recordingLanguage === 'german' ? 'de' : 'en';
+        // Use auto-detection instead of forcing a specific language
+        // This allows Whisper to detect the actual language spoken
         
         // Add timeout for longer recordings
         const controller = new AbortController();
@@ -1280,7 +1626,7 @@ export default function Dashboard({ user }: DashboardProps) {
           },
           body: JSON.stringify({
             audioData: base64Audio,
-            language: language,
+            // Don't specify language - let Whisper auto-detect
             storeForAnalysis: true
           }),
           signal: controller.signal
@@ -1345,6 +1691,163 @@ export default function Dashboard({ user }: DashboardProps) {
         if (data.transcription) {
           // Whisper function response
           const transcription = data.transcription;
+          
+          // Detect language mismatch
+          const detectedLanguage = detectLanguage(transcription);
+          console.log('Detected language:', detectedLanguage, 'Selected language:', recordingLanguage);
+          
+          // Check if we're in practice modal mode
+          if (showLanguageMismatchModal && germanSuggestion) {
+            // In practice modal - check if user said it correctly in German
+            if (detectedLanguage === 'german') {
+              // User said it in German - close modal and continue with conversation
+              console.log('Practice successful - user said it in German');
+              setShowLanguageMismatchModal(false);
+              setDetectedLanguage(null);
+              setMismatchTranscription('');
+              setMismatchMessageId('');
+              setGermanSuggestion('');
+              
+              // Clear any loading states
+              setIsTranscribing(false);
+              
+              // Debug: Log current state before replacement
+              console.log('=== MESSAGE REPLACEMENT DEBUG ===');
+              console.log('mismatchMessageId:', mismatchMessageId);
+              console.log('transcription:', transcription);
+              console.log('practiceAudioBlob:', practiceAudioBlob);
+              console.log('Current chat messages before replacement:', chatMessages);
+              
+              // Replace the old English message with the new German message
+              setChatMessages(prev => {
+                console.log('=== MESSAGE REPLACEMENT DETAILED DEBUG ===');
+                console.log('Previous messages count:', prev.length);
+                console.log('Previous messages:', JSON.stringify(prev, null, 2));
+                console.log('Looking for message ID:', mismatchMessageId);
+                
+                const updatedMessages = prev.map(msg => {
+                  console.log('Checking message ID:', msg.id, 'vs target:', mismatchMessageId);
+                  if (msg.id === mismatchMessageId) {
+                    console.log('✅ FOUND MESSAGE TO REPLACE:', JSON.stringify(msg, null, 2));
+                    console.log('Original content:', msg.content);
+                    console.log('New transcription:', transcription);
+                    console.log('Practice audio blob exists:', !!practiceAudioBlob);
+                    
+                    const newMessage = {
+                      ...msg,
+                      content: transcription,
+                      audioUrl: practiceAudioBlob ? URL.createObjectURL(practiceAudioBlob) : undefined,
+                      isAudio: true,
+                      isTranscribing: false,
+                      role: 'user',
+                      timestamp: new Date().toISOString()
+                    };
+                    console.log('✅ NEW MESSAGE CREATED:', JSON.stringify(newMessage, null, 2));
+                    console.log('New content field:', newMessage.content);
+                    return newMessage;
+                  }
+                  console.log('❌ Message ID does not match, keeping original');
+                  return msg;
+                });
+                console.log('✅ UPDATED MESSAGES AFTER REPLACEMENT:', JSON.stringify(updatedMessages, null, 2));
+                return updatedMessages;
+              });
+              
+              // Force a re-render by updating the state again
+              setTimeout(() => {
+                setChatMessages(current => {
+                  console.log('=== FINAL STATE CHECK ===');
+                  console.log('Final messages count:', current.length);
+                  console.log('Final messages:', JSON.stringify(current, null, 2));
+                  const targetMessage = current.find(msg => msg.id === mismatchMessageId);
+                  if (targetMessage) {
+                    console.log('✅ TARGET MESSAGE FOUND IN FINAL STATE:', JSON.stringify(targetMessage, null, 2));
+                    console.log('Target message content:', targetMessage.content);
+                  } else {
+                    console.log('❌ TARGET MESSAGE NOT FOUND IN FINAL STATE');
+                  }
+                  return current;
+                });
+              }, 100);
+              
+              // Clear practice audio blob
+              setPracticeAudioBlob(null);
+              
+              // Continue with normal German processing but don't override the message content
+              await runComprehensiveAnalysis(transcription, messageId, true);
+              await sendTranscriptionToAI(transcription, messageId);
+              
+              // Ensure the message content stays as the transcription
+              setTimeout(() => {
+                setChatMessages(prev => prev.map(msg => 
+                  msg.id === messageId 
+                    ? { ...msg, content: transcription }
+                    : msg
+                ));
+              }, 500);
+              return;
+            } else {
+              // User still said it in English - keep modal open
+              console.log('Practice failed - user still said it in English');
+              setMismatchTranscription(transcription);
+              return;
+            }
+          }
+          
+          // Only show mismatch modal if there's a clear difference and confidence is high
+          if (detectedLanguage !== recordingLanguage) {
+            // Additional checks for reliability
+            const wordCount = transcription.trim().split(/\s+/).length;
+            const hasSubstantialContent = wordCount > 2;
+            const hasClearLanguageIndicators = transcription.length > 10; // At least 10 characters
+            
+            if (hasSubstantialContent && hasClearLanguageIndicators) {
+              console.log('Language mismatch detected - showing modal');
+              console.log('Transcription:', transcription);
+              console.log('Word count:', wordCount, 'Length:', transcription.length);
+              
+              // Language mismatch detected - show modal
+              setDetectedLanguage(detectedLanguage);
+              setMismatchTranscription(transcription);
+              setMismatchMessageId(messageId);
+              
+              // Clear any previous German suggestion
+              setGermanSuggestion('');
+              console.log('Cleared German suggestion state');
+              
+              // Generate German suggestion for practice
+              if (detectedLanguage === 'english') {
+                console.log('English detected, generating German suggestion for:', transcription);
+                
+                // Use API as primary method - no fallback until API fails
+                generateGermanSuggestion(transcription);
+                
+                // Set a timeout fallback in case API fails
+                const timeoutId = setTimeout(() => {
+                  console.log('API timeout, using simple fallback');
+                  setGermanSuggestion('Entschuldigung, ich kann das nicht übersetzen.');
+                }, 5000); // 5 second timeout
+                
+                // Store timeout ID to clear it if API succeeds
+                (window as any).germanSuggestionTimeout = timeoutId;
+              }
+              
+              setShowLanguageMismatchModal(true);
+              
+              // Don't add English transcription to chat - just show practice modal
+              // Remove the audio message from chat since we're going to practice
+              setChatMessages(prev => prev.filter(msg => msg.id !== messageId));
+              
+              // Clear any loading states
+              setIsTranscribing(false);
+              return; // Don't proceed with AI processing
+            } else {
+              console.log('Language mismatch but content too short or unclear - ignoring');
+              console.log('Word count:', wordCount, 'Length:', transcription.length);
+            }
+          } else {
+            console.log('Languages match - proceeding with normal processing');
+          }
           
           // Update the audio message with transcription
           setChatMessages(prev => prev.map(msg => 
@@ -1568,6 +2071,10 @@ export default function Dashboard({ user }: DashboardProps) {
   };
 
   const startNewConversation = (conversationId: string) => {
+    // Reset all states first
+    resetConversationState();
+    
+    // Start new conversation
     setSelectedConversation(conversationId);
     setChatMessages([{
       id: '1',
@@ -1575,20 +2082,68 @@ export default function Dashboard({ user }: DashboardProps) {
       content: 'Worüber möchten Sie heute sprechen?',
       timestamp: new Date().toISOString()
     }]);
-    // Close toolbar when starting new conversation
-    setShowToolbar(false);
+    
+    // Show toolbar but start collapsed
+    setShowToolbar(true);
+    setToolbarCollapsed(true);
     setSidebarCollapsed(false);
+  };
+
+  // Reset all states when ending conversation
+  const resetConversationState = () => {
+    // Reset conversation states
+    setSelectedConversation(null);
+    setChatMessages([]);
+    setCurrentAIMessage('');
+    
+    // Reset toolbar states
+    setShowToolbar(false);
+    setToolbarCollapsed(true);
+    setToolbarActiveTab('explain');
     setToolbarOpenedViaHelp(false);
     setActiveHelpButton(null);
     
-    // Reset retry states for new conversation
-    setWaitingForCorrection(false);
-    setUserAttempts({});
+    // Reset error and correction states
     setErrorMessages({});
+    setUserAttempts({});
     setMessageAttempts({});
     setShowOriginalMessage({});
     setOriginalMessages({});
+    setWaitingForCorrection(false);
     setSuggestedAnswers({});
+    
+    // Reset translation and suggestion states
+    setShowTranslation({});
+    setShowSuggestions({});
+    setTranslatedMessages({});
+    setSuggestedResponses({});
+    
+    // Reset vocabulary states (conversation-specific)
+    setPersistentVocab([]);
+    setShowVocabSelector(false);
+    setExtractedVocab([]);
+    setSelectedWords(new Set());
+    setWordMeanings({});
+    setLoadingMeanings(new Set());
+    setNewVocabItems([]);
+    
+    // Reset comprehensive analysis
+    setComprehensiveAnalysis({});
+    
+    // Reset recording states
+    setShowLanguageMenu(false);
+    setShowLanguageMismatchModal(false);
+    setDetectedLanguage(null);
+    setMismatchTranscription('');
+    setMismatchMessageId('');
+    setGermanSuggestion('');
+    setPracticeAudioBlob(null);
+    setRecordingLanguage('german');
+    setRecordingDuration(0);
+    
+    // Reset UI states
+    setSidebarCollapsed(false);
+    setCurrentView('dashboard');
   };
 
   const handleLogout = async () => {
@@ -1756,10 +2311,7 @@ export default function Dashboard({ user }: DashboardProps) {
           {/* New Conversation Button */}
           {!sidebarCollapsed && (
             <button 
-              onClick={() => {
-                setSelectedConversation(null);
-                setCurrentView('dashboard');
-              }}
+              onClick={resetConversationState}
               className="w-full apple-button px-4 py-2.5 flex items-center justify-center space-x-2 font-medium mb-3"
             >
               <Plus className="h-4 w-4" />
@@ -1768,10 +2320,7 @@ export default function Dashboard({ user }: DashboardProps) {
           )}
           {sidebarCollapsed && (
             <button 
-              onClick={() => {
-                setSelectedConversation(null);
-                setCurrentView('dashboard');
-              }}
+              onClick={resetConversationState}
               className="w-full apple-button p-2 flex items-center justify-center mb-3"
               title="New Conversation"
             >
@@ -1987,6 +2536,7 @@ export default function Dashboard({ user }: DashboardProps) {
         {selectedConversation ? (
           // Conversation View
           <div className="flex-1 flex h-full">
+            {/* Main Chat Area */}
             <div className="flex-1 flex flex-col h-full">
 
             {/* German Partner Display */}
@@ -2017,7 +2567,7 @@ export default function Dashboard({ user }: DashboardProps) {
                     <p className="text-xs text-gray-400">Native Speaker</p>
                   </div>
                   <button 
-                    onClick={() => setSelectedConversation(null)}
+                    onClick={resetConversationState}
                     className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors"
                   >
                     End Conversation
@@ -2028,15 +2578,26 @@ export default function Dashboard({ user }: DashboardProps) {
 
             {/* Conversation Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0 max-h-full scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
-              {chatMessages.map((message) => (
-                <div key={message.id}>
+              {chatMessages.map((message) => {
+                // Debug logging for grammar help button
+                if (message.role === 'user') {
+                  console.log('Message ID:', message.id, 'Content:', message.content);
+                  console.log('Comprehensive analysis:', comprehensiveAnalysis[message.id]);
+                  console.log('Has errors:', comprehensiveAnalysis[message.id]?.hasErrors);
+                }
+                return (
+                  <div key={message.id}>
                   <div className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     {/* Mistake Detection Button - Outside chat bubble for user messages */}
-                    {message.role === 'user' && errorMessages[message.id] && (
-                      <div className="flex items-center mr-2">
+                    {message.role === 'user' && (comprehensiveAnalysis[message.id]?.hasErrors || errorMessages[message.id]) && (
+                      <div className="flex items-center mr-2 z-10">
                         <button
                           onClick={() => handleErrorCorrection(message.id)}
-                          className="group relative bg-red-500 hover:bg-red-600 text-white p-2 rounded-full shadow-lg transition-all duration-200 hover:scale-110"
+                          className={`group relative p-2 rounded-full shadow-lg transition-all duration-200 hover:scale-110 cursor-pointer ${
+                            activeHelpButton === message.id 
+                              ? 'bg-blue-500 hover:bg-blue-600' 
+                              : 'bg-red-500 hover:bg-red-600'
+                          } text-white`}
                           title="Click to understand the mistake and get grammar help"
                         >
                           <svg className="h-4 w-4 animate-pulse" fill="currentColor" viewBox="0 0 20 20">
@@ -2131,7 +2692,7 @@ export default function Dashboard({ user }: DashboardProps) {
                               <Loader2 className="h-4 w-4 animate-spin" />
                             )}
                             {/* Retry button for voice messages with errors */}
-                            {errorMessages[message.id] && userAttempts[message.id] < 3 && (
+                            {comprehensiveAnalysis[message.id] && comprehensiveAnalysis[message.id].hasErrors && userAttempts[message.id] < 3 && (
                               <button
                                 onClick={() => handleVoiceRetry(message.id)}
                                 className="flex items-center space-x-1 px-2 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded text-xs transition-colors"
@@ -2152,7 +2713,7 @@ export default function Dashboard({ user }: DashboardProps) {
                   </div>
                   
                   {/* Error indicators for user messages - Below chat bubble */}
-                  {message.role === 'user' && errorMessages[message.id] && (
+                  {message.role === 'user' && comprehensiveAnalysis[message.id] && comprehensiveAnalysis[message.id].hasErrors && (
                     <div className="flex justify-end mt-2">
                       <div className="flex items-center space-x-2">
                         {userAttempts[message.id] < 3 && (
@@ -2186,7 +2747,7 @@ export default function Dashboard({ user }: DashboardProps) {
                   )}
 
                   {/* Motivation animation for wrong answers - Hide when max attempts reached */}
-                  {message.role === 'user' && errorMessages[message.id] && userAttempts[message.id] < 3 && (
+                  {message.role === 'user' && comprehensiveAnalysis[message.id] && comprehensiveAnalysis[message.id].hasErrors && userAttempts[message.id] < 3 && (
                     <div className="flex justify-end mt-2">
                       <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-lg p-3 max-w-sm">
                         <div className="flex items-center space-x-2">
@@ -2243,8 +2804,28 @@ export default function Dashboard({ user }: DashboardProps) {
                       })}
                     </div>
                   )}
+                  
+                  {/* Try it again button for contextual help */}
+                  {message.role === 'assistant' && message.showTryAgain && (
+                    <div className="ml-4 mt-2 max-w-sm lg:max-w-lg">
+                      <button
+                        onClick={() => {
+                          // Focus on the input field to encourage user to try again
+                          const inputElement = document.querySelector('input[type="text"]') as HTMLInputElement;
+                          if (inputElement) {
+                            inputElement.focus();
+                          }
+                        }}
+                        className="text-sm bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition-colors flex items-center space-x-2"
+                      >
+                        <span>🎯</span>
+                        <span>Try it again in German!</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
-              ))}
+                );
+              })}
               
               {isTyping && (
                 <div className="flex justify-start">
@@ -2303,8 +2884,9 @@ export default function Dashboard({ user }: DashboardProps) {
                       )}
                     </div>
                   )}
+                  {/* Record Button - German by default */}
                   <button 
-                    onClick={isRecording ? stopRecording : () => setShowLanguageSelector(true)}
+                    onClick={isRecording ? stopRecording : startRecording}
                     disabled={isTranscribing}
                     className={`p-3 rounded-full transition-colors ${
                       isRecording 
@@ -2325,25 +2907,90 @@ export default function Dashboard({ user }: DashboardProps) {
             </div>
             </div>
             
-            {/* Toolbar */}
-            {showToolbar && (
-              <Toolbar
-                isVisible={showToolbar}
-                onClose={() => {
-                  setShowToolbar(false);
-                  setSidebarCollapsed(false);
-                  setToolbarOpenedViaHelp(false);
-                  setActiveHelpButton(null);
-                }}
-                currentMessage={currentAIMessage}
-                onAddToVocab={handleAddToVocab}
-                autoLoadExplanations={toolbarOpenedViaHelp}
-                comprehensiveAnalysis={comprehensiveAnalysis[currentAIMessage]}
-                activeTab={toolbarActiveTab}
-                onTabChange={setToolbarActiveTab}
-                newVocabItems={newVocabItems}
-              />
-            )}
+            {/* Right Sidebar - Collapsible Toolbar */}
+            <div className={`${toolbarCollapsed ? 'w-12' : 'w-96'} bg-white border-l border-gray-200 flex flex-col h-full transition-all duration-300 ease-in-out`}>
+              {/* Toolbar Header */}
+              <div className="p-4 border-b border-gray-100 flex-shrink-0">
+                <div className="flex items-center justify-between">
+                  {!toolbarCollapsed && (
+                    <div className="flex items-center space-x-2">
+                      <BookOpen className="h-5 w-5 text-blue-500" />
+                      <span className="text-sm font-semibold text-gray-900">Learning Tools</span>
+                    </div>
+                  )}
+                  <div className="flex items-center space-x-2">
+                    {toolbarCollapsed && (
+                      <BookOpen className="h-5 w-5 text-blue-500" />
+                    )}
+                    <button
+                      onClick={() => {
+                        setToolbarCollapsed(!toolbarCollapsed);
+                        // Auto-analyze grammar when expanding toolbar
+                        if (toolbarCollapsed && currentAIMessage) {
+                          console.log('Auto-analyzing grammar for:', currentAIMessage);
+                          // The comprehensive analysis should already be available
+                          // Just make sure the toolbar shows the analysis
+                        }
+                      }}
+                      className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                      title={toolbarCollapsed ? "Expand toolbar" : "Collapse toolbar"}
+                    >
+                      <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${toolbarCollapsed ? 'rotate-90' : '-rotate-90'}`} />
+                    </button>
+                    {!toolbarCollapsed && (
+                      <button
+                        onClick={() => setShowToolbar(false)}
+                        className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                        title="Close toolbar"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Toolbar Content */}
+              {!toolbarCollapsed ? (
+                <div className="flex-1 overflow-y-auto">
+                  <Toolbar
+                    isVisible={true}
+                    onClose={() => setShowToolbar(false)}
+                    currentMessage={currentAIMessage}
+                    onAddToVocab={handleAddToVocab}
+                    autoLoadExplanations={toolbarOpenedViaHelp}
+                    comprehensiveAnalysis={activeHelpButton ? comprehensiveAnalysis[activeHelpButton] : null}
+                    activeTab={toolbarActiveTab}
+                    onTabChange={setToolbarActiveTab}
+                    newVocabItems={newVocabItems}
+                    persistentVocab={persistentVocab}
+                    onUpdatePersistentVocab={setPersistentVocab}
+                  />
+                </div>
+              ) : (
+                /* Collapsed State - Show expand button */
+                <div className="flex-1 flex flex-col items-center justify-center space-y-4 p-2">
+                  <button
+                    onClick={() => {
+                      setToolbarCollapsed(false);
+                      // Auto-analyze grammar when expanding toolbar
+                      if (currentAIMessage) {
+                        console.log('Auto-analyzing grammar for:', currentAIMessage);
+                        // The comprehensive analysis should already be available
+                        // Just make sure the toolbar shows the analysis
+                      }
+                    }}
+                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                    title="Expand toolbar"
+                  >
+                    <ChevronDown className="h-6 w-6 rotate-90" />
+                  </button>
+                  <div className="text-xs text-gray-500 text-center">
+                    Click to expand<br />Learning Tools
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         ) : currentView === 'progress' ? (
           // Progress View
@@ -2600,60 +3247,6 @@ export default function Dashboard({ user }: DashboardProps) {
         onPictureUpdate={handleProfilePictureUpdate}
       />
 
-      {/* Language Selector Modal */}
-      {showLanguageSelector && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl p-6 w-96 max-w-sm mx-4">
-            <div className="text-center mb-6">
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Choose Language</h3>
-              <p className="text-gray-600 text-sm">Select the language you want to speak in</p>
-            </div>
-            
-            <div className="space-y-3">
-              <button
-                onClick={() => {
-                  setRecordingLanguage('german');
-                  setShowLanguageSelector(false);
-                  startRecording();
-                }}
-                className="w-full p-4 border-2 border-gray-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all duration-200 flex items-center space-x-3"
-              >
-                <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">DE</span>
-                </div>
-                <div className="text-left">
-                  <div className="font-semibold text-gray-900">German</div>
-                  <div className="text-sm text-gray-600">Practice your German speaking</div>
-                </div>
-              </button>
-              
-              <button
-                onClick={() => {
-                  setRecordingLanguage('english');
-                  setShowLanguageSelector(false);
-                  startRecording();
-                }}
-                className="w-full p-4 border-2 border-gray-200 rounded-xl hover:border-green-500 hover:bg-green-50 transition-all duration-200 flex items-center space-x-3"
-              >
-                <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">EN</span>
-                </div>
-                <div className="text-left">
-                  <div className="font-semibold text-gray-900">English</div>
-                  <div className="text-sm text-gray-600">Get help translating to German</div>
-                </div>
-              </button>
-            </div>
-            
-            <button
-              onClick={() => setShowLanguageSelector(false)}
-              className="w-full mt-4 py-3 text-gray-600 hover:text-gray-800 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Vocabulary Selector Modal */}
       {showVocabSelector && (
@@ -2747,6 +3340,98 @@ export default function Dashboard({ user }: DashboardProps) {
                 Add {selectedWords.size} word{selectedWords.size !== 1 ? 's' : ''}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Language Mismatch Modal */}
+      {showLanguageMismatchModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-96 max-w-sm mx-4">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="h-8 w-8 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Practice in German</h3>
+              <p className="text-gray-600 text-sm mb-4">
+                Try saying this in German:
+              </p>
+            </div>
+            
+            {/* German Suggestion */}
+            <div className="mb-6">
+              <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mb-4">
+                <div className="text-center">
+                  <div className="text-2xl font-semibold text-gray-900 mb-4">
+                    {germanSuggestion || 'Loading...'}
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (germanSuggestion) {
+                        speakText(germanSuggestion);
+                      } else {
+                        console.log('No German suggestion available to speak');
+                      }
+                    }}
+                    disabled={!germanSuggestion}
+                    className={`px-6 py-3 rounded-lg transition-colors flex items-center space-x-2 mx-auto ${
+                      germanSuggestion 
+                        ? 'bg-blue-500 hover:bg-blue-600 text-white' 
+                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    }`}
+                  >
+                    <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.617.793L4.617 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.617l3.766-3.793a1 1 0 011.617.793zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clipRule="evenodd" />
+                    </svg>
+                    <span>Listen</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            {/* Practice Recording */}
+            <div className="space-y-4">
+              <div className="text-center">
+                <button
+                  onClick={isRecording ? stopRecording : startRecording}
+                  disabled={isTranscribing}
+                  className={`p-4 rounded-full transition-colors ${
+                    isRecording 
+                      ? 'bg-red-500 hover:bg-red-600 text-white' 
+                      : 'bg-green-500 hover:bg-green-600 text-white'
+                  } ${isTranscribing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  {isTranscribing ? (
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  ) : isRecording ? (
+                    <MicOff className="h-6 w-6" />
+                  ) : (
+                    <Mic className="h-6 w-6" />
+                  )}
+                </button>
+                <div className="mt-2 text-sm text-gray-600">
+                  {isRecording ? 'Recording...' : isTranscribing ? 'Processing...' : 'Click to practice'}
+                </div>
+              </div>
+            </div>
+            
+            <button
+              onClick={() => {
+                console.log('Skip button clicked');
+                setShowLanguageMismatchModal(false);
+                setDetectedLanguage(null);
+                setMismatchTranscription('');
+                setMismatchMessageId('');
+                setGermanSuggestion('');
+                setPracticeAudioBlob(null);
+                setIsTranscribing(false);
+              }}
+              className="w-full mt-4 py-3 text-gray-600 hover:text-gray-800 transition-colors"
+            >
+              Skip for now
+            </button>
           </div>
         </div>
       )}
