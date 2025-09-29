@@ -199,6 +199,18 @@ export default function Dashboard({ user }: DashboardProps) {
     });
   };
 
+  const clearCheckingStatus = (messageId: string) => {
+    setMessageStatus(prev => {
+      if (prev[messageId] !== 'checking') {
+        return prev;
+      }
+
+      const newState = { ...prev };
+      delete newState[messageId];
+      return newState;
+    });
+  };
+
   // Recording state variables
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
@@ -947,7 +959,9 @@ export default function Dashboard({ user }: DashboardProps) {
       setIsTyping(false);
       return;
     }
-    
+
+    clearCheckingStatus(messageId);
+
     console.log('✅ === PROCEEDING WITH AI RESPONSE ===');
     console.log('📡 === STARTING AI API CALL ===');
     console.log('Selected conversation:', selectedConversation);
@@ -1457,8 +1471,6 @@ export default function Dashboard({ user }: DashboardProps) {
       errorMessages: clearedErrorMessages,
       userAttempts: clearedUserAttempts
     });
-
-    updateMessageStatus(messageId, null);
 
     // Ensure the message content stays as the text content (EXACT SAME AS VOICE)
     setTimeout(() => {
@@ -2724,7 +2736,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   userAttempts: clearedUserAttempts
                 });
 
-                updateMessageStatus(mismatchMessageId, null);
+                clearCheckingStatus(mismatchMessageId);
 
                 console.log('🔍 === AFTER SEND TRANSCRIPTION TO AI ===');
                 console.log('Chat messages after AI call:', chatMessages.length);
@@ -2811,7 +2823,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 ));
               }, 500);
 
-              updateMessageStatus(messageId, null);
+              clearCheckingStatus(messageId);
               return;
               }
             } else {
@@ -3020,7 +3032,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               userAttempts: clearedUserAttempts
             });
 
-            updateMessageStatus(messageId, null);
+            clearCheckingStatus(messageId);
           } else {
             // For English recordings, translate to German and provide suggestions
             await translateEnglishToGerman(transcription, messageId);
@@ -3246,6 +3258,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     }
 
     console.log('✅ === PROCEEDING WITH AI RESPONSE ===');
+    clearCheckingStatus(messageId);
     setIsSending(true);
     setIsTyping(true);
 
@@ -3304,14 +3317,6 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     } finally {
       setIsSending(false);
       setIsTyping(false);
-      setMessageStatus(prev => {
-        if (prev[messageId] !== 'checking') {
-          return prev;
-        }
-        const newState = { ...prev };
-        delete newState[messageId];
-        return newState;
-      });
     }
   };
 
