@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { germanTTS } from '../lib/tts';
 import {
   Mic,
   MicOff,
@@ -97,6 +98,29 @@ export default function Dashboard({ user }: DashboardProps) {
   const [showProfileModal, setShowProfileModal] = React.useState(false);
   const [currentProfilePicture, setCurrentProfilePicture] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // 🎮 GAMIFICATION STATE
+  const [playerStats, setPlayerStats] = React.useState({
+    level: 1,
+    experience: 0,
+    experienceToNext: 100,
+    totalPoints: 0,
+    streak: 0,
+    conversationsCompleted: 0,
+    wordsLearned: 0,
+    speakingTime: 0, // in minutes
+    achievements: [] as string[],
+    badges: [] as string[],
+    currentStreak: 0,
+    longestStreak: 0,
+    perfectConversations: 0,
+    vocabularyMaster: 0,
+    pronunciationChampion: 0
+  });
+
+  const [showLevelUp, setShowLevelUp] = React.useState(false);
+  const [showAchievement, setShowAchievement] = React.useState<string | null>(null);
+  const [recentAchievements, setRecentAchievements] = React.useState<string[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [contextLevel, setContextLevel] = useState('Professional');
   const [difficultyLevel, setDifficultyLevel] = useState('Intermediate');
@@ -110,6 +134,10 @@ export default function Dashboard({ user }: DashboardProps) {
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [messageInput, setMessageInput] = useState('');
+  const [modalInput, setModalInput] = useState('');
+  const [isModalRecording, setIsModalRecording] = useState(false);
+  const [modalRecorder, setModalRecorder] = useState<MediaRecorder | null>(null);
+  const [modalTriggerType, setModalTriggerType] = useState<'voice' | 'text' | null>(null);
   
   // Debug component mount/unmount
   React.useEffect(() => {
@@ -233,6 +261,7 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('germanSuggestion:', germanSuggestion);
     console.log('recordingLanguage:', recordingLanguage);
   }, [showLanguageMismatchModal, detectedLanguage, mismatchTranscription, germanSuggestion, recordingLanguage]);
+
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [showVocabSelector, setShowVocabSelector] = useState(false);
   const [extractedVocab, setExtractedVocab] = useState<Array<{word: string, meaning: string, context: string}>>([]);
@@ -696,98 +725,128 @@ export default function Dashboard({ user }: DashboardProps) {
     }
   };
 
-  // Audio cache to store generated TTS audio
-  const audioCache = React.useRef<Map<string, string>>(new Map());
+  // Audio cache is now handled by the centralized TTS service
+
+  // 🎮 GAMIFICATION FUNCTIONS
+  const addExperience = (amount: number, source: string) => {
+    setPlayerStats(prev => {
+      const newExp = prev.experience + amount;
+      const newLevel = Math.floor(newExp / 100) + 1;
+      const expToNext = 100 - (newExp % 100);
+      
+      // Check for level up
+      if (newLevel > prev.level) {
+        setShowLevelUp(true);
+        setTimeout(() => setShowLevelUp(false), 3000);
+      }
+      
+      return {
+        ...prev,
+        experience: newExp,
+        level: newLevel,
+        experienceToNext: expToNext,
+        totalPoints: prev.totalPoints + amount
+      };
+    });
+  };
+
+  // 🎮 GAMIFICATION TRIGGERS
+  const triggerConversationComplete = () => {
+    setPlayerStats(prev => ({
+      ...prev,
+      conversationsCompleted: prev.conversationsCompleted + 1,
+      currentStreak: prev.currentStreak + 1,
+      longestStreak: Math.max(prev.longestStreak, prev.currentStreak + 1)
+    }));
+    addExperience(25, 'conversation_complete');
+    checkAchievements();
+  };
+
+  const triggerWordLearned = (wordCount: number = 1) => {
+    setPlayerStats(prev => ({
+      ...prev,
+      wordsLearned: prev.wordsLearned + wordCount
+    }));
+    addExperience(wordCount * 2, 'word_learned');
+    checkAchievements();
+  };
+
+  const triggerSpeakingTime = (minutes: number) => {
+    setPlayerStats(prev => ({
+      ...prev,
+      speakingTime: prev.speakingTime + minutes
+    }));
+    addExperience(minutes * 3, 'speaking_time');
+    checkAchievements();
+  };
+
+  const addAchievement = (achievementId: string, title: string, description: string) => {
+    setPlayerStats(prev => {
+      if (!prev.achievements.includes(achievementId)) {
+        setShowAchievement(achievementId);
+        setRecentAchievements(prev => [...prev, achievementId]);
+        setTimeout(() => setShowAchievement(null), 3000);
+        setTimeout(() => setRecentAchievements(prev => prev.filter(id => id !== achievementId)), 5000);
+        
+        return {
+          ...prev,
+          achievements: [...prev.achievements, achievementId]
+        };
+      }
+      return prev;
+    });
+  };
+
+  const checkAchievements = () => {
+    const stats = playerStats;
+    
+    // Conversation achievements
+    if (stats.conversationsCompleted >= 1 && !stats.achievements.includes('first_conversation')) {
+      addAchievement('first_conversation', '🎉 First Conversation', 'Completed your first German conversation!');
+    }
+    if (stats.conversationsCompleted >= 10 && !stats.achievements.includes('conversation_master')) {
+      addAchievement('conversation_master', '💬 Conversation Master', 'Completed 10 conversations!');
+    }
+    if (stats.conversationsCompleted >= 50 && !stats.achievements.includes('conversation_expert')) {
+      addAchievement('conversation_expert', '🏆 Conversation Expert', 'Completed 50 conversations!');
+    }
+    
+    // Streak achievements
+    if (stats.currentStreak >= 3 && !stats.achievements.includes('streak_starter')) {
+      addAchievement('streak_starter', '🔥 Streak Starter', '3-day practice streak!');
+    }
+    if (stats.currentStreak >= 7 && !stats.achievements.includes('week_warrior')) {
+      addAchievement('week_warrior', '⚡ Week Warrior', '7-day practice streak!');
+    }
+    if (stats.currentStreak >= 30 && !stats.achievements.includes('month_master')) {
+      addAchievement('month_master', '🌟 Month Master', '30-day practice streak!');
+    }
+    
+    // Level achievements
+    if (stats.level >= 5 && !stats.achievements.includes('level_5')) {
+      addAchievement('level_5', '⭐ Level 5', 'Reached level 5!');
+    }
+    if (stats.level >= 10 && !stats.achievements.includes('level_10')) {
+      addAchievement('level_10', '🌟 Level 10', 'Reached level 10!');
+    }
+    if (stats.level >= 25 && !stats.achievements.includes('level_25')) {
+      addAchievement('level_25', '🏆 Level 25', 'Reached level 25!');
+    }
+    
+    // Vocabulary achievements
+    if (stats.wordsLearned >= 50 && !stats.achievements.includes('vocab_50')) {
+      addAchievement('vocab_50', '📚 Vocabulary Builder', 'Learned 50 words!');
+    }
+    if (stats.wordsLearned >= 200 && !stats.achievements.includes('vocab_200')) {
+      addAchievement('vocab_200', '📖 Word Wizard', 'Learned 200 words!');
+    }
+    if (stats.wordsLearned >= 500 && !stats.achievements.includes('vocab_500')) {
+      addAchievement('vocab_500', '📚 Lexicon Legend', 'Learned 500 words!');
+    }
+  };
 
   const speakText = async (text: string) => {
-    try {
-      // Cancel any ongoing speech
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
-
-      // Check if we already have this audio cached
-      const cachedAudioUrl = audioCache.current.get(text);
-      if (cachedAudioUrl) {
-        console.log('Playing cached German TTS for:', text);
-        const audio = new Audio(cachedAudioUrl);
-        audio.play();
-        return;
-      }
-
-      console.log('Generating new German TTS for:', text);
-      
-      // Use Supabase edge function for high-quality German TTS
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/german-tts`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-        },
-        body: JSON.stringify({ text })
-      });
-
-      if (!response.ok) {
-        throw new Error(`TTS API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      if (data.success && data.audioUrl) {
-        // Cache the audio URL for future use
-        audioCache.current.set(text, data.audioUrl);
-        
-        // Play the generated German audio
-        const audio = new Audio(data.audioUrl);
-        audio.play();
-        console.log('Playing and caching German TTS audio');
-      } else {
-        throw new Error(data.error || 'Failed to generate German speech');
-      }
-    } catch (error) {
-      console.error('German TTS failed, falling back to browser speech:', error);
-      
-      // Fallback to browser speech synthesis with German voice selection
-      if ('speechSynthesis' in window) {
-        setTimeout(() => {
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.lang = 'de-DE';
-          
-          // Get available voices and select the best German voice
-          const voices = window.speechSynthesis.getVoices();
-          const germanVoices = voices.filter(voice => 
-            voice.lang.startsWith('de') || 
-            voice.lang.includes('German') ||
-            voice.name.includes('German') || 
-            voice.name.includes('Deutsch') || 
-            voice.name.includes('Anna') || 
-            voice.name.includes('Stefan') ||
-            voice.name.includes('Katja') ||
-            voice.name.includes('Thomas') ||
-            voice.name.includes('Hedda') ||
-            voice.name.includes('Markus')
-          );
-          
-          if (germanVoices.length > 0) {
-            const preferredVoice = germanVoices.find(voice => 
-              voice.name.includes('Anna') || 
-              voice.name.includes('Katja') ||
-              voice.name.includes('Hedda') ||
-              voice.name.includes('German Female')
-            ) || germanVoices[0];
-            
-            utterance.voice = preferredVoice;
-            console.log('Using fallback German voice:', preferredVoice.name);
-          }
-          
-          utterance.rate = 0.85;
-          utterance.pitch = 1.0;
-          utterance.volume = 0.9;
-          
-          window.speechSynthesis.speak(utterance);
-        }, 200);
-      }
-    }
+    await germanTTS.speak(text);
   };
 
   const toggleTranslation = (messageId: string) => {
@@ -1589,6 +1648,42 @@ export default function Dashboard({ user }: DashboardProps) {
       return;
     }
 
+    // Check for language mismatch in typed text
+    const detectedLanguage = detectLanguage(trimmedInput);
+    console.log('🔍 === TEXT LANGUAGE DETECTION ===');
+    console.log('Detected language:', detectedLanguage);
+    console.log('Recording language:', recordingLanguage);
+    console.log('Show language mismatch modal state:', showLanguageMismatchModal);
+    console.log('Waiting for correction state:', waitingForCorrection);
+    console.log('Active message ID:', activeMessageId);
+    
+    if (detectedLanguage === 'english' && recordingLanguage === 'german') {
+      console.log('🔍 === TEXT LANGUAGE MISMATCH DETECTED ===');
+      console.log('English text detected when German was expected');
+      
+      // Clear any existing states that might interfere
+      setWaitingForCorrection(false);
+      setActiveMessageId(null);
+      setUserAttempts({});
+      setErrorMessages({});
+      
+      // Show mismatch modal for typed English text
+      setDetectedLanguage(detectedLanguage);
+      setMismatchTranscription(trimmedInput);
+      setMismatchMessageId(Date.now().toString());
+      setGermanSuggestion('');
+      
+      // Generate German suggestion for practice
+      generateGermanSuggestion(trimmedInput);
+      
+      // Show the modal
+      setModalTriggerType('text');
+      setShowLanguageMismatchModal(true);
+      
+      console.log('🏁 === TEXT SEND END (MODAL SHOWN) ===');
+      return; // Don't proceed with normal processing
+    }
+
     // Collapse toolbar when conversation starts (first user message)
     if (chatMessages.length <= 1) { // Only AI greeting message exists
       setToolbarCollapsed(true);
@@ -1957,17 +2052,7 @@ export default function Dashboard({ user }: DashboardProps) {
 
 
   // Auto-play German suggestion when modal opens
-  useEffect(() => {
-    if (showLanguageMismatchModal && germanSuggestion) {
-      // Wait for text to be fully set and rendered
-      const timer = setTimeout(async () => {
-        console.log('Playing audio for:', germanSuggestion);
-        await speakText(germanSuggestion);
-      }, 1500);
-
-      return () => clearTimeout(timer);
-    }
-  }, [showLanguageMismatchModal, germanSuggestion]);
+  // Removed automatic TTS playing - user should click "Listen" button manually
 
   // Clear German suggestion when modal opens
   useEffect(() => {
@@ -2152,54 +2237,33 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
   // Detect language of transcribed text
   const detectLanguage = (text: string): 'german' | 'english' => {
-    // More comprehensive language detection
-    const germanWords = ['ich', 'du', 'er', 'sie', 'es', 'wir', 'ihr', 'der', 'die', 'das', 'und', 'oder', 'aber', 'mit', 'von', 'zu', 'auf', 'in', 'an', 'für', 'ist', 'sind', 'haben', 'werden', 'können', 'müssen', 'sollen', 'wollen', 'möchte', 'mögen', 'bin', 'bist', 'war', 'waren', 'wird', 'werde', 'wirst', 'werdet', 'habe', 'hast', 'hat', 'hatte', 'hatten', 'kann', 'kannst', 'könnt', 'konnte', 'konnten', 'will', 'willst', 'wollt', 'wollte', 'wollten', 'soll', 'sollst', 'sollt', 'sollte', 'sollten', 'muss', 'musst', 'müsst', 'musste', 'mussten', 'mag', 'magst', 'mögt', 'mochte', 'mochten'];
-    const englishWords = ['i', 'you', 'he', 'she', 'it', 'we', 'they', 'the', 'and', 'or', 'but', 'with', 'from', 'to', 'on', 'in', 'at', 'for', 'is', 'are', 'have', 'will', 'can', 'must', 'should', 'want', 'like', 'am', 'was', 'were', 'been', 'being', 'has', 'had', 'having', 'do', 'does', 'did', 'doing', 'done', 'go', 'goes', 'went', 'going', 'gone', 'get', 'gets', 'got', 'getting', 'make', 'makes', 'made', 'making', 'take', 'takes', 'took', 'taking', 'come', 'comes', 'came', 'coming', 'see', 'sees', 'saw', 'seeing', 'seen', 'know', 'knows', 'knew', 'knowing', 'known', 'think', 'thinks', 'thought', 'thinking', 'say', 'says', 'said', 'saying', 'tell', 'tells', 'told', 'telling', 'give', 'gives', 'gave', 'giving', 'given', 'find', 'finds', 'found', 'finding'];
-    
+    // Simple and reliable language detection
     const words = text.toLowerCase().split(/\s+/);
-    let germanCount = 0;
-    let englishCount = 0;
-    
-    words.forEach(word => {
-      // Clean word of punctuation
-      const cleanWord = word.replace(/[.,!?;:]/g, '');
-      if (germanWords.includes(cleanWord)) germanCount++;
-      if (englishWords.includes(cleanWord)) englishCount++;
-    });
     
     // Check for German-specific characters (strong indicator)
     const hasGermanChars = /[äöüßÄÖÜ]/.test(text);
     if (hasGermanChars) {
-      germanCount += 5; // Strong weight for German characters
+      console.log('Language detection: German characters found');
+      return 'german';
     }
     
-    // Check for common English patterns
-    const hasEnglishPatterns = /\b(the|and|or|but|in|on|at|to|for|of|with|by|this|that|these|those|what|where|when|why|how)\b/i.test(text);
-    if (hasEnglishPatterns) {
-      englishCount += 2;
-    }
+    // Check for common English words
+    const englishWords = ['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'this', 'that', 'these', 'those', 'what', 'where', 'when', 'why', 'how', 'hello', 'hi', 'how', 'are', 'you', 'i', 'am', 'is', 'was', 'were', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'can', 'could', 'should', 'would', 'may', 'might', 'must', 'shall'];
+    const englishCount = words.filter(word => {
+      const cleanWord = word.replace(/[.,!?;:]/g, '');
+      return englishWords.includes(cleanWord);
+    }).length;
     
-    // Check for common German patterns
-    const hasGermanPatterns = /\b(der|die|das|und|oder|aber|mit|von|zu|auf|in|an|für|ich|du|er|sie|es|wir|ihr|diese|diese|dieses|was|wo|wann|warum|wie)\b/i.test(text);
-    if (hasGermanPatterns) {
-      germanCount += 2;
-    }
+    // Check for common German words
+    const germanWords = ['der', 'die', 'das', 'und', 'oder', 'aber', 'mit', 'von', 'zu', 'auf', 'in', 'an', 'für', 'ich', 'du', 'er', 'sie', 'es', 'wir', 'ihr', 'ist', 'sind', 'haben', 'werden', 'können', 'müssen', 'sollen', 'wollen', 'möchte', 'mögen', 'bin', 'bist', 'war', 'waren', 'wird', 'werde', 'wirst', 'werdet', 'hast', 'hat', 'hatte', 'hatten', 'kann', 'kannst', 'könnt', 'konnte', 'konnten', 'will', 'willst', 'wollt', 'wollte', 'wollten', 'soll', 'sollst', 'sollt', 'sollte', 'sollten', 'muss', 'musst', 'müsst', 'musste', 'mussten', 'mag', 'magst', 'mögt', 'mochte', 'mochten'];
+    const germanCount = words.filter(word => {
+      const cleanWord = word.replace(/[.,!?;:]/g, '');
+      return germanWords.includes(cleanWord);
+    }).length;
     
-    // Check for German verb endings (strong indicator)
-    const hasGermanVerbEndings = /\b(geht|kommt|macht|sagt|weiß|kann|will|soll|muss|darf|möchte|könnte|würde|hätte|wäre|wird|war|ist|bin|bist|haben|hatten|werden|wurden)\b/i.test(text);
-    if (hasGermanVerbEndings) {
-      germanCount += 3;
-    }
+    console.log('Language detection:', { text, germanCount, englishCount, hasGermanChars, detected: englishCount > germanCount ? 'english' : 'german' });
     
-    // Check for English verb endings (strong indicator)
-    const hasEnglishVerbEndings = /\b(goes|comes|makes|says|knows|can|will|should|must|may|could|would|have|had|been|was|is|am|are|were|being|doing|going|coming|seeing|knowing|thinking|saying|telling|giving|finding)\b/i.test(text);
-    if (hasEnglishVerbEndings) {
-      englishCount += 3;
-    }
-    
-    console.log('Language detection:', { text, germanCount, englishCount, hasGermanChars, detected: germanCount > englishCount ? 'german' : 'english' });
-    
-    return germanCount > englishCount ? 'german' : 'english';
+    return englishCount > germanCount ? 'english' : 'german';
   };
 
   // Extract vocabulary from German text using chat function
@@ -2502,6 +2566,178 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     }
   };
 
+  // Modal recording functions
+  const startModalRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+      let recordingStartTime = Date.now();
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+        const recordingDuration = Date.now() - recordingStartTime;
+        
+        console.log('🎤 === MODAL RECORDING STOPPED ===');
+        console.log('Audio blob size:', audioBlob.size, 'bytes');
+        console.log('Recording duration:', recordingDuration, 'ms');
+        
+        // Process the modal recording
+        await processModalRecording(audioBlob);
+        
+        // Stop all tracks to release microphone
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      setModalRecorder(recorder);
+      setIsModalRecording(true);
+      
+      console.log('🎤 === MODAL RECORDING STARTED ===');
+    } catch (error) {
+      console.error('Error starting modal recording:', error);
+      alert('Microphone access denied. Please allow microphone access to use voice input.');
+    }
+  };
+
+  const stopModalRecording = () => {
+    if (modalRecorder && isModalRecording) {
+      modalRecorder.stop();
+      setIsModalRecording(false);
+    }
+  };
+
+  const processModalRecording = async (audioBlob: Blob) => {
+    console.log('🎤 === PROCESSING MODAL RECORDING ===');
+    
+    // Convert blob to base64
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64Audio = reader.result as string;
+      const base64Data = base64Audio.split(',')[1];
+      
+      console.log('Base64 audio length:', base64Data.length);
+      
+      try {
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whisper`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({ audio: base64Data })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          
+          if (data.transcription) {
+            const transcription = data.transcription;
+            console.log('Modal transcription:', transcription);
+            
+            // Detect language
+            const detectedLanguage = detectLanguage(transcription);
+            console.log('Modal detected language:', detectedLanguage);
+            
+            if (detectedLanguage === 'german') {
+              // User said it correctly in German - close modal and replace message
+              console.log('✅ === MODAL PRACTICE SUCCESSFUL ===');
+              
+              // Replace the original English message with the German transcription
+              if (mismatchMessageId) {
+                setChatMessages(prev => prev.map(msg =>
+                  msg.id === mismatchMessageId
+                    ? { ...msg, content: transcription }
+                    : msg
+                ));
+                
+                // Process the German message normally
+                await processTextMessage(transcription, mismatchMessageId, false);
+              }
+              
+              // Close modal
+              setShowLanguageMismatchModal(false);
+              setDetectedLanguage(null);
+              setMismatchTranscription('');
+              setMismatchMessageId('');
+              setGermanSuggestion('');
+              setModalInput('');
+              setModalTriggerType(null);
+              setIsTranscribing(false);
+            } else {
+              // User still said it in English - show error
+              console.log('❌ === MODAL PRACTICE FAILED - STILL ENGLISH ===');
+              alert('Please try saying it in German. You said: "' + transcription + '"');
+            }
+          }
+        } else {
+          console.error('Modal transcription failed:', response.status);
+          alert('Failed to process your recording. Please try again.');
+        }
+      } catch (error) {
+        console.error('Modal transcription error:', error);
+        alert('Failed to process your recording. Please try again.');
+      }
+    };
+    
+    reader.readAsDataURL(audioBlob);
+  };
+
+  // Handle modal text submission
+  const handleModalTextSubmit = async () => {
+    if (!modalInput.trim()) return;
+    
+    console.log('📝 === MODAL TEXT SUBMISSION ===');
+    console.log('Modal input:', modalInput);
+    
+    // Detect language of the typed text
+    const detectedLanguage = detectLanguage(modalInput);
+    console.log('Modal text detected language:', detectedLanguage);
+    
+    if (detectedLanguage === 'german') {
+      // User typed it correctly in German - create new message and process
+      console.log('✅ === MODAL TEXT SUBMISSION SUCCESSFUL ===');
+      
+      // Create a new message with the German text
+      const newMessageId = Date.now().toString();
+      const newMessage = {
+        id: newMessageId,
+        content: modalInput,
+        role: 'user' as const,
+        timestamp: new Date().toISOString(),
+        isTranscribing: false
+      };
+      
+      // Add the new message to chat
+      setChatMessages(prev => [...prev, newMessage]);
+      
+      // Close modal and clear input immediately
+      setShowLanguageMismatchModal(false);
+      setDetectedLanguage(null);
+      setMismatchTranscription('');
+      setMismatchMessageId('');
+      setGermanSuggestion('');
+      setModalInput('');
+      setModalTriggerType(null);
+      setMessageInput(''); // Clear the chat input box
+      
+      // Process the German message asynchronously (after modal closes)
+      setTimeout(async () => {
+        await processTextMessage(modalInput, newMessageId, false);
+      }, 100);
+    } else {
+      // User still typed it in English - show error
+      console.log('❌ === MODAL TEXT SUBMISSION FAILED - STILL ENGLISH ===');
+      alert('Please type it in German. You typed: "' + modalInput + '"');
+    }
+  };
+
   const processAudioMessage = async (audioBlob: Blob) => {
     // Store audio blob for practice modal use
     setPracticeAudioBlob(audioBlob);
@@ -2713,12 +2949,13 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           
           // Detect language mismatch
           const detectedLanguage = detectLanguage(transcription);
-          console.log('🔍 === LANGUAGE DETECTION DEBUG ===');
+          console.log('🔍 === VOICE LANGUAGE DETECTION DEBUG ===');
           console.log('Transcription:', transcription);
           console.log('Detected language:', detectedLanguage);
           console.log('Selected language:', recordingLanguage);
           console.log('Language mismatch:', detectedLanguage !== recordingLanguage);
           console.log('Show language mismatch modal state:', showLanguageMismatchModal);
+          console.log('Has English words check:', /\b(the|and|or|but|in|on|at|to|for|of|with|by|this|that|these|those|what|where|when|why|how|hello|hi|how|are|you)\b/i.test(transcription));
           
           // Check if we're in practice modal mode
           if (showLanguageMismatchModal && germanSuggestion) {
@@ -2913,7 +3150,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           }
           
           // Show mismatch modal if there's a language difference OR if English words are detected
-          const hasEnglishWords = /\b(the|and|or|but|in|on|at|to|for|of|with|by|this|that|these|those|what|where|when|why|how)\b/i.test(transcription);
+          const hasEnglishWords = /\b(the|and|or|but|in|on|at|to|for|of|with|by|this|that|these|those|what|where|when|why|how|hello|hi|how|are|you)\b/i.test(transcription);
           const isLanguageMismatch = detectedLanguage !== recordingLanguage;
           
           if (isLanguageMismatch || (recordingLanguage === 'german' && hasEnglishWords)) {
@@ -2921,73 +3158,53 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             console.log('Detected language:', detectedLanguage);
             console.log('Recording language:', recordingLanguage);
             console.log('Transcription:', transcription);
-            console.log('🔍 === CHECKING MISMATCH CONDITIONS ===');
             
-            // Additional checks for reliability
-            const wordCount = transcription.trim().split(/\s+/).length;
-            const hasSubstantialContent = wordCount > 2;
-            const hasClearLanguageIndicators = transcription.length > 10; // At least 10 characters
+            // Show modal for ANY English sentence, regardless of length
+            console.log('✅ === SHOWING LANGUAGE MISMATCH MODAL ===');
+            console.log('Transcription:', transcription);
             
-            console.log('🔍 === CONTENT CHECKS ===');
-            console.log('Word count:', wordCount, '(needs > 2)');
-            console.log('Has substantial content:', hasSubstantialContent);
-            console.log('Length:', transcription.length, '(needs > 10)');
-            console.log('Has clear language indicators:', hasClearLanguageIndicators);
-            console.log('All conditions met:', hasSubstantialContent && hasClearLanguageIndicators);
+            // Language mismatch detected - show modal
+            setDetectedLanguage(detectedLanguage);
+            setMismatchTranscription(transcription);
+            setMismatchMessageId(messageId);
             
-            if (hasSubstantialContent && hasClearLanguageIndicators) {
-              console.log('✅ === SHOWING LANGUAGE MISMATCH MODAL ===');
-              console.log('Transcription:', transcription);
-              console.log('Word count:', wordCount, 'Length:', transcription.length);
-              
-              // Language mismatch detected - show modal
-              setDetectedLanguage(detectedLanguage);
-              setMismatchTranscription(transcription);
-              setMismatchMessageId(messageId);
-              
-              // Clear any previous German suggestion
-              setGermanSuggestion('');
-              console.log('Cleared German suggestion state');
-              
-              // Generate German suggestion for practice
-              if (detectedLanguage === 'english') {
-                console.log('English detected, generating German suggestion for:', transcription);
+            // Clear any previous German suggestion
+            setGermanSuggestion('');
+            console.log('Cleared German suggestion state');
+            
+            // Generate German suggestion for practice
+            if (detectedLanguage === 'english') {
+              console.log('English detected, generating German suggestion for:', transcription);
 
-                // Use API as primary method - no fallback until API fails
-                generateGermanSuggestion(transcription);
+              // Use API as primary method - no fallback until API fails
+              generateGermanSuggestion(transcription);
 
-                // Set a timeout fallback in case API fails
-                const timeoutId = setTimeout(() => {
-                  console.log('API timeout, using simple fallback');
-                  setGermanSuggestion('Entschuldigung, ich kann das nicht übersetzen.');
-                }, 5000); // 5 second timeout
+              // Set a timeout fallback in case API fails
+              const timeoutId = setTimeout(() => {
+                console.log('API timeout, using simple fallback');
+                setGermanSuggestion('Entschuldigung, ich kann das nicht übersetzen.');
+              }, 5000); // 5 second timeout
 
-                // Store timeout ID to clear it if API succeeds
-                (window as any).germanSuggestionTimeout = timeoutId;
-              }
-
-              console.log('🚀 Setting showLanguageMismatchModal to TRUE');
-              setShowLanguageMismatchModal(true);
-
-              setChatMessages(prev => prev.map(msg =>
-                msg.id === messageId
-                  ? { ...msg, content: transcription, isTranscribing: false }
-                  : msg
-              ));
-
-              updateMessageStatus(messageId, 'mismatch');
-
-              // Clear any loading states
-              setIsTranscribing(false);
-              console.log('🏁 === TRANSCRIBE AUDIO END (MODAL SHOWN) ===');
-              return; // Don't proceed with AI processing
-            } else {
-              console.log('❌ === LANGUAGE MISMATCH BUT CONTENT TOO SHORT ===');
-              console.log('Word count:', wordCount, 'Length:', transcription.length);
-              console.log('Not showing modal - content insufficient');
-              console.log('Has substantial content:', hasSubstantialContent);
-              console.log('Has clear language indicators:', hasClearLanguageIndicators);
+              // Store timeout ID to clear it if API succeeds
+              (window as any).germanSuggestionTimeout = timeoutId;
             }
+
+            console.log('🚀 Setting showLanguageMismatchModal to TRUE');
+            setModalTriggerType('voice');
+            setShowLanguageMismatchModal(true);
+
+            setChatMessages(prev => prev.map(msg =>
+              msg.id === messageId
+                ? { ...msg, content: transcription, isTranscribing: false }
+                : msg
+            ));
+
+            updateMessageStatus(messageId, 'mismatch');
+
+            // Clear any loading states
+            setIsTranscribing(false);
+            console.log('🏁 === TRANSCRIBE AUDIO END (MODAL SHOWN) ===');
+            return; // Don't proceed with AI processing
           } else {
             console.log('✅ === LANGUAGES MATCH - PROCEEDING WITH NORMAL PROCESSING ===');
             console.log('Detected language:', detectedLanguage, 'Recording language:', recordingLanguage);
@@ -3491,6 +3708,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     setIsNewUser(false);
     setCurrentProfilePicture(data.profilePictureUrl || null);
     localStorage.setItem(`onboarding_${user.id}`, JSON.stringify(data));
+    
+    // 🎮 Give XP for completing onboarding
+    addExperience(50, 'onboarding_complete');
+    addAchievement('onboarding_complete', '🚀 Getting Started', 'Completed your profile setup!');
   };
 
   const handleProfilePictureUpdate = (newUrl: string | null) => {
@@ -3589,16 +3810,18 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
   };
 
   return (
-    <div className="h-screen bg-gray-50 flex">
+    <div className="h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex overflow-hidden">
       {/* Sidebar */}
-      <div className={`${sidebarCollapsed ? 'w-16' : 'w-80'} bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ease-in-out`}>
+      <div className={`${sidebarCollapsed ? 'w-16' : 'w-80'} bg-gradient-to-b from-white to-slate-50 border-r border-slate-200 flex flex-col transition-all duration-300 ease-in-out shadow-lg overflow-hidden`}>
         {/* Sidebar Header */}
-        <div className="p-4 border-b border-gray-100">
+        <div className="p-4 border-b border-slate-200 bg-gradient-to-r from-blue-50 to-indigo-50">
           <div className="flex items-center justify-between mb-4">
             {!sidebarCollapsed && (
               <div className="flex items-center space-x-2">
-                <MessageCircle className="h-6 w-6 text-blue-500" />
-                <span className="text-lg font-semibold text-gray-900 apple-text-primary">TalkBuddy</span>
+                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
+                  <MessageCircle className="h-5 w-5 text-white" />
+                </div>
+                <span className="text-lg font-display text-gradient-primary">TalkBuddy</span>
               </div>
             )}
             <div className="flex items-center space-x-2">
@@ -3647,7 +3870,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           {!sidebarCollapsed && (
             <button 
               onClick={resetConversationState}
-              className="w-full apple-button px-4 py-2.5 flex items-center justify-center space-x-2 font-medium mb-3"
+              className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-4 py-2.5 flex items-center justify-center space-x-2 font-semibold mb-3 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
             >
               <Plus className="h-4 w-4" />
               <span>New Conversation</span>
@@ -3663,15 +3886,76 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             </button>
           )}
 
+          {/* 🎮 GAMIFICATION COMPONENTS */}
+          {!sidebarCollapsed && (
+            <div className="mb-4">
+              {/* Player Stats Card */}
+              <div className="bg-gradient-to-br from-purple-500 via-pink-500 to-rose-500 rounded-xl p-4 text-white mb-3 shadow-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
+                      <span className="text-sm font-bold">🎮</span>
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium">Level {playerStats.level}</div>
+                      <div className="text-xs opacity-90">{playerStats.totalPoints} XP</div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs opacity-90">Streak</div>
+                    <div className="text-sm font-bold">{playerStats.currentStreak} 🔥</div>
+                  </div>
+                </div>
+                
+                {/* Experience Bar */}
+                <div className="w-full bg-white/20 rounded-full h-2 mb-2">
+                  <div 
+                    className="bg-white rounded-full h-2 transition-all duration-500"
+                    style={{ width: `${(playerStats.experience % 100)}%` }}
+                  ></div>
+                </div>
+                <div className="text-xs opacity-90">
+                  {100 - (playerStats.experience % 100)} XP to next level
+                </div>
+              </div>
+
+              {/* Quick Stats */}
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-3 text-center border border-blue-200">
+                  <div className="text-lg font-display text-blue-700">{playerStats.conversationsCompleted}</div>
+                  <div className="text-xs text-blue-600 font-caption">Conversations</div>
+                </div>
+                <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-3 text-center border border-green-200">
+                  <div className="text-lg font-display text-green-700">{playerStats.wordsLearned}</div>
+                  <div className="text-xs text-green-600 font-caption">Words Learned</div>
+                </div>
+              </div>
+
+              {/* Recent Achievements */}
+              {recentAchievements.length > 0 && (
+                <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-lg p-3 mb-3 border border-yellow-200">
+                  <div className="text-xs font-semibold text-amber-700 mb-2">🏆 Recent Achievements</div>
+                  <div className="space-y-1">
+                    {recentAchievements.map((achievement, index) => (
+                      <div key={index} className="text-xs text-amber-600 animate-pulse font-medium">
+                        ✨ Achievement unlocked!
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Navigation Links */}
           {!sidebarCollapsed && (
             <div className="flex space-x-1">
               <button
                 onClick={() => setCurrentView('progress')}
-                className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                className={`flex-1 px-3 py-2 text-sm font-semibold rounded-lg transition-all duration-200 ${
                   currentView === 'progress'
-                    ? 'bg-blue-50 text-blue-600' 
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md' 
+                    : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100'
                 }`}
               >
                 <BarChart3 className="h-4 w-4 inline mr-1" />
@@ -3679,10 +3963,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               </button>
               <button
                 onClick={() => setCurrentView('vocab')}
-                className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                className={`flex-1 px-3 py-2 text-sm font-semibold rounded-lg transition-all duration-200 ${
                   currentView === 'vocab'
-                    ? 'bg-blue-50 text-blue-600'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md'
+                    : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100'
                 }`}
               >
                 <BookOpen className="h-4 w-4 inline mr-1" />
@@ -3736,10 +4020,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
         {/* Recent Conversations */}
         {!sidebarCollapsed && (
-          <div className="flex-1 overflow-hidden flex flex-col">
-          <div className="p-4 pb-2">
+          <div className="flex-1 overflow-hidden flex flex-col bg-gradient-to-b from-slate-50/50 to-white min-h-0">
+          <div className="p-4 pb-2 bg-gradient-to-r from-slate-50 to-white">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-gray-700 apple-text-primary">Recent Conversations</h3>
+              <h3 className="text-sm font-semibold text-slate-800 font-heading">Recent Conversations</h3>
               <div className="relative">
                 <button
                   onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
@@ -3780,7 +4064,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               </div>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto px-4 pb-4">
+          <div className="flex-1 overflow-y-auto px-4 pb-4 min-h-0">
             {conversationsLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-5 w-5 text-gray-400 animate-spin" />
@@ -3796,19 +4080,19 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   >
                     <button
                       onClick={() => startNewConversation(conversation.id)}
-                      className={`w-full text-left p-3 rounded-lg transition-colors ${
+                      className={`w-full text-left p-3 rounded-lg transition-all duration-200 ${
                         selectedConversation === conversation.id
-                          ? 'bg-blue-50 border border-blue-200'
-                          : 'hover:bg-gray-50 border border-transparent'
+                          ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 shadow-sm'
+                          : 'hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 border border-transparent hover:shadow-sm'
                       }`}
                     >
                       <div className="flex items-start justify-between mb-1">
-                        <h4 className="text-sm font-medium truncate apple-text-primary">
+                        <h4 className="text-sm font-semibold truncate text-slate-800 font-heading">
                           {conversation.title}
                         </h4>
                       </div>
-                      <p className="text-xs apple-text-secondary truncate mb-1">{conversation.preview}</p>
-                      <p className="text-xs text-gray-400">{formatTime(conversation.updated_at)}</p>
+                      <p className="text-xs text-slate-600 truncate mb-1 font-body">{conversation.preview}</p>
+                      <p className="text-xs text-slate-500 font-caption">{formatTime(conversation.updated_at)}</p>
                     </button>
                     
                     {/* Delete button - appears on hover */}
@@ -3829,11 +4113,14 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               </div>
             ) : (
               <div className="text-center py-8">
-                <MessageCircle className="h-8 w-8 text-gray-300 mx-auto mb-2" />
-                <p className="text-sm apple-text-secondary">
+                <div className="w-16 h-16 bg-gradient-to-br from-slate-100 to-slate-200 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <MessageCircle className="h-8 w-8 text-slate-400" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-800 mb-2 font-heading">No Conversations Yet</h3>
+                <p className="text-sm text-slate-600 font-body">
                   {selectedCategory 
                     ? `No ${selectedCategory.toLowerCase()} conversations yet`
-                    : 'No conversations yet'
+                    : 'Start your first conversation to begin learning!'
                   }
                 </p>
               </div>
@@ -3844,11 +4131,11 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
         {/* Settings */}
         {!sidebarCollapsed && (
-          <div className="p-4 border-t border-gray-100">
-            <h3 className="text-sm font-medium text-gray-700 mb-3 apple-text-primary">Settings</h3>
+          <div className="p-4 border-t border-slate-200 bg-gradient-to-r from-slate-50 to-white">
+            <h3 className="text-sm font-semibold text-slate-800 mb-3 font-heading">Settings</h3>
             <button
               onClick={() => setShowProfileModal(true)}
-              className="flex items-center space-x-3 w-full text-left p-2 hover:bg-gray-50 rounded-md transition-colors"
+              className="flex items-center space-x-3 w-full text-left p-2 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 rounded-md transition-all duration-200"
             >
               {currentProfilePicture ? (
                 <img src={currentProfilePicture} alt="Profile" className="w-8 h-8 rounded-full object-cover" />
@@ -3858,8 +4145,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 </div>
               )}
               <div>
-                <p className="text-sm font-medium apple-text-primary">{firstName}</p>
-                <p className="text-xs apple-text-secondary">Profile Settings</p>
+                <p className="text-sm font-semibold text-slate-800 font-heading">{firstName}</p>
+                <p className="text-xs text-slate-600 font-caption">Profile Settings</p>
               </div>
             </button>
           </div>
@@ -3867,15 +4154,15 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col bg-gradient-to-br from-white to-slate-50 overflow-hidden">
         {selectedConversation ? (
           // Conversation View
-          <div className="flex-1 flex h-full">
+          <div className="flex-1 flex h-full overflow-hidden">
             {/* Main Chat Area */}
-            <div className="flex-1 flex flex-col h-full">
+            <div className="flex-1 flex flex-col h-full overflow-hidden">
 
             {/* German Partner Display */}
-            <div className="bg-white border-b border-gray-200 px-4 py-3">
+            <div className="bg-gradient-to-r from-white to-slate-50 border-b border-slate-200 px-4 py-3 shadow-sm">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   <div className="relative">
@@ -3912,7 +4199,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             </div>
 
             {/* Conversation Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0 max-h-full scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0 bg-gradient-to-b from-slate-50/50 to-white scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100">
               {chatMessages.map((message) => {
                 // Debug logging for grammar help button
                 if (message.role === 'user') {
@@ -3948,8 +4235,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     
                     <div className={`max-w-sm lg:max-w-lg px-4 py-3 rounded-2xl ${
                       message.role === 'user'
-                        ? 'bg-blue-500 text-white rounded-tr-md'
-                        : 'apple-card rounded-tl-md'
+                        ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-tr-md shadow-md'
+                        : 'bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-tl-md shadow-sm'
                     }`}>
                       {message.role === 'assistant' && (
                         <div className="flex items-center justify-between mb-2">
@@ -4203,7 +4490,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             </div>
 
             {/* Message Input */}
-            <div className="bg-white border-t border-gray-200 p-4">
+            <div className="bg-gradient-to-r from-white to-slate-50 border-t border-slate-200 p-4 shadow-lg">
               <div className="flex items-center space-x-3">
                 <div className="flex-1 relative">
                   <input
@@ -4213,13 +4500,13 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     onChange={(e) => setMessageInput(e.target.value)}
                     onKeyPress={handleKeyPress}
                     disabled={isSending}
-                    className="w-full px-4 py-3 apple-input rounded-full text-sm"
+                    className="w-full px-4 py-3 border border-slate-300 rounded-full text-sm bg-white shadow-sm focus:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                   />
                 </div>
                 <button 
                   onClick={sendMessage}
                   disabled={!messageInput.trim() || isSending}
-                  className="apple-button p-3 rounded-full disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white p-3 rounded-full disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg transition-all duration-200"
                 >
                   {isSending ? (
                     <Loader2 className="h-4 w-4 text-white animate-spin" />
@@ -4350,48 +4637,133 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             </div>
           </div>
         ) : currentView === 'progress' ? (
-          // Progress View
+          // 🎮 GAMIFIED PROGRESS VIEW
           <div className="flex-1 p-8">
             <div className="max-w-4xl mx-auto">
               <div className="mb-8">
-                <h1 className="text-3xl font-semibold apple-text-primary mb-2">
-                  Your Progress
+                <h1 className="text-3xl font-display text-gradient-primary mb-2">
+                  🎮 Your Gaming Progress
                 </h1>
-                <p className="text-xl apple-text-secondary">
-                  Track your speaking practice and review past conversations
+                <p className="text-xl text-slate-600 font-body">
+                  Level up your German skills with achievements and rewards!
                 </p>
               </div>
 
-              {/* Progress Stats */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div className="apple-card rounded-xl p-6">
+              {/* 🎮 GAMIFIED STATS */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                {/* Level Card */}
+                <div className="bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl p-6 text-white">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium apple-text-secondary">Total Conversations</h3>
+                    <h3 className="text-sm font-medium opacity-90">Level</h3>
+                    <span className="text-2xl">🎮</span>
+                  </div>
+                  <p className="text-3xl font-bold">{playerStats.level}</p>
+                  <div className="text-xs opacity-90 mt-1">
+                    {playerStats.experienceToNext} XP to next level
+                  </div>
+                </div>
+                
+                {/* Experience Card */}
+                <div className="bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-xl p-6 shadow-sm">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-semibold text-slate-600 font-heading">Total XP</h3>
+                    <span className="text-xl">⭐</span>
+                  </div>
+                  <p className="text-2xl font-display text-slate-800">{playerStats.totalPoints}</p>
+                  <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                    <div 
+                      className="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full transition-all duration-500"
+                      style={{ width: `${(playerStats.experience % 100)}%` }}
+                    ></div>
+                  </div>
+                </div>
+                
+                {/* Streak Card */}
+                <div className="bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-xl p-6 shadow-sm">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-semibold text-slate-600 font-heading">Streak</h3>
+                    <span className="text-xl">🔥</span>
+                  </div>
+                  <p className="text-2xl font-display text-slate-800">{playerStats.currentStreak}</p>
+                  <div className="text-xs text-slate-500 mt-1 font-caption">
+                    Best: {playerStats.longestStreak} days
+                  </div>
+                </div>
+                
+                {/* Conversations Card */}
+                <div className="bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-xl p-6 shadow-sm">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-semibold text-slate-600 font-heading">Conversations</h3>
                     <MessageCircle className="h-5 w-5 text-blue-500" />
                   </div>
-                  <p className="text-2xl font-semibold apple-text-primary">{conversations.length}</p>
-                </div>
-                
-                <div className="apple-card rounded-xl p-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium apple-text-secondary">This Week</h3>
-                    <BarChart3 className="h-5 w-5 text-green-500" />
+                  <p className="text-2xl font-display text-slate-800">{playerStats.conversationsCompleted}</p>
+                  <div className="text-xs text-slate-500 mt-1 font-caption">
+                    {playerStats.wordsLearned} words learned
                   </div>
-                  <p className="text-2xl font-semibold apple-text-primary">
-                    {conversations.filter(conv => {
-                      const weekAgo = new Date();
-                      weekAgo.setDate(weekAgo.getDate() - 7);
-                      return new Date(conv.created_at) > weekAgo;
-                    }).length}
-                  </p>
                 </div>
-                
-                <div className="apple-card rounded-xl p-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium apple-text-secondary">Current Streak</h3>
-                    <Target className="h-5 w-5 text-orange-500" />
+              </div>
+
+              {/* 🏆 ACHIEVEMENTS SECTION */}
+              <div className="apple-card rounded-xl p-6 mb-8">
+                <h2 className="text-xl font-semibold apple-text-primary mb-4 flex items-center">
+                  🏆 Achievements ({playerStats.achievements.length})
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {/* Achievement Cards */}
+                  <div className="bg-gradient-to-r from-yellow-400 to-orange-500 rounded-lg p-4 text-white">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-2xl">🎉</span>
+                      <div className="text-xs opacity-90">Unlocked</div>
+                    </div>
+                    <div className="text-sm font-medium">First Conversation</div>
+                    <div className="text-xs opacity-90">Completed your first German conversation!</div>
                   </div>
-                  <p className="text-2xl font-semibold apple-text-primary">3 days</p>
+                  
+                  <div className="bg-gradient-to-r from-blue-400 to-purple-500 rounded-lg p-4 text-white">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-2xl">💬</span>
+                      <div className="text-xs opacity-90">Unlocked</div>
+                    </div>
+                    <div className="text-sm font-medium">Conversation Master</div>
+                    <div className="text-xs opacity-90">Completed 10 conversations!</div>
+                  </div>
+                  
+                  <div className="bg-gradient-to-r from-green-400 to-blue-500 rounded-lg p-4 text-white">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-2xl">📚</span>
+                      <div className="text-xs opacity-90">Unlocked</div>
+                    </div>
+                    <div className="text-sm font-medium">Vocabulary Builder</div>
+                    <div className="text-xs opacity-90">Learned 50 words!</div>
+                  </div>
+                  
+                  {/* Locked Achievements */}
+                  <div className="bg-gray-100 rounded-lg p-4 text-gray-400">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-2xl">🔒</span>
+                      <div className="text-xs">Locked</div>
+                    </div>
+                    <div className="text-sm font-medium">Conversation Expert</div>
+                    <div className="text-xs">Complete 50 conversations</div>
+                  </div>
+                  
+                  <div className="bg-gray-100 rounded-lg p-4 text-gray-400">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-2xl">🔒</span>
+                      <div className="text-xs">Locked</div>
+                    </div>
+                    <div className="text-sm font-medium">Word Wizard</div>
+                    <div className="text-xs">Learn 200 words</div>
+                  </div>
+                  
+                  <div className="bg-gray-100 rounded-lg p-4 text-gray-400">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-2xl">🔒</span>
+                      <div className="text-xs">Locked</div>
+                    </div>
+                    <div className="text-sm font-medium">Month Master</div>
+                    <div className="text-xs">30-day practice streak</div>
+                  </div>
                 </div>
               </div>
 
@@ -4480,7 +4852,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           </div>
         ) : currentView === 'vocab' ? (
           // Vocab List View
-          <div className="flex-1 flex items-center justify-center p-8">
+          <div className="flex-1 flex items-center justify-center p-8 overflow-y-auto">
             <div className="text-center">
               <BookOpen className="h-16 w-16 text-gray-300 mx-auto mb-4" />
               <h2 className="text-2xl font-semibold apple-text-primary mb-2">Vocabulary List</h2>
@@ -4489,26 +4861,26 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           </div>
         ) : (
           // Welcome Screen
-          <div className="flex-1 flex items-center justify-center p-8">
+          <div className="flex-1 flex items-center justify-center p-8 bg-gradient-to-br from-slate-50 to-white overflow-y-auto">
             <div className="max-w-2xl w-full">
               <div className="text-center mb-8">
-                <h1 className="text-3xl font-semibold apple-text-primary mb-2">
+                <h1 className="text-3xl font-display text-gradient-primary mb-2">
                   Hello {firstName}!
                 </h1>
-                <p className="text-xl apple-text-secondary">
+                <p className="text-xl text-slate-600 font-body">
                   What would you like to practice in German today?
                 </p>
               </div>
 
               {/* Enhanced Conversation Input */}
-              <div className="apple-card rounded-2xl p-6 shadow-lg">
+              <div className="bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-2xl p-6 shadow-lg">
                 {/* Text Input */}
                 <div className="mb-6">
                   <textarea
                     placeholder="My left knee is injured and I want to visit a doctor."
                     value={conversationInput}
                     onChange={(e) => setConversationInput(e.target.value)}
-                    className="w-full px-4 py-4 apple-input rounded-xl text-base resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-4 border border-slate-300 rounded-xl text-base resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm focus:shadow-md transition-all duration-200 font-body"
                     rows={4}
                   />
                 </div>
@@ -4517,16 +4889,16 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 <div className="flex space-x-4 mb-6">
                   {/* Context Level */}
                   <div className="flex-1 relative">
-                    <label className="block text-sm font-medium apple-text-primary mb-2">Context</label>
+                    <label className="block text-sm font-semibold text-slate-800 mb-2 font-heading">Context</label>
                     <button
                       onClick={() => setShowContextDropdown(!showContextDropdown)}
-                      className="w-full apple-input rounded-lg px-4 py-3 text-left flex items-center justify-between"
+                      className="w-full border border-slate-300 rounded-lg px-4 py-3 text-left flex items-center justify-between bg-white shadow-sm hover:shadow-md transition-all duration-200"
                     >
-                      <span className="text-sm font-medium apple-text-primary">{contextLevel}</span>
+                      <span className="text-sm font-semibold text-slate-800 font-heading">{contextLevel}</span>
                       <ChevronDown className="h-4 w-4 text-gray-400" />
                     </button>
                     {showContextDropdown && (
-                      <div className="absolute top-full left-0 right-0 mt-1 apple-card rounded-lg shadow-lg z-10">
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-lg shadow-lg z-10">
                         {contextLevels.map((level) => (
                           <button
                             key={level}
@@ -4534,7 +4906,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                               setContextLevel(level);
                               setShowContextDropdown(false);
                             }}
-                            className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg apple-text-primary"
+                            className="w-full text-left px-4 py-3 text-sm hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 first:rounded-t-lg last:rounded-b-lg text-slate-800 font-body transition-all duration-200"
                           >
                             {level}
                           </button>
@@ -4545,16 +4917,16 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
                   {/* Difficulty Level */}
                   <div className="flex-1 relative">
-                    <label className="block text-sm font-medium apple-text-primary mb-2">Level</label>
+                    <label className="block text-sm font-semibold text-slate-800 mb-2 font-heading">Level</label>
                     <button
                       onClick={() => setShowDifficultyDropdown(!showDifficultyDropdown)}
-                      className="w-full apple-input rounded-lg px-4 py-3 text-left flex items-center justify-between"
+                      className="w-full border border-slate-300 rounded-lg px-4 py-3 text-left flex items-center justify-between bg-white shadow-sm hover:shadow-md transition-all duration-200"
                     >
-                      <span className="text-sm font-medium apple-text-primary">{difficultyLevel}</span>
+                      <span className="text-sm font-semibold text-slate-800 font-heading">{difficultyLevel}</span>
                       <ChevronDown className="h-4 w-4 text-gray-400" />
                     </button>
                     {showDifficultyDropdown && (
-                      <div className="absolute top-full left-0 right-0 mt-1 apple-card rounded-lg shadow-lg z-10">
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-lg shadow-lg z-10">
                         {difficultyLevels.map((level) => (
                           <button
                             key={level}
@@ -4562,7 +4934,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                               setDifficultyLevel(level);
                               setShowDifficultyDropdown(false);
                             }}
-                            className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 first:rounded-t-lg last:rounded-b-lg apple-text-primary"
+                            className="w-full text-left px-4 py-3 text-sm hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 first:rounded-t-lg last:rounded-b-lg text-slate-800 font-body transition-all duration-200"
                           >
                             {level}
                           </button>
@@ -4577,13 +4949,13 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   <div></div>
                   
                   <div className="flex items-center space-x-3">
-                    <button className="p-3 apple-input rounded-full hover:bg-gray-50 transition-colors">
-                      <Mic className="h-5 w-5 text-gray-600" />
+                    <button className="p-3 border border-slate-300 rounded-full hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 transition-all duration-200 bg-white shadow-sm hover:shadow-md">
+                      <Mic className="h-5 w-5 text-slate-600" />
                     </button>
                     <button 
                       onClick={createNewConversation}
                       disabled={!conversationInput.trim()}
-                      className="apple-button px-8 py-3 rounded-full flex items-center space-x-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-8 py-3 rounded-full flex items-center space-x-2 font-semibold disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg transition-all duration-200"
                     >
                       <Play className="h-4 w-4" />
                       <span>Start Chat</span>
@@ -4696,7 +5068,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-2">Practice in German</h3>
               <p className="text-gray-600 text-sm mb-4">
-                Try saying this in German:
+                {modalTriggerType === 'text' ? 'Try writing this in German:' : 'Try saying this in German:'}
               </p>
             </div>
             
@@ -4731,30 +5103,67 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               </div>
             </div>
             
-            {/* Practice Recording */}
+            {/* Practice Input */}
             <div className="space-y-4">
-              <div className="text-center">
-                <button
-                  onClick={isRecording ? stopRecording : startRecording}
-                  disabled={isTranscribing}
-                  className={`p-4 rounded-full transition-colors ${
-                    isRecording 
-                      ? 'bg-red-500 hover:bg-red-600 text-white' 
-                      : 'bg-green-500 hover:bg-green-600 text-white'
-                  } ${isTranscribing ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  {isTranscribing ? (
-                    <Loader2 className="h-6 w-6 animate-spin" />
-                  ) : isRecording ? (
-                    <MicOff className="h-6 w-6" />
-                  ) : (
-                    <Mic className="h-6 w-6" />
-                  )}
-                </button>
-                <div className="mt-2 text-sm text-gray-600">
-                  {isRecording ? 'Recording...' : isTranscribing ? 'Processing...' : 'Click to practice'}
+              {/* Text Input - Only show for text-triggered modals */}
+              {modalTriggerType === 'text' && (
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Type your German response:
+                  </label>
+                  <div className="flex space-x-2">
+                    <input
+                      type="text"
+                      value={modalInput}
+                      onChange={(e) => setModalInput(e.target.value)}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter') {
+                          handleModalTextSubmit();
+                        }
+                      }}
+                      placeholder="Type in German..."
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <button
+                      onClick={handleModalTextSubmit}
+                      disabled={!modalInput.trim()}
+                      className={`px-4 py-2 rounded-lg transition-colors ${
+                        modalInput.trim()
+                          ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                          : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      }`}
+                    >
+                      Send
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Voice Recording - Only show for voice-triggered modals */}
+              {modalTriggerType === 'voice' && (
+                <div className="text-center">
+                  <button
+                    onClick={isRecording ? stopRecording : startRecording}
+                    disabled={isTranscribing}
+                    className={`p-4 rounded-full transition-colors ${
+                      isRecording 
+                        ? 'bg-red-500 hover:bg-red-600 text-white' 
+                        : 'bg-green-500 hover:bg-green-600 text-white'
+                    } ${isTranscribing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {isTranscribing ? (
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                    ) : isRecording ? (
+                      <MicOff className="h-6 w-6" />
+                    ) : (
+                      <Mic className="h-6 w-6" />
+                    )}
+                  </button>
+                  <div className="mt-2 text-sm text-gray-600">
+                    {isRecording ? 'Recording...' : isTranscribing ? 'Processing...' : 'Click to practice'}
+                  </div>
+                </div>
+              )}
             </div>
             
             <button
@@ -4765,12 +5174,64 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 setMismatchTranscription('');
                 setMismatchMessageId('');
                 setGermanSuggestion('');
+                setModalInput('');
+                setModalTriggerType(null);
                 setPracticeAudioBlob(null);
                 setIsTranscribing(false);
+                setIsModalRecording(false);
+                if (modalRecorder) {
+                  modalRecorder.stop();
+                  setModalRecorder(null);
+                }
               }}
               className="w-full mt-4 py-3 text-gray-600 hover:text-gray-800 transition-colors"
             >
               Skip for now
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 🎮 GAMIFICATION MODALS */}
+      
+      {/* Level Up Modal */}
+      {showLevelUp && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full text-center animate-bounce">
+            <div className="text-6xl mb-4">🎉</div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Level Up!</h2>
+            <p className="text-gray-600 mb-4">You've reached Level {playerStats.level}!</p>
+            <div className="bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg p-4 mb-4">
+              <div className="text-sm opacity-90">New Level</div>
+              <div className="text-3xl font-bold">{playerStats.level}</div>
+            </div>
+            <button
+              onClick={() => setShowLevelUp(false)}
+              className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-lg font-medium transition-colors"
+            >
+              Awesome!
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Achievement Modal */}
+      {showAchievement && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full text-center animate-pulse">
+            <div className="text-6xl mb-4">🏆</div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Achievement Unlocked!</h2>
+            <p className="text-gray-600 mb-4">You've earned a new achievement!</p>
+            <div className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-lg p-4 mb-4">
+              <div className="text-sm opacity-90">Achievement</div>
+              <div className="text-xl font-bold">🎉 First Conversation</div>
+              <div className="text-sm opacity-90">Completed your first German conversation!</div>
+            </div>
+            <button
+              onClick={() => setShowAchievement(null)}
+              className="w-full bg-green-500 hover:bg-green-600 text-white py-3 rounded-lg font-medium transition-colors"
+            >
+              Amazing!
             </button>
           </div>
         </div>

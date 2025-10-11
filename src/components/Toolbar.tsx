@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { BookOpen, Lightbulb, Volume2, Star, X, Play, Mic, MicOff, Loader2, AlertCircle, CheckCircle, Target, Trophy } from 'lucide-react';
+import { germanTTS } from '../lib/tts';
 
 interface ToolbarProps {
   isVisible: boolean;
@@ -122,99 +123,11 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
     achievements: []
   });
 
-  // Audio cache to store generated TTS audio
-  const audioCache = React.useRef<Map<string, string>>(new Map());
+  // Audio cache is now handled by the centralized TTS service
 
   // Speak text function
   const speakText = async (text: string) => {
-    try {
-      // Cancel any ongoing speech
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
-
-      // Check if we already have this audio cached
-      const cachedAudioUrl = audioCache.current.get(text);
-      if (cachedAudioUrl) {
-        console.log('Playing cached German TTS for:', text);
-        const audio = new Audio(cachedAudioUrl);
-        audio.play();
-        return;
-      }
-
-      console.log('Generating new German TTS for:', text);
-      
-      // Use Supabase edge function for high-quality German TTS
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/german-tts`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-        },
-        body: JSON.stringify({ text })
-      });
-
-      if (!response.ok) {
-        throw new Error(`TTS API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      if (data.success && data.audioUrl) {
-        // Cache the audio URL for future use
-        audioCache.current.set(text, data.audioUrl);
-        
-        // Play the generated German audio
-        const audio = new Audio(data.audioUrl);
-        audio.play();
-        console.log('Playing and caching German TTS audio');
-      } else {
-        throw new Error(data.error || 'Failed to generate German speech');
-      }
-    } catch (error) {
-      console.error('German TTS failed, falling back to browser speech:', error);
-      
-      // Fallback to browser speech synthesis with German voice selection
-      if ('speechSynthesis' in window) {
-        setTimeout(() => {
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.lang = 'de-DE';
-          
-          // Get available voices and select the best German voice
-          const voices = window.speechSynthesis.getVoices();
-          const germanVoices = voices.filter(voice => 
-            voice.lang.startsWith('de') || 
-            voice.lang.includes('German') ||
-            voice.name.includes('German') || 
-            voice.name.includes('Deutsch') || 
-            voice.name.includes('Anna') || 
-            voice.name.includes('Stefan') ||
-            voice.name.includes('Katja') ||
-            voice.name.includes('Thomas') ||
-            voice.name.includes('Hedda') ||
-            voice.name.includes('Markus')
-          );
-          
-          if (germanVoices.length > 0) {
-            const preferredVoice = germanVoices.find(voice => 
-              voice.name.includes('Anna') || 
-              voice.name.includes('Katja') ||
-              voice.name.includes('Hedda') ||
-              voice.name.includes('German Female')
-            ) || germanVoices[0];
-            
-            utterance.voice = preferredVoice;
-            console.log('Using fallback German voice:', preferredVoice.name);
-          }
-          
-          utterance.rate = 0.85;
-          utterance.pitch = 1.0;
-          utterance.volume = 0.9;
-          
-          window.speechSynthesis.speak(utterance);
-        }, 200);
-      }
-    }
+    await germanTTS.speak(text);
   };
 
   // Vocabulary is now conversation-specific, no localStorage persistence
@@ -1051,15 +964,15 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
   if (!isVisible) return null;
 
   return (
-    <div className="w-full bg-white flex flex-col h-full">
+    <div className="w-full bg-gradient-to-br from-white to-slate-50 flex flex-col h-full shadow-lg">
       {/* Tabs */}
-      <div className="flex border-b border-gray-200">
+      <div className="flex border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white">
         <button
           onClick={() => setActiveTab('vocab')}
-          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+          className={`flex-1 px-4 py-3 text-sm font-semibold transition-all duration-200 ${
             activeTab === 'vocab'
-              ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
-              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              ? 'text-blue-700 border-b-2 border-blue-600 bg-gradient-to-r from-blue-50 to-indigo-50'
+              : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100'
           }`}
         >
           <BookOpen className="h-4 w-4 inline mr-2" />
@@ -1073,10 +986,10 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
               generateGrammarExplanation(currentMessage);
             }
           }}
-          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+          className={`flex-1 px-4 py-3 text-sm font-semibold transition-all duration-200 ${
             activeTab === 'explain'
-              ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
-              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              ? 'text-blue-700 border-b-2 border-blue-600 bg-gradient-to-r from-blue-50 to-indigo-50'
+              : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100'
           }`}
         >
           <Lightbulb className="h-4 w-4 inline mr-2" />
@@ -1084,10 +997,10 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
         </button>
         <button
           onClick={() => setActiveTab('pronunciation')}
-          className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
+          className={`flex-1 px-4 py-3 text-sm font-semibold transition-all duration-200 ${
             activeTab === 'pronunciation'
-              ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
-              : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              ? 'text-blue-700 border-b-2 border-blue-600 bg-gradient-to-r from-blue-50 to-indigo-50'
+              : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100'
           }`}
         >
           <Volume2 className="h-4 w-4 inline mr-2" />
@@ -1096,7 +1009,7 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4 bg-gradient-to-b from-slate-50/50 to-white">
         {activeTab === 'vocab' && (
           <div className="space-y-6">
             {vocabItems.length > 0 ? (
@@ -1116,7 +1029,7 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
                 {vocabItems
                   .filter(item => vocabFilter === 'all' || item.category === vocabFilter || item.theme === vocabFilter)
                   .map((item, index) => (
-                    <div key={index} className="bg-gray-50 rounded-xl p-4 flex items-center justify-between hover:bg-gray-100 transition-colors">
+                    <div key={index} className="bg-gradient-to-br from-slate-50 to-white border border-slate-200 rounded-xl p-4 flex items-center justify-between hover:shadow-md transition-all duration-200 shadow-sm">
                       <div className="flex-1">
                         <div className="font-semibold text-gray-900 text-base">{item.word}</div>
                         <div className="text-sm text-gray-600 mt-1">{item.meaning}</div>
@@ -1127,14 +1040,14 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
                       <div className="flex items-center space-x-2">
                         <button
                           onClick={async () => await speakText(item.word)}
-                          className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+                          className="p-2 hover:bg-slate-100 rounded-lg transition-all duration-200 hover:shadow-sm"
                           title="Listen"
                         >
                           <Volume2 className="h-4 w-4 text-gray-500" />
                         </button>
                         <button
                           onClick={() => removeVocabItem(index)}
-                          className="p-2 hover:bg-red-100 rounded-lg transition-colors"
+                          className="p-2 hover:bg-red-50 rounded-lg transition-all duration-200 hover:shadow-sm"
                           title="Remove"
                         >
                           <X className="h-4 w-4 text-red-500" />
@@ -1145,12 +1058,14 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
               </div>
             ) : (
               <div className="text-center py-8">
-                <BookOpen className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">No Vocabulary Yet</h3>
+                <div className="w-16 h-16 bg-gradient-to-br from-slate-100 to-slate-200 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <BookOpen className="h-8 w-8 text-slate-400" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-800 mb-2">No Vocabulary Yet</h3>
                 <p className="text-sm text-gray-600 mb-6">
                   Start a conversation and use the translate feature to collect German words
                 </p>
-                <div className="bg-blue-50 rounded-xl p-6 text-center">
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6 text-center shadow-sm">
                   <p className="text-sm text-blue-700">
                     💡 Click the "EN" button on any AI message, then "Add words to vocab" to start building your vocabulary!
                   </p>
