@@ -696,19 +696,97 @@ export default function Dashboard({ user }: DashboardProps) {
     }
   };
 
-  const speakText = (text: string) => {
-    if ('speechSynthesis' in window) {
+  // Audio cache to store generated TTS audio
+  const audioCache = React.useRef<Map<string, string>>(new Map());
+
+  const speakText = async (text: string) => {
+    try {
       // Cancel any ongoing speech
-      window.speechSynthesis.cancel();
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+
+      // Check if we already have this audio cached
+      const cachedAudioUrl = audioCache.current.get(text);
+      if (cachedAudioUrl) {
+        console.log('Playing cached German TTS for:', text);
+        const audio = new Audio(cachedAudioUrl);
+        audio.play();
+        return;
+      }
+
+      console.log('Generating new German TTS for:', text);
       
-      // Small delay to ensure speech synthesis is ready
-      setTimeout(() => {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'de-DE'; // German language
-        utterance.rate = 0.8; // Slightly slower for learning
-        console.log('Speaking:', text);
-        window.speechSynthesis.speak(utterance);
-      }, 200);
+      // Use Supabase edge function for high-quality German TTS
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/german-tts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify({ text })
+      });
+
+      if (!response.ok) {
+        throw new Error(`TTS API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.success && data.audioUrl) {
+        // Cache the audio URL for future use
+        audioCache.current.set(text, data.audioUrl);
+        
+        // Play the generated German audio
+        const audio = new Audio(data.audioUrl);
+        audio.play();
+        console.log('Playing and caching German TTS audio');
+      } else {
+        throw new Error(data.error || 'Failed to generate German speech');
+      }
+    } catch (error) {
+      console.error('German TTS failed, falling back to browser speech:', error);
+      
+      // Fallback to browser speech synthesis with German voice selection
+      if ('speechSynthesis' in window) {
+        setTimeout(() => {
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = 'de-DE';
+          
+          // Get available voices and select the best German voice
+          const voices = window.speechSynthesis.getVoices();
+          const germanVoices = voices.filter(voice => 
+            voice.lang.startsWith('de') || 
+            voice.lang.includes('German') ||
+            voice.name.includes('German') || 
+            voice.name.includes('Deutsch') || 
+            voice.name.includes('Anna') || 
+            voice.name.includes('Stefan') ||
+            voice.name.includes('Katja') ||
+            voice.name.includes('Thomas') ||
+            voice.name.includes('Hedda') ||
+            voice.name.includes('Markus')
+          );
+          
+          if (germanVoices.length > 0) {
+            const preferredVoice = germanVoices.find(voice => 
+              voice.name.includes('Anna') || 
+              voice.name.includes('Katja') ||
+              voice.name.includes('Hedda') ||
+              voice.name.includes('German Female')
+            ) || germanVoices[0];
+            
+            utterance.voice = preferredVoice;
+            console.log('Using fallback German voice:', preferredVoice.name);
+          }
+          
+          utterance.rate = 0.85;
+          utterance.pitch = 1.0;
+          utterance.volume = 0.9;
+          
+          window.speechSynthesis.speak(utterance);
+        }, 200);
+      }
     }
   };
 
@@ -1882,9 +1960,9 @@ export default function Dashboard({ user }: DashboardProps) {
   useEffect(() => {
     if (showLanguageMismatchModal && germanSuggestion) {
       // Wait for text to be fully set and rendered
-      const timer = setTimeout(() => {
+      const timer = setTimeout(async () => {
         console.log('Playing audio for:', germanSuggestion);
-        speakText(germanSuggestion);
+        await speakText(germanSuggestion);
       }, 1500);
 
       return () => clearTimeout(timer);
@@ -2834,8 +2912,11 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             }
           }
           
-          // Only show mismatch modal if there's a clear difference and confidence is high
-          if (detectedLanguage !== recordingLanguage) {
+          // Show mismatch modal if there's a language difference OR if English words are detected
+          const hasEnglishWords = /\b(the|and|or|but|in|on|at|to|for|of|with|by|this|that|these|those|what|where|when|why|how)\b/i.test(transcription);
+          const isLanguageMismatch = detectedLanguage !== recordingLanguage;
+          
+          if (isLanguageMismatch || (recordingLanguage === 'german' && hasEnglishWords)) {
             console.log('🔍 === LANGUAGE MISMATCH DETECTED ===');
             console.log('Detected language:', detectedLanguage);
             console.log('Recording language:', recordingLanguage);
@@ -3878,7 +3959,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                           </div>
                           <div className="flex items-center space-x-1">
                             <button
-                              onClick={() => speakText(message.content)}
+                              onClick={async () => await speakText(message.content)}
                               className="p-1 hover:bg-gray-100 rounded transition-colors"
                               title="Listen"
                             >
@@ -4627,9 +4708,9 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     {germanSuggestion || 'Loading...'}
                   </div>
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       if (germanSuggestion) {
-                        speakText(germanSuggestion);
+                        await speakText(germanSuggestion);
                       } else {
                         console.log('No German suggestion available to speak');
                       }

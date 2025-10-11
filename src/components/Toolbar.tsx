@@ -122,14 +122,98 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
     achievements: []
   });
 
+  // Audio cache to store generated TTS audio
+  const audioCache = React.useRef<Map<string, string>>(new Map());
+
   // Speak text function
-  const speakText = (text: string) => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'de-DE';
-      utterance.rate = 0.8;
-      window.speechSynthesis.speak(utterance);
+  const speakText = async (text: string) => {
+    try {
+      // Cancel any ongoing speech
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+
+      // Check if we already have this audio cached
+      const cachedAudioUrl = audioCache.current.get(text);
+      if (cachedAudioUrl) {
+        console.log('Playing cached German TTS for:', text);
+        const audio = new Audio(cachedAudioUrl);
+        audio.play();
+        return;
+      }
+
+      console.log('Generating new German TTS for:', text);
+      
+      // Use Supabase edge function for high-quality German TTS
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/german-tts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify({ text })
+      });
+
+      if (!response.ok) {
+        throw new Error(`TTS API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.success && data.audioUrl) {
+        // Cache the audio URL for future use
+        audioCache.current.set(text, data.audioUrl);
+        
+        // Play the generated German audio
+        const audio = new Audio(data.audioUrl);
+        audio.play();
+        console.log('Playing and caching German TTS audio');
+      } else {
+        throw new Error(data.error || 'Failed to generate German speech');
+      }
+    } catch (error) {
+      console.error('German TTS failed, falling back to browser speech:', error);
+      
+      // Fallback to browser speech synthesis with German voice selection
+      if ('speechSynthesis' in window) {
+        setTimeout(() => {
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = 'de-DE';
+          
+          // Get available voices and select the best German voice
+          const voices = window.speechSynthesis.getVoices();
+          const germanVoices = voices.filter(voice => 
+            voice.lang.startsWith('de') || 
+            voice.lang.includes('German') ||
+            voice.name.includes('German') || 
+            voice.name.includes('Deutsch') || 
+            voice.name.includes('Anna') || 
+            voice.name.includes('Stefan') ||
+            voice.name.includes('Katja') ||
+            voice.name.includes('Thomas') ||
+            voice.name.includes('Hedda') ||
+            voice.name.includes('Markus')
+          );
+          
+          if (germanVoices.length > 0) {
+            const preferredVoice = germanVoices.find(voice => 
+              voice.name.includes('Anna') || 
+              voice.name.includes('Katja') ||
+              voice.name.includes('Hedda') ||
+              voice.name.includes('German Female')
+            ) || germanVoices[0];
+            
+            utterance.voice = preferredVoice;
+            console.log('Using fallback German voice:', preferredVoice.name);
+          }
+          
+          utterance.rate = 0.85;
+          utterance.pitch = 1.0;
+          utterance.volume = 0.9;
+          
+          window.speechSynthesis.speak(utterance);
+        }, 200);
+      }
     }
   };
 
@@ -1042,7 +1126,7 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
                       </div>
                       <div className="flex items-center space-x-2">
                         <button
-                          onClick={() => speakText(item.word)}
+                          onClick={async () => await speakText(item.word)}
                           className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
                           title="Listen"
                         >
@@ -1289,7 +1373,7 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
                   <div className="flex items-center justify-between mb-4">
                     <span className="text-sm font-semibold text-gray-700">Current Message</span>
                     <button
-                      onClick={() => speakText(currentMessage)}
+                      onClick={async () => await speakText(currentMessage)}
                       className="flex items-center space-x-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
                     >
                       <Volume2 className="h-4 w-4" />
