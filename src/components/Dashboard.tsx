@@ -15,6 +15,7 @@ import {
   BookOpen,
   BarChart3,
   MessageCircle,
+  Volume2,
   Target,
   Bot,
   Trash2,
@@ -3819,14 +3820,14 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             {!sidebarCollapsed && (
               <div className="flex items-center space-x-2">
                 <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-                  <MessageCircle className="h-5 w-5 text-white" />
+                  <Volume2 className="h-5 w-5 text-white" />
                 </div>
                 <span className="text-lg font-display text-gradient-primary">TalkBuddy</span>
               </div>
             )}
             <div className="flex items-center space-x-2">
               {sidebarCollapsed && (
-                <MessageCircle className="h-6 w-6 text-blue-500" />
+                <Volume2 className="h-6 w-6 text-blue-500" />
               )}
               <button
                 onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
