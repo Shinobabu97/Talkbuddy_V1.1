@@ -13,3 +13,15 @@ export type AuthUser = {
     last_name?: string
   }
 }
+
+export type Conversation = {
+  id: string
+  user_id: string
+  title: string
+  preview: string
+  context_level: string
+  difficulty_level: string
+  context_locked: boolean
+  created_at: string
+  updated_at: string
+}

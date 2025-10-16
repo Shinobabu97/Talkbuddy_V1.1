@@ -74,6 +74,9 @@ interface Conversation {
   id: string;
   title: string;
   preview: string;
+  context_level: string;
+  difficulty_level: string;
+  context_locked: boolean;
   created_at: string;
   updated_at: string;
   user_id: string;
@@ -125,6 +128,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [contextLevel, setContextLevel] = useState('Professional');
   const [difficultyLevel, setDifficultyLevel] = useState('Intermediate');
+  const [currentConversationContextLocked, setCurrentConversationContextLocked] = useState(false);
   const [showContextDropdown, setShowContextDropdown] = useState(false);
   const [showDifficultyDropdown, setShowDifficultyDropdown] = useState(false);
   const [conversationInput, setConversationInput] = useState('');
@@ -553,7 +557,8 @@ export default function Dashboard({ user }: DashboardProps) {
           title: conversationInput.slice(0, 50) + (conversationInput.length > 50 ? '...' : ''),
           preview: conversationInput.slice(0, 100),
           context_level: contextLevel,
-          difficulty_level: difficultyLevel
+          difficulty_level: difficultyLevel,
+          context_locked: false
         })
         .select()
         .single();
@@ -606,7 +611,7 @@ export default function Dashboard({ user }: DashboardProps) {
         body: JSON.stringify({
           messages: [{
             role: 'user',
-            content: `I want to practice this scenario: ${userMessage}. Start the conversation immediately with the first question in German. Do not use any introductory phrases like "Natürlich, gerne!" or "Gerne!" - just ask the first question directly. IMPORTANT: Respond ONLY in German. Do not include any English translations in parentheses or brackets.`
+            content: `${contextLevel === 'Professional' ? 'Ich möchte dieses Szenario üben' : 'Ich möchte dieses Szenario üben'}: ${userMessage}. ${contextLevel === 'Professional' ? 'Beginnen Sie das Gespräch sofort mit der ersten Frage auf Deutsch. Verwenden Sie keine einleitenden Phrasen wie "Natürlich, gerne!" oder "Gerne!" - stellen Sie einfach die erste Frage direkt. WICHTIG: Antworten Sie NUR auf Deutsch. Verwenden Sie "Sie" statt "Du" für eine professionelle Atmosphäre.' : 'Beginn das Gespräch sofort mit der ersten Frage auf Deutsch. Verwende keine einleitenden Phrasen wie "Natürlich, gerne!" oder "Gerne!" - stell einfach die erste Frage direkt. WICHTIG: Antworte NUR auf Deutsch. Verwende "Du" statt "Sie" für eine lockere Atmosphäre.'}`
           }],
           conversationId,
           contextLevel,
@@ -636,6 +641,15 @@ export default function Dashboard({ user }: DashboardProps) {
       };
 
       setChatMessages(prev => [...prev, assistantMessage]);
+      
+      // Lock the context for this conversation
+      await supabase
+        .from('conversations')
+        .update({ context_locked: true })
+        .eq('id', conversationId);
+      
+      // Update local state
+      setCurrentConversationContextLocked(true);
       
       // Update current message but don't show toolbar automatically
       setCurrentAIMessage(data.message);
@@ -1121,15 +1135,15 @@ export default function Dashboard({ user }: DashboardProps) {
             content: userMessage
           }],
           conversationId: selectedConversation,
-          contextLevel: 'beginner',
-          difficultyLevel: 'easy',
+          contextLevel,
+          difficultyLevel,
           userProfile: onboardingData ? {
             germanLevel: onboardingData.germanLevel,
             goals: onboardingData.goals,
             personalityTraits: onboardingData.personalityTraits,
             conversationTopics: onboardingData.conversationTopics
           } : undefined,
-          systemInstruction: "Du bist ein freundlicher Gesprächspartner. Antworte kurz und natürlich (1-2 Sätze). Stelle viele Fragen. Sei neugierig und interessiert. Lass den Nutzer viel sprechen. Verwende 'Du' und umgangssprachliche Ausdrücke. KEINE englischen Übersetzungen oder Erklärungen."
+          systemInstruction: `${contextLevel === 'Professional' ? 'Sie sind' : 'Du bist'} ein freundlicher Gesprächspartner. Antworte kurz und natürlich (1-2 Sätze). Stelle viele Fragen. Sei neugierig und interessiert. Lass den Nutzer viel sprechen. ${contextLevel === 'Professional' ? 'Verwende "Sie" und höfliche Ausdrücke.' : 'Verwende "Du" und umgangssprachliche Ausdrücke.'} KEINE englischen Übersetzungen oder Erklärungen.`
         })
       });
 
@@ -2568,7 +2582,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
   };
 
   // Modal recording functions
-  const startModalRecording = async () => {
+  const startModalRecording = async (isForConversationInput: boolean = false) => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
@@ -2589,8 +2603,12 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         console.log('Audio blob size:', audioBlob.size, 'bytes');
         console.log('Recording duration:', recordingDuration, 'ms');
         
-        // Process the modal recording
-        await processModalRecording(audioBlob);
+        // Process the recording based on context
+        if (isForConversationInput) {
+          await processConversationInputRecording(audioBlob);
+        } else {
+          await processModalRecording(audioBlob);
+        }
         
         // Stop all tracks to release microphone
         stream.getTracks().forEach(track => track.stop());
@@ -2614,6 +2632,65 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     }
   };
 
+  const processConversationInputRecording = async (audioBlob: Blob) => {
+    console.log('🎤 === PROCESSING CONVERSATION INPUT RECORDING ===');
+    
+    setIsTranscribing(true);
+    
+    try {
+      // Convert blob to base64
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64Audio = reader.result as string;
+        const base64Data = base64Audio.split(',')[1];
+        
+        console.log('Base64 audio length:', base64Data.length);
+        
+        try {
+          const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whisper`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            },
+            body: JSON.stringify({ audioData: base64Data })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            
+            if (data.transcription) {
+              const transcription = data.transcription;
+              console.log('Conversation input transcription:', transcription);
+              
+              // Set the transcription as the conversation input
+              setConversationInput(transcription);
+              setIsTranscribing(false);
+            } else {
+              console.error('No transcription received');
+              alert('No speech detected. Please try again.');
+              setIsTranscribing(false);
+            }
+          } else {
+            console.error('Transcription failed:', response.status);
+            alert('Failed to process your recording. Please try again.');
+            setIsTranscribing(false);
+          }
+        } catch (error) {
+          console.error('Transcription error:', error);
+          alert('Failed to process your recording. Please try again.');
+          setIsTranscribing(false);
+        }
+      };
+      
+      reader.readAsDataURL(audioBlob);
+    } catch (error) {
+      console.error('Error processing conversation input recording:', error);
+      alert('Failed to process your recording. Please try again.');
+      setIsTranscribing(false);
+    }
+  };
+
   const processModalRecording = async (audioBlob: Blob) => {
     console.log('🎤 === PROCESSING MODAL RECORDING ===');
     
@@ -2632,7 +2709,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
           },
-          body: JSON.stringify({ audio: base64Data })
+          body: JSON.stringify({ audioData: base64Data })
         });
 
         if (response.ok) {
@@ -3563,8 +3640,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
     try {
       const systemInstruction = isEnglishTranslation 
-        ? "Du bist ein hilfreicher Deutschlehrer. Wenn der Nutzer etwas auf Englisch sagt, übersetze es ins Deutsche und gib hilfreiche Vorschläge, wie man es natürlich ausdrücken kann. Sei ermutigend und gib verschiedene Ausdrucksmöglichkeiten (formell, umgangssprachlich, natürlich)."
-        : "Du bist ein freundlicher Gesprächspartner. Antworte kurz und natürlich (1-2 Sätze). Stelle viele Fragen. Sei neugierig und interessiert. Lass den Nutzer viel sprechen. Verwende 'Du' und umgangssprachliche Ausdrücke.";
+        ? `${contextLevel === 'Professional' ? 'Sie sind' : 'Du bist'} ein hilfreicher Deutschlehrer. Wenn der Nutzer etwas auf Englisch sagt, übersetze es ins Deutsche und gib hilfreiche Vorschläge, wie man es natürlich ausdrücken kann. Sei ermutigend und gib verschiedene Ausdrucksmöglichkeiten (formell, umgangssprachlich, natürlich).`
+        : `${contextLevel === 'Professional' ? 'Sie sind' : 'Du bist'} ein freundlicher Gesprächspartner. Antworte kurz und natürlich (1-2 Sätze). Stelle viele Fragen. Sei neugierig und interessiert. Lass den Nutzer viel sprechen. ${contextLevel === 'Professional' ? 'Verwende "Sie" und höfliche Ausdrücke.' : 'Verwende "Du" und umgangssprachliche Ausdrücke.'}`;
       
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
@@ -3623,6 +3700,14 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     // Reset all states first
     resetConversationState();
     
+    // Find the conversation to get its context and difficulty levels
+    const conversation = conversations.find(c => c.id === conversationId);
+    if (conversation) {
+      setContextLevel(conversation.context_level);
+      setDifficultyLevel(conversation.difficulty_level);
+      setCurrentConversationContextLocked(conversation.context_locked);
+    }
+    
     // Start new conversation
     setSelectedConversation(conversationId);
     setChatMessages([{
@@ -3645,6 +3730,11 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     setChatMessages([]);
     setCurrentAIMessage('');
     setActiveMessageId(null);
+    
+    // Reset context and difficulty states
+    setContextLevel('Professional');
+    setCurrentConversationContextLocked(false);
+    setDifficultyLevel('Intermediate');
     
     // Reset toolbar states
     setShowToolbar(false);
@@ -4173,7 +4263,25 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
                   </div>
                   <div>
-                    <h3 className="font-semibold text-gray-900">{germanPartnerName}</h3>
+                    <div className="flex items-center space-x-2">
+                      <h3 className="font-semibold text-gray-900">{germanPartnerName}</h3>
+                      {/* Context Indicator Badge */}
+                      {selectedConversation && (
+                        <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                          contextLevel === 'Professional' 
+                            ? 'bg-blue-100 text-blue-800' 
+                            : 'bg-green-100 text-green-800'
+                        }`}>
+                          <span className="mr-1">
+                            {contextLevel === 'Professional' ? '💼' : '😊'}
+                          </span>
+                          {contextLevel}
+                          {currentConversationContextLocked && (
+                            <span className="ml-1">🔒</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
                     <div className="flex items-center space-x-2">
                       <div className="flex items-center space-x-1">
                         <div className="w-2 h-2 bg-green-500 rounded-full"></div>
@@ -4892,13 +5000,23 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   <div className="flex-1 relative">
                     <label className="block text-sm font-semibold text-slate-800 mb-2 font-heading">Context</label>
                     <button
-                      onClick={() => setShowContextDropdown(!showContextDropdown)}
-                      className="w-full border border-slate-300 rounded-lg px-4 py-3 text-left flex items-center justify-between bg-white shadow-sm hover:shadow-md transition-all duration-200"
+                      onClick={() => !currentConversationContextLocked && setShowContextDropdown(!showContextDropdown)}
+                      disabled={currentConversationContextLocked}
+                      className={`w-full border border-slate-300 rounded-lg px-4 py-3 text-left flex items-center justify-between shadow-sm transition-all duration-200 ${
+                        currentConversationContextLocked 
+                          ? 'bg-gray-100 cursor-not-allowed opacity-60' 
+                          : 'bg-white hover:shadow-md'
+                      }`}
                     >
-                      <span className="text-sm font-semibold text-slate-800 font-heading">{contextLevel}</span>
-                      <ChevronDown className="h-4 w-4 text-gray-400" />
+                      <span className="text-sm font-semibold text-slate-800 font-heading flex items-center">
+                        {contextLevel}
+                        {currentConversationContextLocked && (
+                          <span className="ml-2 text-xs">🔒</span>
+                        )}
+                      </span>
+                      <ChevronDown className={`h-4 w-4 ${currentConversationContextLocked ? 'text-gray-300' : 'text-gray-400'}`} />
                     </button>
-                    {showContextDropdown && (
+                    {showContextDropdown && !currentConversationContextLocked && (
                       <div className="absolute top-full left-0 right-0 mt-1 bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-lg shadow-lg z-10">
                         {contextLevels.map((level) => (
                           <button
@@ -4950,8 +5068,22 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   <div></div>
                   
                   <div className="flex items-center space-x-3">
-                    <button className="p-3 border border-slate-300 rounded-full hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 transition-all duration-200 bg-white shadow-sm hover:shadow-md">
-                      <Mic className="h-5 w-5 text-slate-600" />
+                    <button 
+                      onClick={isModalRecording ? stopModalRecording : () => startModalRecording(true)}
+                      disabled={isTranscribing}
+                      className={`p-3 rounded-full transition-colors ${
+                        isModalRecording 
+                          ? 'bg-red-500 hover:bg-red-600 text-white' 
+                          : 'bg-green-500 hover:bg-green-600 text-white'
+                      } ${isTranscribing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      {isTranscribing ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : isModalRecording ? (
+                        <MicOff className="h-4 w-4" />
+                      ) : (
+                        <Mic className="h-4 w-4" />
+                      )}
                     </button>
                     <button 
                       onClick={createNewConversation}

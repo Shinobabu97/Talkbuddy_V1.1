@@ -25,6 +25,32 @@ interface ChatRequest {
   }
 }
 
+// Formality detection function
+function detectFormalityMismatch(userMessage: string, contextLevel: string): string | null {
+  console.log('🔍 DEBUG: detectFormalityMismatch called');
+  console.log('Input message:', userMessage);
+  console.log('Context level:', contextLevel);
+  
+  const hasDu = /\b(du|dich|dir|dein|deine|deinen|deinem|deiner)\b/i.test(userMessage);
+  const hasSie = /\b(sie|ihnen|ihr|ihre|ihren|ihrem|ihrer)\b/i.test(userMessage);
+  
+  console.log('Has "du" forms:', hasDu);
+  console.log('Has "Sie" forms:', hasSie);
+  
+  if (contextLevel === 'Professional' && hasDu) {
+    console.log('✅ Professional context + du detected - returning correction');
+    return "Nur eine kleine Erinnerung - da dies ein professionelles Gespräch ist, versuchen Sie bitte 'Sie' statt 'Du' zu verwenden und formellere Ausdrücke zu benutzen.";
+  }
+  
+  if (contextLevel === 'Casual' && hasSie) {
+    console.log('✅ Casual context + Sie detected - returning correction');
+    return "Hey, entspann dich! Das ist ein lockeres Gespräch, also fühl dich frei 'Du' zu verwenden und umgangssprachlich zu sprechen - wir sind hier nur Freunde!";
+  }
+  
+  console.log('❌ No mismatch detected');
+  return null;
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -45,7 +71,27 @@ serve(async (req) => {
     
     // Override system prompt with system instruction if provided (for stricter German-only responses)
     if (systemInstruction) {
-      systemPrompt = `${systemInstruction}\n\nContext Level: ${contextLevel}\nDifficulty Level: ${difficultyLevel}\n\nYou are a friendly and patient German language learning assistant. Your role is to help users practice German conversation in a supportive, encouraging environment.`
+      systemPrompt = `${systemInstruction}\n\nContext Level: ${contextLevel}\nDifficulty Level: ${difficultyLevel}\n\n${contextLevel === 'Professional' ? 'Sie sind' : 'Du bist'} ein freundlicher, geduldiger deutscher Gesprächspartner. Ihre Aufgabe ist es, Nutzern beim Üben deutscher Gespräche in einer unterstützenden, ermutigenden Umgebung zu helfen.
+
+WICHTIGE REGELN:
+- Antworte NUR auf Deutsch
+- KEINE englischen Übersetzungen in Klammern
+- KEINE englischen Erklärungen
+- PRIORITÄT: Gib IMMER explizite Korrekturen bei Formellitätsfehlern - das ist wichtiger als das Gespräch am Laufen zu halten
+
+${contextLevel === 'Professional' ? `
+PROFESSIONELLER KONTEXT:
+- Verwende "Sie" statt "Du" (formale Anrede)
+- Verwende höfliche, geschäftliche Ausdrücke
+- Sei respektvoll und professionell
+- WICHTIG: Wenn der Nutzer "du" verwendet, MUSS du eine explizite Erinnerung geben: "Nur eine kleine Erinnerung - da dies ein professionelles Gespräch ist, versuchen Sie bitte 'Sie' statt 'Du' zu verwenden und formellere Ausdrücke zu benutzen."
+` : `
+CASUAL KONTEXT:
+- Verwende "Du" statt "Sie" (informelle Anrede)
+- Verwende umgangssprachliche Ausdrücke
+- Sei locker und freundlich
+- WICHTIG: Wenn der Nutzer "Sie" verwendet, MUSS du eine explizite Erinnerung geben: "Hey, entspann dich! Das ist ein lockeres Gespräch, also fühl dich frei 'Du' zu verwenden und umgangssprachlich zu sprechen - wir sind hier nur Freunde!"
+`}`
     }
 
     // Prepare messages for OpenAI
@@ -84,9 +130,29 @@ serve(async (req) => {
       throw new Error('No response from OpenAI')
     }
 
+    // Check for formality mismatch in the last user message
+    const lastUserMessage = messages[messages.length - 1];
+    let finalMessage = assistantMessage;
+
+    if (lastUserMessage && lastUserMessage.role === 'user') {
+      console.log('🔍 DEBUG: Checking formality mismatch');
+      console.log('User message:', lastUserMessage.content);
+      console.log('Context level:', contextLevel);
+      
+      const correction = detectFormalityMismatch(lastUserMessage.content, contextLevel);
+      console.log('Correction result:', correction);
+      
+      if (correction) {
+        finalMessage = `${correction}\n\n${assistantMessage}`;
+        console.log('✅ Applied correction');
+      } else {
+        console.log('❌ No correction needed');
+      }
+    }
+
     return new Response(
       JSON.stringify({
-        message: assistantMessage,
+        message: finalMessage,
         conversationId,
         usage: data.usage
       }),
@@ -111,7 +177,7 @@ serve(async (req) => {
 })
 
 function createSystemPrompt(contextLevel: string, difficultyLevel: string, userProfile?: any): string {
-  const basePrompt = `Du bist ein freundlicher, natürlicher Gesprächspartner auf Deutsch. Sprich wie ein echter Mensch, nicht wie ein Lehrer oder Lehrbuch.
+  const basePrompt = `${contextLevel === 'Professional' ? 'Sie sind' : 'Du bist'} ein freundlicher, natürlicher Gesprächspartner auf Deutsch. Sprich wie ein echter Mensch, nicht wie ein Lehrer oder Lehrbuch.
 
 Kontext: ${contextLevel}
 Schwierigkeit: ${difficultyLevel}
@@ -123,21 +189,52 @@ WICHTIGE REGELN:
 - Sprich natürlich und locker
 - Sei wie ein echter Freund
 
+KONTEXT-ÜBERWACHUNG:
+Du musst den Gesprächsstil des Nutzers überwachen und EXPLIZITE Erinnerungen geben, wenn der Stil nicht zum gewählten Kontext passt:
+
+${contextLevel === 'Professional' ? `
+PROFESSIONELLER KONTEXT:
+- Erwarte formale Sprache mit "Sie" statt "Du"
+- Erwarte höfliche, geschäftliche Ausdrücke
+- Erwarte professionelle Begrüßungen und Verabschiedungen
+- WICHTIG: Wenn der Nutzer "du" verwendet, MUSS du eine explizite Erinnerung geben: "Nur eine kleine Erinnerung - da dies ein professionelles Gespräch ist, versuchen Sie bitte 'Sie' statt 'Du' zu verwenden und formellere Ausdrücke zu benutzen."
+` : `
+CASUAL KONTEXT:
+- Erwarte lockere Sprache mit "Du" statt "Sie"
+- Erwarte umgangssprachliche Ausdrücke und Kontraktionen
+- Erwarte freundliche, entspannte Begrüßungen
+- WICHTIG: Wenn der Nutzer "Sie" verwendet, MUSS du eine explizite Erinnerung geben: "Hey, entspann dich! Das ist ein lockeres Gespräch, also fühl dich frei 'Du' zu verwenden und umgangssprachlich zu sprechen - wir sind hier nur Freunde!"
+`}
+
 Gesprächsstil:
 - Kurze, natürliche Antworten (1-2 Sätze)
-- Stelle viele Fragen, um das Gespräch am Laufen zu halten
-- Verwende umgangssprachliche Ausdrücke
 - Sei neugierig und interessiert
-- Lass den Nutzer viel sprechen
-- Korrigiere Fehler sanft durch natürliche Wiederholung
-- Verwende "Du" statt "Sie" für eine lockere Atmosphäre
 - Sei humorvoll und sympathisch
+- Stelle viele Fragen, um das Gespräch am Laufen zu halten
+- Lass den Nutzer viel sprechen
+- PRIORITÄT: Gib IMMER explizite Korrekturen bei Formellitätsfehlern - das ist wichtiger als das Gespräch am Laufen zu halten
 
-Beispiele für gute Antworten:
-- "Ach, das klingt spannend! Erzähl mir mehr darüber."
-- "Wirklich? Das hätte ich nicht gedacht. Wie war das denn?"
-- "Interessant! Und was denkst du darüber?"
-- "Aha, verstehe! Und dann?"
+${contextLevel === 'Professional' ? `
+PROFESSIONELLER GESPRÄCHSSTIL:
+- Verwende "Sie" statt "Du" (formale Anrede)
+- Verwende höfliche, geschäftliche Ausdrücke
+- Sei respektvoll und professionell
+- Beispiele für gute Antworten:
+  - "Das klingt interessant! Was interessiert Sie besonders daran?"
+  - "Verstehe! Können Sie mir mehr darüber erzählen?"
+  - "Interessant! Wie sehen Sie das denn?"
+  - "Aha, verstehe! Und wie geht es dann weiter?"
+` : `
+CASUAL GESPRÄCHSSTIL:
+- Verwende "Du" statt "Sie" (informelle Anrede)
+- Verwende umgangssprachliche Ausdrücke
+- Sei locker und freundlich
+- Beispiele für gute Antworten:
+  - "Ach, das klingt spannend! Erzähl mir mehr darüber."
+  - "Wirklich? Das hätte ich nicht gedacht. Wie war das denn?"
+  - "Interessant! Und was denkst du darüber?"
+  - "Aha, verstehe! Und dann?"
+`}
 
 Vermeide:
 - Lange Listen oder Aufzählungen
