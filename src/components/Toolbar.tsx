@@ -109,8 +109,15 @@ const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
       {/* Practice Button */}
       <div className="flex items-center space-x-3">
         <button
-          onClick={() => onPractice(word.original)}
-          className="flex items-center space-x-2 px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('🖱️ Practice button clicked for word:', word.original);
+            console.log('🖱️ onPractice function exists:', !!onPractice);
+            onPractice(word.original);
+          }}
+          className="flex items-center space-x-2 px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 cursor-pointer"
+          style={{ pointerEvents: 'auto' }}
         >
           <Mic className="h-4 w-4" />
           <span>Practice</span>
@@ -373,7 +380,7 @@ export default function Toolbar({
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           message,
           userLevel: 'Intermediate',
           source: 'text'
@@ -424,7 +431,7 @@ export default function Toolbar({
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           audioData: '', // Not needed for text segmentation
           transcription: text
         })
@@ -443,6 +450,8 @@ export default function Toolbar({
   // Pronunciation practice functions
   const practiceWord = (word: string) => {
     console.log('🎤 Starting practice for word:', word);
+    console.log('🎤 Current practicing word:', practicingWord);
+    console.log('🎤 Current recording state:', isRecording);
     setPracticingWord(word);
     setCurrentAttempt(0);
     startRecording();
@@ -458,7 +467,7 @@ export default function Toolbar({
       const chunks: Blob[] = [];
 
       recorder.ondataavailable = (event) => {
-        chunks.push(event.data);
+          chunks.push(event.data);
       };
 
       recorder.onstop = async () => {
@@ -498,34 +507,57 @@ export default function Toolbar({
   };
 
   const startRecording = async () => {
+    console.log('🎤 startRecording called');
+    console.log('🎤 Current practicing word:', practicingWord);
+    
     try {
+      console.log('🎤 Requesting microphone access...');
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('🎤 Microphone access granted, stream:', stream);
+      
       const recorder = new MediaRecorder(stream);
       const chunks: Blob[] = [];
 
       recorder.ondataavailable = (event) => {
+        console.log('🎤 Data available, chunk size:', event.data.size);
         chunks.push(event.data);
       };
 
       recorder.onstop = async () => {
+        console.log('🎤 Recording stopped, analyzing audio...');
         const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+        console.log('🎤 Audio blob created, size:', audioBlob.size);
         await analyzePronunciation(audioBlob);
         setIsRecording(false);
+        console.log('🎤 Recording state set to false');
       };
 
       recorder.start();
       setMediaRecorder(recorder);
       setIsRecording(true);
       console.log('🎤 Recording started for pronunciation practice');
+      console.log('🎤 Recording state set to true');
     } catch (error) {
       console.error('❌ Error starting recording:', error);
+      console.error('❌ Error details:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
     }
   };
 
   const stopRecording = () => {
+    console.log('🛑 stopRecording called');
+    console.log('🛑 MediaRecorder exists:', !!mediaRecorder);
+    console.log('🛑 Is recording:', isRecording);
+    
     if (mediaRecorder && isRecording) {
+      console.log('🛑 Stopping recording...');
       mediaRecorder.stop();
       console.log('🎤 Recording stopped');
+        } else {
+      console.log('🛑 Cannot stop recording - no recorder or not recording');
     }
   };
 
@@ -536,7 +568,7 @@ export default function Toolbar({
       // Convert audio to base64
       const arrayBuffer = await audioBlob.arrayBuffer();
       const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-      
+
       // Send to pronunciation analysis
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pronunciation-analysis`, {
         method: 'POST',
@@ -743,30 +775,30 @@ export default function Toolbar({
               >
                 Conversation
               </button>
-            </div>
+                </div>
 
             {/* Vocabulary List */}
             <div className="space-y-3">
-              {vocabItems
+                {vocabItems
                 .filter(item => vocabFilter === 'all' || item.category === vocabFilter)
-                .map((item, index) => (
+                  .map((item, index) => (
                   <div key={index} className="bg-gray-50 rounded-lg p-3">
                     <div className="flex justify-between items-start">
                       <div>
                         <h4 className="font-semibold text-gray-900">{item.word}</h4>
                         <p className="text-sm text-gray-600">{item.meaning}</p>
                         <p className="text-xs text-gray-500 mt-1">{item.category}</p>
-                      </div>
-                      <button
+                        </div>
+                        <button
                         onClick={() => onAddToVocab(item.word, item.meaning)}
                         className="text-blue-500 hover:text-blue-700"
                       >
                         <Star className="h-4 w-4" />
-                      </button>
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
-            </div>
+                  ))}
+              </div>
 
             {/* New Vocabulary Items */}
             {newVocabItems && newVocabItems.length > 0 && (
@@ -779,14 +811,14 @@ export default function Toolbar({
                         <h4 className="font-semibold text-blue-900">{item.word}</h4>
                         <p className="text-sm text-blue-700">{item.meaning}</p>
                         <p className="text-xs text-blue-600 mt-1">{item.context}</p>
-                      </div>
+                </div>
                       <button
                         onClick={() => onAddToVocab(item.word, item.meaning)}
                         className="text-blue-500 hover:text-blue-700"
                       >
                         <Star className="h-4 w-4" />
                       </button>
-                    </div>
+                </div>
                   </div>
                 ))}
               </div>
@@ -805,8 +837,8 @@ export default function Toolbar({
                       <ErrorBadge type="grammar" hasError={analysisData.errorTypes.grammar} />
                       <ErrorBadge type="vocabulary" hasError={analysisData.errorTypes.vocabulary} />
                       <ErrorBadge type="pronunciation" hasError={analysisData.errorTypes.pronunciation} />
-                    </div>
-                  </div>
+                </div>
+                      </div>
                 )}
 
                 {/* Grammar Explanation */}
@@ -816,7 +848,7 @@ export default function Toolbar({
                     <div className="flex items-center space-x-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
                       <span className="text-sm text-gray-600">Loading explanation...</span>
-                    </div>
+                        </div>
                   ) : (
                     <div className="bg-gray-50 rounded-lg p-4">
                       <p className="text-sm text-gray-700">{grammarExplanation || 'No grammar explanation available.'}</p>
@@ -824,12 +856,12 @@ export default function Toolbar({
                   )}
                 </div>
 
-                {/* Speaking Tips */}
+                  {/* Speaking Tips */}
                 <div className="space-y-3">
                   <h4 className="font-semibold text-gray-900">Speaking Tips</h4>
                   <div className="bg-gray-50 rounded-lg p-4">
                     <p className="text-sm text-gray-700">{speakingTips || 'No speaking tips available.'}</p>
-                  </div>
+                    </div>
                 </div>
 
                 {/* Practice Tips */}
@@ -856,15 +888,15 @@ export default function Toolbar({
                     </ul>
                   </div>
                 </div>
-              </div>
-            ) : (
-              <div className="text-center py-8">
+                </div>
+              ) : (
+                <div className="text-center py-8">
                 <Lightbulb className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                 <p className="text-sm text-gray-600">
                   Grammar explanations will be available when the AI sends a message
                 </p>
-              </div>
-            )}
+                </div>
+              )}
           </div>
         )}
 
@@ -873,7 +905,7 @@ export default function Toolbar({
             {currentMessage ? (
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <h4 className="font-semibold text-gray-900 text-base">Pronunciation Practice</h4>
+                <h4 className="font-semibold text-gray-900 text-base">Pronunciation Practice</h4>
                   <div className="flex space-x-2">
                     <button
                       onClick={() => analyzeComprehensive(currentMessage)}
@@ -905,7 +937,7 @@ export default function Toolbar({
                         <p className="text-sm text-gray-600">
                           Click "Get pronunciation guide" in the chat to load word breakdown
                         </p>
-                      </div>
+                    </div>
                     );
                   }
 
@@ -937,28 +969,28 @@ export default function Toolbar({
                   <div className="space-y-4">
                     <h5 className="text-sm font-semibold text-gray-700">Analysis Results</h5>
                     <div className="space-y-3">
-                      {pronunciationWords.map((wordData, index) => (
+                    {pronunciationWords.map((wordData, index) => (
                         <div key={index} className={`rounded-xl p-4 ${
                           wordData.score >= 90 ? 'bg-green-50 border border-green-200' :
                           wordData.score >= 70 ? 'bg-yellow-50 border border-yellow-200' :
                           'bg-red-50 border border-red-200'
                         }`}>
-                          <div className="flex items-center justify-between mb-3">
-                            <span className="text-lg font-semibold">{wordData.word}</span>
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-lg font-semibold">{wordData.word}</span>
                             <div className={`px-3 py-1 rounded-full text-sm font-medium ${
                               wordData.score >= 90 ? 'bg-green-100 text-green-800' :
                               wordData.score >= 70 ? 'bg-yellow-100 text-yellow-800' :
-                              'bg-red-100 text-red-800'
-                            }`}>
+                                'bg-red-100 text-red-800'
+                              }`}>
                               {wordData.score}/100
                             </div>
-                          </div>
+                              </div>
                           <p className="text-sm text-gray-600">{wordData.feedback}</p>
-                        </div>
+                            </div>
                       ))}
-                    </div>
-                  </div>
-                )}
+                            </div>
+                            </div>
+                          )}
               </div>
             ) : (
               <div className="text-center py-8">
