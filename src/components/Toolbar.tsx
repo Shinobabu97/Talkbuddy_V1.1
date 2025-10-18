@@ -408,6 +408,7 @@ export default function Toolbar({
       feedback: string;
     }>;
   } | null>(null);
+  const [sentenceAnalyzed, setSentenceAnalyzed] = useState(false);
   const [currentSession, setCurrentSession] = useState<{
     sessionId: string;
     startTime: string;
@@ -854,8 +855,9 @@ export default function Toolbar({
   const startSentencePractice = async () => {
     console.log('🎤 Starting sentence practice for:', currentMessage);
     
-    // Reset sentence analysis
+    // Reset sentence analysis state
     setSentenceAnalysis(null);
+    setSentenceAnalyzed(false);
     
     // Use the same recording logic as individual words
     setPracticingWord('sentence');
@@ -883,6 +885,9 @@ export default function Toolbar({
       console.log('📊 Mock sentence analysis:', mockSentenceAnalysis);
       
       setSentenceAnalysis(mockSentenceAnalysis);
+      
+      // Mark sentence as analyzed
+      setSentenceAnalyzed(true);
       
       console.log('✅ Sentence analysis completed');
     } catch (error) {
@@ -1180,21 +1185,7 @@ export default function Toolbar({
             {currentMessage ? (
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                <h4 className="font-semibold text-gray-900 text-base">Pronunciation Practice</h4>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => analyzeComprehensive(currentMessage)}
-                      disabled={isAnalyzing}
-                      className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 flex items-center space-x-2"
-                    >
-                      {isAnalyzing ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Volume2 className="h-4 w-4" />
-                      )}
-                      <span>Analyze</span>
-                    </button>
-                  </div>
+                  <h4 className="font-semibold text-gray-900 text-base">Pronunciation Practice</h4>
                 </div>
 
                 {/* Sentence-Level Practice and Analysis */}
@@ -1247,15 +1238,15 @@ export default function Toolbar({
                         console.log('🔍 Sentence analysis button clicked');
                         analyzeSentence();
                       }}
-                      disabled={!wordsReadyForAnalysis.size || isAnalyzing}
+                      disabled={!wordsReadyForAnalysis.size || isAnalyzing || sentenceAnalyzed}
                       className={`flex items-center space-x-2 px-4 py-2 rounded-lg cursor-pointer ${
-                        !wordsReadyForAnalysis.size
+                        !wordsReadyForAnalysis.size || sentenceAnalyzed
                           ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                           : isAnalyzing
                           ? 'bg-blue-300 text-blue-700 cursor-not-allowed'
                           : 'bg-blue-500 text-white hover:bg-blue-600'
                       }`}
-                      style={{ pointerEvents: wordsReadyForAnalysis.size ? 'auto' : 'none' }}
+                      style={{ pointerEvents: wordsReadyForAnalysis.size && !sentenceAnalyzed ? 'auto' : 'none' }}
                     >
                       {isAnalyzing ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -1264,6 +1255,7 @@ export default function Toolbar({
                       )}
                       <span>
                         {!wordsReadyForAnalysis.size ? 'Record First' : 
+                         sentenceAnalyzed ? 'Analyzed' :
                          isAnalyzing ? 'Analyzing...' : 'Analyze Sentence'}
                       </span>
                     </button>
