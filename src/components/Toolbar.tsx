@@ -399,6 +399,15 @@ export default function Toolbar({
   const [wordsReadyForAnalysis, setWordsReadyForAnalysis] = useState<Set<string>>(new Set());
   const [wordsAnalyzed, setWordsAnalyzed] = useState<Set<string>>(new Set());
   const isStoppingRef = useRef(false);
+  const [sentenceAnalysis, setSentenceAnalysis] = useState<{
+    overallScore: number;
+    feedback: string;
+    wordScores: Array<{
+      word: string;
+      score: number;
+      feedback: string;
+    }>;
+  } | null>(null);
   const [currentSession, setCurrentSession] = useState<{
     sessionId: string;
     startTime: string;
@@ -722,8 +731,15 @@ export default function Toolbar({
       
       // Mark word as ready for analysis immediately
       if (practicingWord) {
-        setWordsReadyForAnalysis(prev => new Set([...prev, practicingWord]));
-        console.log('✅ Word marked as ready for analysis:', practicingWord);
+        if (practicingWord === 'sentence') {
+          // For sentence practice, mark all words as ready for analysis
+          const words = currentMessage?.split(' ') || [];
+          setWordsReadyForAnalysis(prev => new Set([...prev, ...words]));
+          console.log('✅ All words marked as ready for sentence analysis:', words);
+        } else {
+          setWordsReadyForAnalysis(prev => new Set([...prev, practicingWord]));
+          console.log('✅ Word marked as ready for analysis:', practicingWord);
+        }
       }
       
       console.log('🎤 Recording stopped and state set to false');
@@ -831,6 +847,48 @@ export default function Toolbar({
       console.error('❌ Error analyzing individual word:', error);
     } finally {
       setAnalyzingWord(null);
+    }
+  };
+
+  // Sentence-level practice function
+  const startSentencePractice = async () => {
+    console.log('🎤 Starting sentence practice for:', currentMessage);
+    
+    // Reset sentence analysis
+    setSentenceAnalysis(null);
+    
+    // Use the same recording logic as individual words
+    setPracticingWord('sentence');
+    startRecording();
+  };
+
+  // Sentence-level analysis function
+  const analyzeSentence = async () => {
+    console.log('🔍 Analyzing sentence:', currentMessage);
+    setIsAnalyzing(true);
+    
+    try {
+      // For now, create mock sentence analysis data
+      const words = currentMessage?.split(' ') || [];
+      const mockSentenceAnalysis = {
+        overallScore: Math.floor(Math.random() * 30) + 70, // Random score between 70-100
+        feedback: `Good overall pronunciation of the sentence. Pay attention to word stress and rhythm.`,
+        wordScores: words.map(word => ({
+          word: word,
+          score: Math.floor(Math.random() * 40) + 60, // Random score between 60-100
+          feedback: `Good pronunciation of "${word}"`
+        }))
+      };
+      
+      console.log('📊 Mock sentence analysis:', mockSentenceAnalysis);
+      
+      setSentenceAnalysis(mockSentenceAnalysis);
+      
+      console.log('✅ Sentence analysis completed');
+    } catch (error) {
+      console.error('❌ Error analyzing sentence:', error);
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
@@ -1139,13 +1197,142 @@ export default function Toolbar({
                   </div>
                 </div>
 
-                {/* Word Breakdown Display */}
-                {(() => {
-                  // Get phonetic breakdown for current message
-                  const messageId = Object.keys(phoneticBreakdowns).find(id => 
-                    phoneticBreakdowns[id] && phoneticBreakdowns[id].length > 0
-                  );
-                  const words = messageId ? phoneticBreakdowns[messageId] : [];
+                {/* Sentence-Level Practice and Analysis */}
+                <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-4 border border-purple-200">
+                  <h5 className="text-sm font-semibold text-purple-900 mb-3 flex items-center">
+                    <Target className="h-4 w-4 mr-2" />
+                    Sentence-Level Practice
+                  </h5>
+                  <div className="flex items-center space-x-3">
+                    {!isRecording ? (
+                      <button
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          console.log('🎤 Starting sentence practice for:', currentMessage);
+                          startSentencePractice();
+                        }}
+                        className="flex items-center space-x-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 cursor-pointer"
+                        style={{ pointerEvents: 'auto' }}
+                      >
+                        <Mic className="h-4 w-4" />
+                        <span>Practice Sentence</span>
+                      </button>
+                    ) : (
+                      <div className="flex items-center space-x-3">
+                        <div className="flex items-center space-x-2 px-4 py-2 bg-red-100 text-red-800 rounded-lg">
+                          <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                          <span className="text-sm font-medium">Recording Sentence...</span>
+                    </div>
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            console.log('🛑 Stop sentence recording clicked');
+                            stopRecording();
+                          }}
+                          className="flex items-center space-x-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 cursor-pointer"
+                          style={{ pointerEvents: 'auto' }}
+                        >
+                          <MicOff className="h-4 w-4" />
+                          <span>Stop Recording</span>
+                        </button>
+                    </div>
+                  )}
+                    
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log('🔍 Sentence analysis button clicked');
+                        analyzeSentence();
+                      }}
+                      disabled={!wordsReadyForAnalysis.size || isAnalyzing}
+                      className={`flex items-center space-x-2 px-4 py-2 rounded-lg cursor-pointer ${
+                        !wordsReadyForAnalysis.size
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          : isAnalyzing
+                          ? 'bg-blue-300 text-blue-700 cursor-not-allowed'
+                          : 'bg-blue-500 text-white hover:bg-blue-600'
+                      }`}
+                      style={{ pointerEvents: wordsReadyForAnalysis.size ? 'auto' : 'none' }}
+                    >
+                      {isAnalyzing ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Target className="h-4 w-4" />
+                      )}
+                      <span>
+                        {!wordsReadyForAnalysis.size ? 'Record First' : 
+                         isAnalyzing ? 'Analyzing...' : 'Analyze Sentence'}
+                      </span>
+                    </button>
+                </div>
+                
+                  {/* Sentence Analysis Results */}
+                  {sentenceAnalysis && (
+                    <div className="mt-4 p-3 bg-white rounded-lg border border-purple-200">
+                      <h6 className="text-sm font-semibold text-purple-700 mb-2">Sentence Analysis Results</h6>
+                      
+                      {/* Overall Sentence Score */}
+                        <div className="flex items-center justify-between mb-3">
+                        <span className="text-sm font-medium text-gray-600">Overall Sentence Score:</span>
+                        <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                          sentenceAnalysis.overallScore >= 90 ? 'bg-green-100 text-green-800' :
+                          sentenceAnalysis.overallScore >= 70 ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {sentenceAnalysis.overallScore}/100
+                          </div>
+                        </div>
+                        
+                      {/* Sentence Feedback */}
+                        <div className="mb-3">
+                        <span className="text-sm font-medium text-gray-600">Feedback:</span>
+                        <p className="text-sm text-gray-700 mt-1">{sentenceAnalysis.feedback}</p>
+                        </div>
+                        
+                      {/* Word-by-Word Analysis */}
+                      {sentenceAnalysis.wordScores && sentenceAnalysis.wordScores.length > 0 && (
+                        <div>
+                          <span className="text-sm font-medium text-gray-600">Word-by-Word Analysis:</span>
+                          <div className="mt-2 space-y-1">
+                            {sentenceAnalysis.wordScores.map((wordScore, index) => (
+                              <div key={index} className="flex items-center justify-between text-sm">
+                                <span className="font-medium text-gray-800">{wordScore.word}</span>
+                            <div className="flex items-center space-x-2">
+                                  <div className={`px-2 py-1 rounded text-xs ${
+                                    wordScore.score >= 90 ? 'bg-green-100 text-green-800' :
+                                    wordScore.score >= 70 ? 'bg-yellow-100 text-yellow-800' :
+                                'bg-red-100 text-red-800'
+                              }`}>
+                                    {wordScore.score}/100
+                            </div>
+                                  <span className="text-gray-500 italic text-xs">{wordScore.feedback}</span>
+                                </div>
+                              </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                            </div>
+                          )}
+                </div>
+
+                {/* Word-Level Practice and Analysis */}
+                <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-xl p-4 border border-green-200">
+                  <h5 className="text-sm font-semibold text-green-900 mb-3 flex items-center">
+                    <Mic className="h-4 w-4 mr-2" />
+                    Word-Level Practice
+                  </h5>
+                  
+                  {/* Word Breakdown Display */}
+                  {(() => {
+                    // Get phonetic breakdown for current message
+                    const messageId = Object.keys(phoneticBreakdowns).find(id => 
+                      phoneticBreakdowns[id] && phoneticBreakdowns[id].length > 0
+                    );
+                    const words = messageId ? phoneticBreakdowns[messageId] : [];
                   
                   if (words.length === 0) {
                     return (
@@ -1181,8 +1368,8 @@ export default function Toolbar({
                             hasBeenAnalyzed={wordsAnalyzed.has(word.original)}
                           />
                         ))}
-                      </div>
-                    </div>
+                            </div>
+                        </div>
                   );
                 })()}
 
@@ -1202,17 +1389,18 @@ export default function Toolbar({
                             <div className={`px-3 py-1 rounded-full text-sm font-medium ${
                               wordData.score >= 90 ? 'bg-green-100 text-green-800' :
                               wordData.score >= 70 ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-red-100 text-red-800'
-                              }`}>
+                                      'bg-red-100 text-red-800'
+                                    }`}>
                               {wordData.score}/100
+                                  </div>
                             </div>
-                              </div>
                           <p className="text-sm text-gray-600">{wordData.feedback}</p>
-                            </div>
-                      ))}
-                            </div>
-                            </div>
-                          )}
+                      </div>
+                    ))}
+                    </div>
+                  </div>
+                )}
+                </div>
               </div>
             ) : (
               <div className="text-center py-8">
