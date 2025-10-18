@@ -879,6 +879,7 @@ export default function Dashboard({ user }: DashboardProps) {
 
   // Pronunciation feature functions
   const getPhoneticBreakdown = async (text: string, messageId: string) => {
+    console.log('🎯 Getting phonetic breakdown for:', text, 'Message ID:', messageId);
     try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/phonetic-breakdown`, {
         method: 'POST',
@@ -886,22 +887,31 @@ export default function Dashboard({ user }: DashboardProps) {
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ text, language: 'de' })
+        body: JSON.stringify({ text })
       });
 
+      console.log('📡 Phonetic breakdown response status:', response.status);
+
       if (!response.ok) {
-        throw new Error('Failed to get phonetic breakdown');
+        const errorText = await response.text();
+        console.error('❌ Phonetic breakdown error:', errorText);
+        throw new Error(`Failed to get phonetic breakdown: ${response.status}`);
       }
 
       const data = await response.json();
+      console.log('📊 Phonetic breakdown data:', data);
+      
       if (data.success) {
         setPhoneticBreakdowns(prev => ({
           ...prev,
           [messageId]: data.words
         }));
+        console.log('✅ Phonetic breakdown set for message:', messageId);
+      } else {
+        console.error('❌ Phonetic breakdown failed:', data.error);
       }
     } catch (error) {
-      console.error('Error getting phonetic breakdown:', error);
+      console.error('❌ Error getting phonetic breakdown:', error);
     }
   };
 
@@ -4514,7 +4524,13 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                               <div>
                                 {!phoneticData && (
                                   <button
-                                    onClick={() => getPhoneticBreakdown(message.content, message.id)}
+                                    onClick={() => {
+                                      // Open pronunciation tab and get phonetic breakdown
+                                      setToolbarActiveTab('pronunciation');
+                                      setShowToolbar(true);
+                                      setToolbarCollapsed(false);
+                                      getPhoneticBreakdown(message.content, message.id);
+                                    }}
                                     className="text-xs text-blue-600 hover:text-blue-800 underline"
                                   >
                                     Get pronunciation guide
@@ -4863,6 +4879,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     onTabChange={setToolbarActiveTab}
                     newVocabItems={newVocabItems}
                     persistentVocab={persistentVocab}
+                    phoneticBreakdowns={phoneticBreakdowns}
+                    onPlayWordAudio={playWordAudio}
+                    globalPlaybackSpeed={globalPlaybackSpeed}
+                    onSpeedChange={setGlobalPlaybackSpeed}
                     onUpdatePersistentVocab={(newVocab) => {
                       console.log('📚 === DASHBOARD ONUPDATE PERSISTENT VOCAB CALLED ===');
                       console.log('New vocab received:', newVocab);

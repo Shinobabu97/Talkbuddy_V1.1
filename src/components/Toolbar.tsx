@@ -1,6 +1,134 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { BookOpen, Lightbulb, Volume2, Star, X, Play, Mic, MicOff, Loader2, AlertCircle, CheckCircle, Target, Trophy } from 'lucide-react';
+import { BookOpen, Lightbulb, Volume2, Star, X, Play, Mic, MicOff, Loader2, AlertCircle, CheckCircle, Target, Trophy, ChevronUp, ChevronDown } from 'lucide-react';
 import { germanTTS } from '../lib/tts';
+
+// Word Practice Card Component
+interface WordPracticeCardProps {
+  word: {original: string, phonetic: string, transliteration: string, syllables: string[]};
+  onPlayAudio?: (word: string, speed?: number) => void;
+  globalSpeed: number;
+  onSpeedChange?: (speed: number) => void;
+  onPractice: (word: string) => void;
+  isRecording: boolean;
+  onStartRecording: () => void;
+  onStopRecording: () => void;
+  pronunciationScore?: number;
+}
+
+const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
+  word,
+  onPlayAudio,
+  globalSpeed,
+  onSpeedChange,
+  onPractice,
+  isRecording,
+  onStartRecording,
+  onStopRecording,
+  pronunciationScore
+}) => {
+  const [wordSpeed, setWordSpeed] = useState(globalSpeed);
+
+  const handleSpeedChange = (newSpeed: number) => {
+    setWordSpeed(newSpeed);
+    if (onSpeedChange) {
+      onSpeedChange(newSpeed);
+    }
+  };
+
+  const getScoreColor = (score?: number) => {
+    if (!score) return 'text-gray-500';
+    if (score >= 90) return 'text-green-600';
+    if (score >= 70) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
+  const getScoreBg = (score?: number) => {
+    if (!score) return 'bg-gray-100';
+    if (score >= 90) return 'bg-green-100';
+    if (score >= 70) return 'bg-yellow-100';
+    return 'bg-red-100';
+  };
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
+      {/* Word Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h6 className="font-semibold text-lg text-gray-900">{word.original}</h6>
+          <p className="text-sm text-gray-600">[{word.phonetic}]</p>
+          <p className="text-sm text-blue-600 italic">{word.transliteration}</p>
+        </div>
+        {pronunciationScore !== undefined && (
+          <div className={`px-3 py-1 rounded-full text-sm font-medium ${getScoreBg(pronunciationScore)} ${getScoreColor(pronunciationScore)}`}>
+            {pronunciationScore}/100
+          </div>
+        )}
+      </div>
+
+      {/* Syllable Breakdown */}
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-gray-700">Syllables:</p>
+        <div className="flex flex-wrap gap-1">
+          {word.syllables.map((syllable, index) => (
+            <span key={index} className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm">
+              {syllable}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Listen Button with Speed Control */}
+      <div className="flex items-center space-x-3">
+        <button
+          onClick={() => onPlayAudio?.(word.original, wordSpeed)}
+          className="flex items-center space-x-2 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+        >
+          <Volume2 className="h-4 w-4" />
+          <span>Listen</span>
+        </button>
+        
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => handleSpeedChange(Math.max(0.5, wordSpeed - 0.1))}
+            className="p-1 hover:bg-gray-200 rounded"
+            disabled={wordSpeed <= 0.5}
+          >
+            <ChevronDown className="h-4 w-4 text-gray-600" />
+          </button>
+          <span className="text-sm text-gray-600 min-w-[3rem] text-center">{wordSpeed.toFixed(1)}x</span>
+          <button
+            onClick={() => handleSpeedChange(Math.min(2.0, wordSpeed + 0.1))}
+            className="p-1 hover:bg-gray-200 rounded"
+            disabled={wordSpeed >= 2.0}
+          >
+            <ChevronUp className="h-4 w-4 text-gray-600" />
+          </button>
+        </div>
+      </div>
+
+      {/* Practice Button */}
+      <div className="flex items-center space-x-3">
+        <button
+          onClick={() => onPractice(word.original)}
+          className="flex items-center space-x-2 px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
+        >
+          <Mic className="h-4 w-4" />
+          <span>Practice</span>
+        </button>
+        
+        {isRecording && (
+          <button
+            onClick={onStopRecording}
+            className="flex items-center space-x-2 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+          >
+            <MicOff className="h-4 w-4" />
+            <span>Stop Recording</span>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
 
 interface ToolbarProps {
   isVisible: boolean;
@@ -13,6 +141,10 @@ interface ToolbarProps {
   newVocabItems?: Array<{word: string, meaning: string, context: string}>;
   persistentVocab?: Array<{word: string, meaning: string, context: string}>;
   onUpdatePersistentVocab?: (vocab: Array<{word: string, meaning: string, context: string}>) => void;
+  phoneticBreakdowns?: {[key: string]: Array<{original: string, phonetic: string, transliteration: string, syllables: string[]}>};
+  onPlayWordAudio?: (word: string, speed?: number) => void;
+  globalPlaybackSpeed?: number;
+  onSpeedChange?: (speed: number) => void;
 }
 
 interface VocabItem {
@@ -61,7 +193,22 @@ interface ComprehensiveAnalysis {
   }>;
 }
 
-export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoLoadExplanations = false, comprehensiveAnalysis, activeTab: externalActiveTab, onTabChange, newVocabItems, persistentVocab = [], onUpdatePersistentVocab }: ToolbarProps) {
+export default function Toolbar({ 
+  isVisible, 
+  currentMessage, 
+  onAddToVocab, 
+  autoLoadExplanations = false, 
+  comprehensiveAnalysis, 
+  activeTab: externalActiveTab, 
+  onTabChange, 
+  newVocabItems, 
+  persistentVocab = [], 
+  onUpdatePersistentVocab,
+  phoneticBreakdowns = {},
+  onPlayWordAudio,
+  globalPlaybackSpeed = 1.0,
+  onSpeedChange
+}: ToolbarProps) {
   const [internalActiveTab, setInternalActiveTab] = useState<'vocab' | 'explain' | 'pronunciation'>('explain');
   
   // Use external activeTab if provided, otherwise use internal state
@@ -100,6 +247,8 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
     audioId: string;
   }>>([]);
   const [masteredWords, setMasteredWords] = useState<Set<string>>(new Set());
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [currentSession, setCurrentSession] = useState<{
     sessionId: string;
     startTime: string;
@@ -597,8 +746,10 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
 
   // Pronunciation practice functions
   const practiceWord = (word: string) => {
+    console.log('🎤 Starting practice for word:', word);
     setPracticingWord(word);
     setCurrentAttempt(0);
+    startRecording();
   };
 
   const startWordPractice = async () => {
@@ -840,7 +991,96 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
       averageScore: 0
     };
     setCurrentSession(newSession);
+    console.log('🎤 Practice session started:', sessionId);
     return sessionId;
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+
+      recorder.ondataavailable = (event) => {
+        chunks.push(event.data);
+      };
+
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+        await analyzePronunciation(audioBlob);
+        setIsRecording(false);
+      };
+
+      recorder.start();
+      setMediaRecorder(recorder);
+      setIsRecording(true);
+      console.log('🎤 Recording started for pronunciation practice');
+    } catch (error) {
+      console.error('❌ Error starting recording:', error);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorder && isRecording) {
+      mediaRecorder.stop();
+      console.log('🎤 Recording stopped');
+    }
+  };
+
+  const analyzePronunciation = async (audioBlob: Blob) => {
+    try {
+      console.log('📊 Analyzing pronunciation for word:', practicingWord);
+      
+      // Convert audio to base64
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      
+      // Send to pronunciation analysis
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pronunciation-analysis`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audioData: base64,
+          transcription: practicingWord || 'Test pronunciation'
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('📊 Pronunciation analysis result:', data);
+        
+        if (data.words && data.words.length > 0) {
+          const wordAnalysis = data.words[0]; // Get first word analysis
+          const pronunciationData: PronunciationWord = {
+            word: wordAnalysis.word,
+            score: wordAnalysis.score || 0,
+            needsPractice: wordAnalysis.needsPractice,
+            feedback: wordAnalysis.feedback || 'Practice this word',
+            commonMistakes: wordAnalysis.commonMistakes || [],
+            syllableAnalysis: wordAnalysis.syllableAnalysis || []
+          };
+          
+          // Update pronunciation words
+          setPronunciationWords(prev => {
+            const existing = prev.find(w => w.word === wordAnalysis.word);
+            if (existing) {
+              return prev.map(w => w.word === wordAnalysis.word ? pronunciationData : w);
+            } else {
+              return [...prev, pronunciationData];
+            }
+          });
+          
+          console.log('✅ Pronunciation analysis completed for:', wordAnalysis.word, 'Score:', wordAnalysis.score);
+        }
+      } else {
+        console.error('❌ Pronunciation analysis failed:', response.status);
+      }
+    } catch (error) {
+      console.error('❌ Error analyzing pronunciation:', error);
+    }
   };
 
   const endPracticeSession = () => {
@@ -1172,25 +1412,8 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
             {currentMessage ? (
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                <h4 className="font-semibold text-gray-900 text-base">Pronunciation Practice</h4>
+                  <h4 className="font-semibold text-gray-900 text-base">Pronunciation Practice</h4>
                   <div className="flex space-x-2">
-                    {!currentSession ? (
-                      <button
-                        onClick={startPracticeSession}
-                        className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 flex items-center space-x-2"
-                      >
-                        <Target className="h-4 w-4" />
-                        <span>Start Session</span>
-                      </button>
-                    ) : (
-                      <button
-                        onClick={endPracticeSession}
-                        className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center space-x-2"
-                      >
-                        <Trophy className="h-4 w-4" />
-                        <span>End Session</span>
-                      </button>
-                    )}
                     <button
                       onClick={() => analyzeComprehensive(currentMessage)}
                       disabled={isAnalyzing}
@@ -1205,6 +1428,87 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
                     </button>
                   </div>
                 </div>
+
+                {/* Word Breakdown Display */}
+                {(() => {
+                  // Get phonetic breakdown for current message
+                  const messageId = Object.keys(phoneticBreakdowns).find(id => 
+                    phoneticBreakdowns[id] && phoneticBreakdowns[id].length > 0
+                  );
+                  const words = messageId ? phoneticBreakdowns[messageId] : [];
+                  
+                  if (words.length === 0) {
+                    return (
+                      <div className="text-center py-8">
+                        <Volume2 className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                        <p className="text-sm text-gray-600">
+                          Click "Get pronunciation guide" in the chat to load word breakdown
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-4">
+                      <h5 className="text-sm font-semibold text-gray-700">Word Breakdown</h5>
+                      <div className="space-y-3">
+                        {words.map((word, index) => (
+                          <WordPracticeCard 
+                            key={index}
+                            word={word}
+                            onPlayAudio={onPlayWordAudio}
+                            globalSpeed={globalPlaybackSpeed}
+                            onSpeedChange={onSpeedChange}
+                            onPractice={practiceWord}
+                            isRecording={isRecording && practicingWord === word.original}
+                            onStartRecording={startRecording}
+                            onStopRecording={stopRecording}
+                            pronunciationScore={pronunciationWords.find(w => w.word === word.original)?.score}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Analysis Results */}
+                {pronunciationWords.length > 0 && (
+                  <div className="space-y-4">
+                    <h5 className="text-sm font-semibold text-gray-700">Analysis Results</h5>
+                    <div className="space-y-3">
+                      {pronunciationWords.map((wordData, index) => (
+                        <div key={index} className={`rounded-xl p-4 ${
+                          wordData.score >= 90 ? 'bg-green-50 border border-green-200' :
+                          wordData.score >= 70 ? 'bg-yellow-50 border border-yellow-200' :
+                          'bg-red-50 border border-red-200'
+                        }`}>
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="text-lg font-semibold">{wordData.word}</span>
+                            <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                              wordData.score >= 90 ? 'bg-green-100 text-green-800' :
+                              wordData.score >= 70 ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-red-100 text-red-800'
+                            }`}>
+                              {wordData.score}/100
+                            </div>
+                          </div>
+                          <p className="text-sm text-gray-600">{wordData.feedback}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <Volume2 className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-sm text-gray-600">
+                  Pronunciation practice will be available when the AI sends a message
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
                 {/* Progress Stats */}
                 <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-4">
