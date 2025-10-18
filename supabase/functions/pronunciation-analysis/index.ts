@@ -23,6 +23,13 @@ interface PronunciationAnalysisResponse {
     difficulty?: string;
     soundsToFocus?: string[];
     improvementTips?: string[];
+    syllableAnalysis?: Array<{
+      syllable: string;
+      score: number;
+      feedback: string;
+      phoneticExpected: string;
+      phoneticActual?: string;
+    }>;
   }>;
   overallScore: number;
   suggestions: string[];
@@ -54,7 +61,7 @@ serve(async (req) => {
     
     // For now, we'll use AI analysis since we don't have real pronunciation scoring
     // In a production app, you'd integrate with services like Azure Speech or Google Cloud Speech
-    const systemPrompt = `You are a German pronunciation expert. Analyze the following German words for pronunciation accuracy and provide detailed scoring.
+    const systemPrompt = `You are a German pronunciation expert. Analyze the following German words for pronunciation accuracy and provide detailed scoring with syllable-level analysis.
 
 Words: ${words.join(', ')}
 
@@ -64,6 +71,7 @@ For each word, provide:
 3. Common mistakes for this word
 4. Difficulty level (easy/medium/hard)
 5. Specific sounds to focus on
+6. Syllable-by-syllable analysis with individual scores
 
 Scoring criteria:
 - 90-100: Native-like pronunciation
@@ -85,7 +93,23 @@ Return ONLY a JSON object with this structure:
       "commonMistakes": ["Pronouncing 'ch' as 'k'", "Not aspirating the 'ch' sound"],
       "difficulty": "medium",
       "soundsToFocus": ["ch", "ü"],
-      "improvementTips": ["Practice 'ch' sounds with 'Bach'", "Work on vowel length"]
+      "improvementTips": ["Practice 'ch' sounds with 'Bach'", "Work on vowel length"],
+      "syllableAnalysis": [
+        {
+          "syllable": "Stra",
+          "score": 85,
+          "feedback": "Good pronunciation of 'Str' cluster",
+          "phoneticExpected": "ʃtʁa",
+          "phoneticActual": "ʃtʁa"
+        },
+        {
+          "syllable": "ße",
+          "score": 65,
+          "feedback": "The 'ß' sound needs work - should be sharper",
+          "phoneticExpected": "sə",
+          "phoneticActual": "zə"
+        }
+      ]
     }
   ],
   "overallScore": 80,
@@ -110,7 +134,7 @@ Return ONLY a JSON object with this structure:
         messages: [
           { role: 'system', content: systemPrompt }
         ],
-        max_tokens: 600,
+        max_tokens: 1000,
         temperature: 0.3,
       }),
     })

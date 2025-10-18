@@ -1318,11 +1318,21 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
                       </div>
                     </div>
                     {pronunciationWords.map((wordData, index) => (
-                      <div key={index} className="bg-gray-50 rounded-xl p-4">
+                      <div key={index} className={`rounded-xl p-4 ${
+                        wordData.score >= 90 ? 'bg-green-50 border border-green-200' :
+                        wordData.score >= 70 ? 'bg-yellow-50 border border-yellow-200' :
+                        'bg-red-50 border border-red-200'
+                      }`}>
                         <div className="flex items-center justify-between mb-3">
                           <span className="text-lg font-semibold">{wordData.word}</span>
                           <div className="flex items-center space-x-2">
-                            <ScoreDisplay score={wordData.score} label="Score" />
+                            <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                              wordData.score >= 90 ? 'bg-green-100 text-green-800' :
+                              wordData.score >= 70 ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-red-100 text-red-800'
+                            }`}>
+                              {wordData.score}/100
+                            </div>
                             {wordData.needsPractice && (
                               <button
                                 onClick={() => practiceWord(wordData.word)}
@@ -1338,18 +1348,51 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
                           </div>
                         </div>
                         
-                        {/* Enhanced Progress bar */}
+                        {/* Enhanced Progress bar with RAG colors */}
                         <div className="mb-3">
-                          <ProgressBar score={wordData.score} />
+                          <div className="w-full bg-gray-200 rounded-full h-3">
+                            <div 
+                              className={`h-3 rounded-full transition-all duration-300 ${
+                                wordData.score >= 90 ? 'bg-gradient-to-r from-green-400 to-green-600' :
+                                wordData.score >= 70 ? 'bg-gradient-to-r from-yellow-400 to-yellow-600' :
+                                'bg-gradient-to-r from-red-400 to-red-600'
+                              }`}
+                              style={{ width: `${wordData.score}%` }}
+                            />
+                          </div>
                           <div className="flex justify-between text-xs text-gray-500 mt-1">
-                            <span>0</span>
-                            <span>50</span>
-                            <span>100</span>
+                            <span className="text-red-600">Poor (0-69)</span>
+                            <span className="text-yellow-600">Good (70-89)</span>
+                            <span className="text-green-600">Excellent (90-100)</span>
                           </div>
                         </div>
                         
                         <div className="space-y-2">
                           <p className="text-sm text-gray-600">{wordData.feedback}</p>
+                          
+                          {/* Syllable-level analysis */}
+                          {wordData.syllableAnalysis && wordData.syllableAnalysis.length > 0 && (
+                            <div className="mt-3 p-3 bg-white rounded-lg border">
+                              <p className="text-xs font-medium text-gray-700 mb-2">Syllable Analysis:</p>
+                              <div className="space-y-1">
+                                {wordData.syllableAnalysis.map((syllable: any, idx: number) => (
+                                  <div key={idx} className="flex items-center justify-between text-xs">
+                                    <span className="font-medium">{syllable.syllable}</span>
+                                    <div className="flex items-center space-x-2">
+                                      <span className={`px-2 py-1 rounded text-xs ${
+                                        syllable.score >= 90 ? 'bg-green-100 text-green-800' :
+                                        syllable.score >= 70 ? 'bg-yellow-100 text-yellow-800' :
+                                        'bg-red-100 text-red-800'
+                                      }`}>
+                                        {syllable.score}/100
+                                      </span>
+                                      <span className="text-gray-500 italic">{syllable.feedback}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                           
                           {/* Difficulty and sounds to focus on */}
                           {wordData.difficulty && (

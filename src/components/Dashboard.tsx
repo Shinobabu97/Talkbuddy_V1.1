@@ -281,6 +281,14 @@ export default function Dashboard({ user }: DashboardProps) {
   // Comprehensive analysis state
   const [comprehensiveAnalysis, setComprehensiveAnalysis] = useState<{[key: string]: any}>({});
   
+  // Pronunciation features state
+  const [globalPlaybackSpeed, setGlobalPlaybackSpeed] = useState<number>(() => {
+    const saved = localStorage.getItem('talkbuddy-playback-speed');
+    return saved ? parseFloat(saved) : 1.0;
+  });
+  const [phoneticBreakdowns, setPhoneticBreakdowns] = useState<{[key: string]: any}>({});
+  const [showPronunciationBreakdown, setShowPronunciationBreakdown] = useState<{[key: string]: boolean}>({});
+  
   // Debug messageInput state changes
   React.useEffect(() => {
     console.log('📝 === MESSAGE INPUT STATE CHANGED ===');
@@ -288,6 +296,11 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('Length:', messageInput.length);
     console.log('Trimmed:', messageInput.trim());
   }, [messageInput]);
+
+  // Persist global playback speed to localStorage
+  useEffect(() => {
+    localStorage.setItem('talkbuddy-playback-speed', globalPlaybackSpeed.toString());
+  }, [globalPlaybackSpeed]);
   
   // Debug errorMessages state changes
   React.useEffect(() => {
@@ -862,6 +875,66 @@ export default function Dashboard({ user }: DashboardProps) {
 
   const speakText = async (text: string) => {
     await germanTTS.speak(text);
+  };
+
+  // Pronunciation feature functions
+  const getPhoneticBreakdown = async (text: string, messageId: string) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/phonetic-breakdown`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text, language: 'de' })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get phonetic breakdown');
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        setPhoneticBreakdowns(prev => ({
+          ...prev,
+          [messageId]: data.words
+        }));
+      }
+    } catch (error) {
+      console.error('Error getting phonetic breakdown:', error);
+    }
+  };
+
+  const playWordAudio = async (word: string, speed: number = globalPlaybackSpeed) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/german-tts`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: word, speed })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate audio');
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        const audio = new Audio(data.audioUrl);
+        await audio.play();
+      }
+    } catch (error) {
+      console.error('Error playing word audio:', error);
+    }
+  };
+
+  const togglePronunciationBreakdown = (messageId: string) => {
+    setShowPronunciationBreakdown(prev => ({
+      ...prev,
+      [messageId]: !prev[messageId]
+    }));
   };
 
   const toggleTranslation = (messageId: string) => {
@@ -4427,6 +4500,94 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                           message.content
                         )}
                       </div>
+
+                      {/* Pronunciation Breakdown for Assistant Messages */}
+                      {message.role === 'assistant' && (
+                        <div className="mt-3">
+                          {(() => {
+                            const wordCount = message.content.split(' ').length;
+                            const shouldAutoShow = wordCount <= 5;
+                            const isShowing = showPronunciationBreakdown[message.id];
+                            const phoneticData = phoneticBreakdowns[message.id];
+                            
+                            return (
+                              <div>
+                                {!phoneticData && (
+                                  <button
+                                    onClick={() => getPhoneticBreakdown(message.content, message.id)}
+                                    className="text-xs text-blue-600 hover:text-blue-800 underline"
+                                  >
+                                    Get pronunciation guide
+                                  </button>
+                                )}
+                                
+                                {phoneticData && (
+                                  <div className="space-y-2">
+                                    {!shouldAutoShow && !isShowing && (
+                                      <button
+                                        onClick={() => togglePronunciationBreakdown(message.id)}
+                                        className="text-xs text-blue-600 hover:text-blue-800 underline"
+                                      >
+                                        Show pronunciation breakdown
+                                      </button>
+                                    )}
+                                    
+                                    {(shouldAutoShow || isShowing) && (
+                                      <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs font-medium text-gray-700">Pronunciation Guide</span>
+                                          {!shouldAutoShow && (
+                                            <button
+                                              onClick={() => togglePronunciationBreakdown(message.id)}
+                                              className="text-xs text-gray-500 hover:text-gray-700"
+                                            >
+                                              Hide
+                                            </button>
+                                          )}
+                                        </div>
+                                        <div className="space-y-1">
+                                          {phoneticData.map((word: any, index: number) => (
+                                            <div key={index} className="flex items-center space-x-2 text-xs">
+                                              <span className="font-medium text-gray-800">{word.original}</span>
+                                              <span className="text-gray-600">[{word.phonetic}]</span>
+                                              <span className="text-blue-600 italic">{word.transliteration}</span>
+                                              <div className="flex items-center space-x-1">
+                                                <button
+                                                  onClick={() => playWordAudio(word.original)}
+                                                  className="p-1 hover:bg-gray-200 rounded"
+                                                  title="Play pronunciation"
+                                                >
+                                                  <Volume2 className="h-3 w-3 text-gray-500" />
+                                                </button>
+                                                <div className="flex items-center space-x-1">
+                                                  <span className="text-xs text-gray-500">Speed:</span>
+                                                  <input
+                                                    type="range"
+                                                    min="0.5"
+                                                    max="2.0"
+                                                    step="0.1"
+                                                    value={globalPlaybackSpeed}
+                                                    onChange={(e) => {
+                                                      const speed = parseFloat(e.target.value);
+                                                      setGlobalPlaybackSpeed(speed);
+                                                    }}
+                                                    className="w-16 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                                                  />
+                                                  <span className="text-xs text-gray-500 w-8">{globalPlaybackSpeed.toFixed(1)}x</span>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
                   </div>
                 </div>
 
