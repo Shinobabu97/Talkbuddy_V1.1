@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { BookOpen, Lightbulb, Volume2, Star, X, Play, Mic, MicOff, Loader2, AlertCircle, CheckCircle, Target, Trophy, ChevronUp, ChevronDown } from 'lucide-react';
+import { BookOpen, Lightbulb, Volume2, Star, X, Play, Mic, MicOff, Loader2, AlertCircle, CheckCircle, Target, Trophy, ChevronUp, ChevronDown, TrendingUp } from 'lucide-react';
 import { germanTTS } from '../lib/tts';
 
 // Word Practice Card Component
@@ -418,6 +418,11 @@ export default function Toolbar({
     return saved ? parseInt(saved) : 1;
   });
   const [recentPointsEarned, setRecentPointsEarned] = useState(0);
+  const [progressHistory, setProgressHistory] = useState(() => {
+    const saved = localStorage.getItem('pronunciation_progress_history');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [showProgressModal, setShowProgressModal] = useState(false);
   const [currentSession, setCurrentSession] = useState<{
     sessionId: string;
     startTime: string;
@@ -849,6 +854,9 @@ export default function Toolbar({
       addPoints(pointsEarned);
       console.log(`⭐ Earned ${pointsEarned} points for "${word}" (score: ${mockAnalysis.score})`);
       
+      // Record progress
+      recordProgress(mockAnalysis.score, 1, false);
+      
       // Mark word as analyzed
       setWordsAnalyzed(prev => new Set([...prev, word]));
       setWordsReadyForAnalysis(prev => {
@@ -905,6 +913,9 @@ export default function Toolbar({
       addPoints(pointsEarned);
       console.log(`⭐ Earned ${pointsEarned} points for sentence analysis (score: ${mockSentenceAnalysis.overallScore})`);
       
+      // Record progress
+      recordProgress(mockSentenceAnalysis.overallScore, currentMessage.split(' ').length, true);
+      
       // Mark sentence as analyzed
       setSentenceAnalyzed(true);
       
@@ -956,6 +967,76 @@ export default function Toolbar({
       pointsToNextLevel,
       progressPercentage: (currentLevelPoints / 100) * 100
     };
+  };
+
+  // Progress tracking functions
+  const recordProgress = (score: number, wordCount: number, isSentence: boolean) => {
+    const today = new Date().toDateString();
+    const todayRecord = progressHistory.find((record: any) => record.date === today);
+    
+    const newRecord = {
+      date: today,
+      wordsPracticed: (todayRecord?.wordsPracticed || 0) + wordCount,
+      averageScore: todayRecord ? 
+        Math.round(((todayRecord.averageScore * todayRecord.wordsPracticed) + score) / (todayRecord.wordsPracticed + wordCount)) :
+        score,
+      totalSessions: (todayRecord?.totalSessions || 0) + 1,
+      pointsEarned: (todayRecord?.pointsEarned || 0) + calculatePoints(score, isSentence),
+      sentencesPracticed: todayRecord ? 
+        (todayRecord.sentencesPracticed || 0) + (isSentence ? 1 : 0) :
+        (isSentence ? 1 : 0)
+    };
+
+    const updatedHistory = progressHistory.filter((record: any) => record.date !== today);
+    updatedHistory.push(newRecord);
+    
+    // Keep only last 30 days
+    const recentHistory = updatedHistory.slice(-30);
+    
+    setProgressHistory(recentHistory);
+    localStorage.setItem('pronunciation_progress_history', JSON.stringify(recentHistory));
+  };
+
+  const getProgressStats = () => {
+    const last7Days = progressHistory.slice(-7);
+    const last30Days = progressHistory;
+    
+    const totalWords = last30Days.reduce((sum: number, day: any) => sum + day.wordsPracticed, 0);
+    const totalSessions = last30Days.reduce((sum: number, day: any) => sum + day.totalSessions, 0);
+    const avgScore = last30Days.length > 0 ? 
+      Math.round(last30Days.reduce((sum: number, day: any) => sum + day.averageScore, 0) / last30Days.length) : 0;
+    
+    const weeklyWords = last7Days.reduce((sum: number, day: any) => sum + day.wordsPracticed, 0);
+    const weeklySessions = last7Days.reduce((sum: number, day: any) => sum + day.totalSessions, 0);
+    
+    return {
+      totalWords,
+      totalSessions,
+      avgScore,
+      weeklyWords,
+      weeklySessions,
+      streak: calculateStreak()
+    };
+  };
+
+  const calculateStreak = () => {
+    let streak = 0;
+    const today = new Date();
+    
+    for (let i = 0; i < 30; i++) {
+      const checkDate = new Date(today);
+      checkDate.setDate(today.getDate() - i);
+      const dateString = checkDate.toDateString();
+      
+      const dayRecord = progressHistory.find((record: any) => record.date === dateString);
+      if (dayRecord && dayRecord.wordsPracticed > 0) {
+        streak++;
+      } else {
+        break;
+      }
+    }
+    
+    return streak;
   };
 
   const endPracticeSession = () => {
@@ -1283,6 +1364,15 @@ export default function Toolbar({
                         </div>
                       </div>
                     )}
+                    
+                    {/* Progress Tracker Button */}
+                    <button
+                      onClick={() => setShowProgressModal(true)}
+                      className="flex items-center space-x-1 px-3 py-1 bg-gradient-to-r from-green-500 to-blue-500 text-white rounded-lg hover:from-green-600 hover:to-blue-600 transition-all duration-200"
+                    >
+                      <TrendingUp className="h-4 w-4" />
+                      <span className="text-xs font-medium">Progress</span>
+                    </button>
                   </div>
                 </div>
 
@@ -1498,6 +1588,86 @@ export default function Toolbar({
                 <p className="text-sm text-gray-600">
                   Pronunciation practice will be available when the AI sends a message
                 </p>
+              </div>
+            )}
+            
+            {/* Progress Modal */}
+            {showProgressModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                <div className="bg-white rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900">Your Progress</h3>
+                    <button
+                      onClick={() => setShowProgressModal(false)}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="h-6 w-6" />
+                    </button>
+                  </div>
+                  
+                  {(() => {
+                    const stats = getProgressStats();
+                    return (
+                      <div className="space-y-6">
+                        {/* Overall Stats */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="bg-blue-50 rounded-lg p-4">
+                            <div className="text-2xl font-bold text-blue-600">{stats.totalWords}</div>
+                            <div className="text-sm text-blue-800">Words Practiced</div>
+                          </div>
+                          <div className="bg-green-50 rounded-lg p-4">
+                            <div className="text-2xl font-bold text-green-600">{stats.totalSessions}</div>
+                            <div className="text-sm text-green-800">Practice Sessions</div>
+                          </div>
+                          <div className="bg-purple-50 rounded-lg p-4">
+                            <div className="text-2xl font-bold text-purple-600">{stats.avgScore}%</div>
+                            <div className="text-sm text-purple-800">Average Score</div>
+                          </div>
+                          <div className="bg-orange-50 rounded-lg p-4">
+                            <div className="text-2xl font-bold text-orange-600">{stats.streak}</div>
+                            <div className="text-sm text-orange-800">Day Streak</div>
+                          </div>
+                        </div>
+                        
+                        {/* Weekly Stats */}
+                        <div className="bg-gray-50 rounded-lg p-4">
+                          <h4 className="font-semibold text-gray-800 mb-3">This Week</h4>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <div className="text-lg font-bold text-gray-700">{stats.weeklyWords}</div>
+                              <div className="text-sm text-gray-600">Words This Week</div>
+                            </div>
+                            <div>
+                              <div className="text-lg font-bold text-gray-700">{stats.weeklySessions}</div>
+                              <div className="text-sm text-gray-600">Sessions This Week</div>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Recent Activity */}
+                        {progressHistory.length > 0 && (
+                          <div>
+                            <h4 className="font-semibold text-gray-800 mb-3">Recent Activity</h4>
+                            <div className="space-y-2 max-h-40 overflow-y-auto">
+                              {progressHistory.slice(-7).reverse().map((day: any, index: number) => (
+                                <div key={index} className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
+                                  <div>
+                                    <div className="font-medium text-gray-800">{day.date}</div>
+                                    <div className="text-sm text-gray-600">{day.wordsPracticed} words, {day.totalSessions} sessions</div>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="font-bold text-blue-600">{day.averageScore}%</div>
+                                    <div className="text-sm text-green-600">+{day.pointsEarned} pts</div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
             )}
           </div>
