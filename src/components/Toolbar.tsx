@@ -26,6 +26,8 @@ interface WordPracticeCardProps {
   };
   isReadyForAnalysis?: boolean;
   hasBeenAnalyzed?: boolean;
+  onSaveToDifficult?: (word: string) => void;
+  isInDifficultWords?: boolean;
 }
 
 const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
@@ -42,7 +44,9 @@ const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
   isAnalyzing = false,
   wordAnalysis,
   isReadyForAnalysis = false,
-  hasBeenAnalyzed = false
+  hasBeenAnalyzed = false,
+  onSaveToDifficult,
+  isInDifficultWords = false
 }) => {
   const [wordSpeed, setWordSpeed] = useState(globalSpeed);
 
@@ -207,6 +211,31 @@ const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
              isAnalyzing ? 'Analyzing...' : 'Analyze'}
           </span>
         </button>
+        
+        {/* Save to Difficult Words Button */}
+        {hasBeenAnalyzed && wordAnalysis && wordAnalysis.score < 70 && (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log('📚 Save to difficult words clicked for:', word.original);
+              if (onSaveToDifficult) {
+                onSaveToDifficult(word.original);
+              }
+            }}
+            className={`flex items-center space-x-2 px-3 py-2 rounded-lg cursor-pointer ${
+              isInDifficultWords
+                ? 'bg-green-500 text-white hover:bg-green-600'
+                : 'bg-orange-500 text-white hover:bg-orange-600'
+            }`}
+            style={{ pointerEvents: 'auto' }}
+          >
+            <BookOpen className="h-4 w-4" />
+            <span>
+              {isInDifficultWords ? 'In Library' : 'Save to Library'}
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Individual Word Analysis Results */}
@@ -435,6 +464,11 @@ export default function Toolbar({
     const saved = localStorage.getItem('pronunciation_longest_streak');
     return saved ? parseInt(saved) : 0;
   });
+  const [difficultWords, setDifficultWords] = useState(() => {
+    const saved = localStorage.getItem('pronunciation_difficult_words');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [showDifficultWordsModal, setShowDifficultWordsModal] = useState(false);
   const [currentSession, setCurrentSession] = useState<{
     sessionId: string;
     startTime: string;
@@ -869,6 +903,17 @@ export default function Toolbar({
       // Record progress
       recordProgress(mockAnalysis.score, 1, false);
       
+      // Add to difficult words if score is low
+      if (mockAnalysis.score < 70) {
+        const phoneticData = phoneticBreakdowns[currentMessage]?.find((w: any) => w.original === word);
+        if (phoneticData) {
+          addToDifficultWords(word, mockAnalysis.score, phoneticData.phonetic, phoneticData.transliteration);
+        }
+      } else {
+        // Update practice count for existing difficult words
+        updateDifficultWordPractice(word, mockAnalysis.score);
+      }
+      
       // Mark word as analyzed
       setWordsAnalyzed(prev => new Set([...prev, word]));
       setWordsReadyForAnalysis(prev => {
@@ -1123,6 +1168,76 @@ export default function Toolbar({
     ];
     
     return milestones.filter(milestone => currentStreak >= milestone.days);
+  };
+
+  // Difficult Words Library Management
+  const addToDifficultWords = (word: string, score: number, phonetic: string, transliteration: string) => {
+    const existingWord = difficultWords.find((w: any) => w.word === word);
+    
+    if (existingWord) {
+      // Update existing word with new score if it's lower (more difficult)
+      if (score < existingWord.lowestScore) {
+        const updatedWords = difficultWords.map((w: any) => 
+          w.word === word ? { ...w, lowestScore: score, lastPracticed: new Date().toISOString() } : w
+        );
+        setDifficultWords(updatedWords);
+        localStorage.setItem('pronunciation_difficult_words', JSON.stringify(updatedWords));
+      }
+    } else {
+      // Add new difficult word
+      const newWord = {
+        word,
+        phonetic,
+        transliteration,
+        lowestScore: score,
+        timesPracticed: 1,
+        firstAdded: new Date().toISOString(),
+        lastPracticed: new Date().toISOString(),
+        improvement: 0
+      };
+      
+      const updatedWords = [...difficultWords, newWord];
+      setDifficultWords(updatedWords);
+      localStorage.setItem('pronunciation_difficult_words', JSON.stringify(updatedWords));
+      
+      console.log(`📚 Added "${word}" to difficult words library (score: ${score})`);
+    }
+  };
+
+  const removeFromDifficultWords = (word: string) => {
+    const updatedWords = difficultWords.filter((w: any) => w.word !== word);
+    setDifficultWords(updatedWords);
+    localStorage.setItem('pronunciation_difficult_words', JSON.stringify(updatedWords));
+    console.log(`🗑️ Removed "${word}" from difficult words library`);
+  };
+
+  const updateDifficultWordPractice = (word: string, newScore: number) => {
+    const updatedWords = difficultWords.map((w: any) => {
+      if (w.word === word) {
+        const improvement = newScore - w.lowestScore;
+        return {
+          ...w,
+          lowestScore: Math.min(w.lowestScore, newScore),
+          timesPracticed: w.timesPracticed + 1,
+          lastPracticed: new Date().toISOString(),
+          improvement: Math.max(w.improvement, improvement)
+        };
+      }
+      return w;
+    });
+    
+    setDifficultWords(updatedWords);
+    localStorage.setItem('pronunciation_difficult_words', JSON.stringify(updatedWords));
+  };
+
+  const getDifficultWordsStats = () => {
+    const totalWords = difficultWords.length;
+    const avgScore = totalWords > 0 ? 
+      Math.round(difficultWords.reduce((sum: number, w: any) => sum + w.lowestScore, 0) / totalWords) : 0;
+    const mostImproved = difficultWords.reduce((best: any, current: any) => 
+      current.improvement > (best?.improvement || 0) ? current : best, null);
+    
+    return { totalWords, avgScore, mostImproved };
   };
 
   const endPracticeSession = () => {
@@ -1473,6 +1588,20 @@ export default function Toolbar({
                       <TrendingUp className="h-4 w-4" />
                       <span className="text-xs font-medium">Progress</span>
                     </button>
+                    
+                    {/* Difficult Words Library Button */}
+                    <button
+                      onClick={() => setShowDifficultWordsModal(true)}
+                      className="flex items-center space-x-1 px-3 py-1 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 transition-all duration-200"
+                    >
+                      <BookOpen className="h-4 w-4" />
+                      <span className="text-xs font-medium">Library</span>
+                      {difficultWords.length > 0 && (
+                        <span className="bg-white text-orange-600 text-xs px-1 rounded-full ml-1">
+                          {difficultWords.length}
+                        </span>
+                      )}
+                    </button>
                   </div>
                 </div>
 
@@ -1646,6 +1775,13 @@ export default function Toolbar({
                             wordAnalysis={individualWordAnalysis[word.original]}
                             isReadyForAnalysis={wordsReadyForAnalysis.has(word.original)}
                             hasBeenAnalyzed={wordsAnalyzed.has(word.original)}
+                            onSaveToDifficult={(word) => {
+                              const phoneticData = phoneticBreakdowns[currentMessage]?.find((w: any) => w.original === word);
+                              if (phoneticData) {
+                                addToDifficultWords(word, individualWordAnalysis[word]?.score || 0, phoneticData.phonetic, phoneticData.transliteration);
+                              }
+                            }}
+                            isInDifficultWords={difficultWords.some((w: any) => w.word === word.original)}
                           />
                                 ))}
                               </div>
@@ -1805,6 +1941,112 @@ export default function Toolbar({
                                 </div>
                               ))}
                             </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
+            
+            {/* Difficult Words Library Modal */}
+            {showDifficultWordsModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                <div className="bg-white rounded-xl p-6 max-w-4xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900">Difficult Words Library</h3>
+                    <button
+                      onClick={() => setShowDifficultWordsModal(false)}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="h-6 w-6" />
+                    </button>
+                  </div>
+                  
+                  {(() => {
+                    const stats = getDifficultWordsStats();
+                    return (
+                      <div className="space-y-6">
+                        {/* Library Stats */}
+                        <div className="grid grid-cols-3 gap-4">
+                          <div className="bg-orange-50 rounded-lg p-4">
+                            <div className="text-2xl font-bold text-orange-600">{stats.totalWords}</div>
+                            <div className="text-sm text-orange-800">Difficult Words</div>
+                          </div>
+                          <div className="bg-red-50 rounded-lg p-4">
+                            <div className="text-2xl font-bold text-red-600">{stats.avgScore}%</div>
+                            <div className="text-sm text-red-800">Average Score</div>
+                          </div>
+                          <div className="bg-green-50 rounded-lg p-4">
+                            <div className="text-2xl font-bold text-green-600">
+                              {stats.mostImproved ? stats.mostImproved.improvement : 0}
+                            </div>
+                            <div className="text-sm text-green-800">Best Improvement</div>
+                          </div>
+                        </div>
+                        
+                        {/* Difficult Words List */}
+                        {difficultWords.length > 0 ? (
+                          <div>
+                            <h4 className="font-semibold text-gray-800 mb-3">Your Difficult Words</h4>
+                            <div className="space-y-3 max-h-60 overflow-y-auto">
+                              {difficultWords.map((word: any, index: number) => (
+                                <div key={index} className="flex items-center justify-between bg-gray-50 rounded-lg p-4">
+                                  <div className="flex-1">
+                                    <div className="flex items-center space-x-3">
+                                      <div>
+                                        <div className="font-semibold text-lg text-gray-800">{word.word}</div>
+                                        <div className="text-sm text-gray-600">[{word.phonetic}]</div>
+                                        <div className="text-sm text-blue-600 italic">{word.transliteration}</div>
+                                      </div>
+                                      <div className="text-right">
+                                        <div className={`text-sm font-bold ${
+                                          word.lowestScore >= 70 ? 'text-green-600' :
+                                          word.lowestScore >= 50 ? 'text-yellow-600' : 'text-red-600'
+                                        }`}>
+                                          {word.lowestScore}%
+                                        </div>
+                                        <div className="text-xs text-gray-500">
+                                          {word.timesPracticed} practices
+                                        </div>
+                                        {word.improvement > 0 && (
+                                          <div className="text-xs text-green-600">
+                                            +{word.improvement}% improved
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center space-x-2 ml-4">
+                                    <button
+                                      onClick={() => {
+                                        // Practice this word
+                                        setCurrentMessage(word.word);
+                                        setShowDifficultWordsModal(false);
+                                      }}
+                                      className="px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm"
+                                    >
+                                      Practice
+                                    </button>
+                                    <button
+                                      onClick={() => removeFromDifficultWords(word.word)}
+                                      className="px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm"
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-center py-8">
+                            <BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                            <p className="text-gray-500">No difficult words saved yet</p>
+                            <p className="text-sm text-gray-400 mt-2">
+                              Words with scores below 70% will be automatically added here
+                            </p>
                           </div>
                         )}
                       </div>
