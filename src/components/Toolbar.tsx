@@ -409,6 +409,15 @@ export default function Toolbar({
     }>;
   } | null>(null);
   const [sentenceAnalyzed, setSentenceAnalyzed] = useState(false);
+  const [userPoints, setUserPoints] = useState(() => {
+    const saved = localStorage.getItem('pronunciation_points');
+    return saved ? parseInt(saved) : 0;
+  });
+  const [userLevel, setUserLevel] = useState(() => {
+    const saved = localStorage.getItem('pronunciation_level');
+    return saved ? parseInt(saved) : 1;
+  });
+  const [recentPointsEarned, setRecentPointsEarned] = useState(0);
   const [currentSession, setCurrentSession] = useState<{
     sessionId: string;
     startTime: string;
@@ -835,6 +844,11 @@ export default function Toolbar({
         [word]: mockAnalysis
       }));
       
+      // Add points for word analysis
+      const pointsEarned = calculatePoints(mockAnalysis.score, false);
+      addPoints(pointsEarned);
+      console.log(`⭐ Earned ${pointsEarned} points for "${word}" (score: ${mockAnalysis.score})`);
+      
       // Mark word as analyzed
       setWordsAnalyzed(prev => new Set([...prev, word]));
       setWordsReadyForAnalysis(prev => {
@@ -886,6 +900,11 @@ export default function Toolbar({
       
       setSentenceAnalysis(mockSentenceAnalysis);
       
+      // Add points for sentence analysis
+      const pointsEarned = calculatePoints(mockSentenceAnalysis.overallScore, true);
+      addPoints(pointsEarned);
+      console.log(`⭐ Earned ${pointsEarned} points for sentence analysis (score: ${mockSentenceAnalysis.overallScore})`);
+      
       // Mark sentence as analyzed
       setSentenceAnalyzed(true);
       
@@ -895,6 +914,48 @@ export default function Toolbar({
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  // Gamification functions
+  const calculatePoints = (score: number, isSentence: boolean = false) => {
+    let basePoints = 0;
+    if (score >= 90) basePoints = isSentence ? 20 : 10;
+    else if (score >= 80) basePoints = isSentence ? 15 : 8;
+    else if (score >= 70) basePoints = isSentence ? 10 : 5;
+    else if (score >= 60) basePoints = isSentence ? 5 : 3;
+    else basePoints = isSentence ? 2 : 1;
+    
+    return basePoints;
+  };
+
+  const addPoints = (points: number) => {
+    const newTotal = userPoints + points;
+    setUserPoints(newTotal);
+    setRecentPointsEarned(points);
+    localStorage.setItem('pronunciation_points', newTotal.toString());
+    
+    // Check for level up
+    const newLevel = Math.floor(newTotal / 100) + 1;
+    if (newLevel > userLevel) {
+      setUserLevel(newLevel);
+      localStorage.setItem('pronunciation_level', newLevel.toString());
+      console.log(`🎉 Level up! You're now level ${newLevel}!`);
+    }
+    
+    // Clear recent points after 3 seconds
+    setTimeout(() => {
+      setRecentPointsEarned(0);
+    }, 3000);
+  };
+
+  const getLevelProgress = () => {
+    const currentLevelPoints = userPoints % 100;
+    const pointsToNextLevel = 100 - currentLevelPoints;
+    return {
+      currentLevelPoints,
+      pointsToNextLevel,
+      progressPercentage: (currentLevelPoints / 100) * 100
+    };
   };
 
   const endPracticeSession = () => {
@@ -1186,6 +1247,43 @@ export default function Toolbar({
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <h4 className="font-semibold text-gray-900 text-base">Pronunciation Practice</h4>
+                  
+                  {/* Gamification Display */}
+                  <div className="flex items-center space-x-4">
+                    {/* Level and Points */}
+                    <div className="flex items-center space-x-2">
+                      <div className="text-right">
+                        <div className="text-xs text-gray-500">Level {userLevel}</div>
+                        <div className="text-sm font-semibold text-blue-600">{userPoints} pts</div>
+                      </div>
+                      <div className="w-8 h-8 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center">
+                        <span className="text-white font-bold text-sm">{userLevel}</span>
+                      </div>
+                    </div>
+                    
+                    {/* Level Progress Bar */}
+                    <div className="w-20">
+                      <div className="text-xs text-gray-500 mb-1">Progress</div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-500"
+                          style={{ width: `${getLevelProgress().progressPercentage}%` }}
+                        ></div>
+                      </div>
+                      <div className="text-xs text-gray-400 mt-1">
+                        {getLevelProgress().pointsToNextLevel} to next level
+                      </div>
+                    </div>
+                    
+                    {/* Recent Points Animation */}
+                    {recentPointsEarned > 0 && (
+                      <div className="animate-bounce">
+                        <div className="bg-green-500 text-white px-2 py-1 rounded-full text-xs font-bold">
+                          +{recentPointsEarned} ⭐
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Sentence-Level Practice and Analysis */}
@@ -1215,7 +1313,7 @@ export default function Toolbar({
                           <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
                           <span className="text-sm font-medium">Recording Sentence...</span>
                     </div>
-                        <button
+                      <button
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
@@ -1227,9 +1325,9 @@ export default function Toolbar({
                         >
                           <MicOff className="h-4 w-4" />
                           <span>Stop Recording</span>
-                        </button>
+                      </button>
                     </div>
-                  )}
+                    )}
                     
                     <button
                       onClick={(e) => {
@@ -1260,7 +1358,7 @@ export default function Toolbar({
                       </span>
                     </button>
                 </div>
-                
+
                   {/* Sentence Analysis Results */}
                   {sentenceAnalysis && (
                     <div className="mt-4 p-3 bg-white rounded-lg border border-purple-200">
@@ -1275,18 +1373,18 @@ export default function Toolbar({
                           'bg-red-100 text-red-800'
                         }`}>
                           {sentenceAnalysis.overallScore}/100
-                          </div>
-                        </div>
-                        
+                    </div>
+                  </div>
+                  
                       {/* Sentence Feedback */}
                         <div className="mb-3">
                         <span className="text-sm font-medium text-gray-600">Feedback:</span>
                         <p className="text-sm text-gray-700 mt-1">{sentenceAnalysis.feedback}</p>
-                        </div>
-                        
+                </div>
+
                       {/* Word-by-Word Analysis */}
                       {sentenceAnalysis.wordScores && sentenceAnalysis.wordScores.length > 0 && (
-                        <div>
+                      <div>
                           <span className="text-sm font-medium text-gray-600">Word-by-Word Analysis:</span>
                           <div className="mt-2 space-y-1">
                             {sentenceAnalysis.wordScores.map((wordScore, index) => (
@@ -1299,18 +1397,18 @@ export default function Toolbar({
                                 'bg-red-100 text-red-800'
                               }`}>
                                     {wordScore.score}/100
-                            </div>
+                      </div>
                                   <span className="text-gray-500 italic text-xs">{wordScore.feedback}</span>
-                                </div>
-                              </div>
+                      </div>
+                      </div>
                                 ))}
-                              </div>
-                            </div>
-                          )}
-                            </div>
-                          )}
-                </div>
-
+                    </div>
+                  </div>
+                )}
+                  </div>
+                )}
+                        </div>
+                        
                 {/* Word-Level Practice and Analysis */}
                 <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-xl p-4 border border-green-200">
                   <h5 className="text-sm font-semibold text-green-900 mb-3 flex items-center">
@@ -1333,7 +1431,7 @@ export default function Toolbar({
                         <p className="text-sm text-gray-600">
                           Click "Get pronunciation guide" in the chat to load word breakdown
                         </p>
-                    </div>
+                            </div>
                     );
                   }
 
@@ -1359,9 +1457,9 @@ export default function Toolbar({
                             isReadyForAnalysis={wordsReadyForAnalysis.has(word.original)}
                             hasBeenAnalyzed={wordsAnalyzed.has(word.original)}
                           />
-                        ))}
+                                ))}
+                              </div>
                             </div>
-                        </div>
                   );
                 })()}
 
