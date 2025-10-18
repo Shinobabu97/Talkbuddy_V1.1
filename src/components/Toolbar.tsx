@@ -24,6 +24,8 @@ interface WordPracticeCardProps {
       feedback: string;
     }>;
   };
+  isReadyForAnalysis?: boolean;
+  hasBeenAnalyzed?: boolean;
 }
 
 const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
@@ -38,7 +40,9 @@ const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
   pronunciationScore,
   onAnalyzeWord,
   isAnalyzing = false,
-  wordAnalysis
+  wordAnalysis,
+  isReadyForAnalysis = false,
+  hasBeenAnalyzed = false
 }) => {
   const [wordSpeed, setWordSpeed] = useState(globalSpeed);
 
@@ -171,16 +175,26 @@ const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
               onAnalyzeWord(word.original);
             }
           }}
-          disabled={isAnalyzing}
-          className="flex items-center space-x-2 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 cursor-pointer"
-          style={{ pointerEvents: 'auto' }}
+          disabled={!isReadyForAnalysis || isAnalyzing || hasBeenAnalyzed}
+          className={`flex items-center space-x-2 px-3 py-2 rounded-lg cursor-pointer ${
+            !isReadyForAnalysis || hasBeenAnalyzed
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              : isAnalyzing
+              ? 'bg-blue-300 text-blue-700 cursor-not-allowed'
+              : 'bg-blue-500 text-white hover:bg-blue-600'
+          }`}
+          style={{ pointerEvents: isReadyForAnalysis && !hasBeenAnalyzed ? 'auto' : 'none' }}
         >
           {isAnalyzing ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <Target className="h-4 w-4" />
           )}
-          <span>{isAnalyzing ? 'Analyzing...' : 'Analyze'}</span>
+          <span>
+            {!isReadyForAnalysis ? 'Record First' : 
+             hasBeenAnalyzed ? 'Analyzed' :
+             isAnalyzing ? 'Analyzing...' : 'Analyze'}
+          </span>
         </button>
       </div>
 
@@ -371,6 +385,8 @@ export default function Toolbar({
     }>;
   }}>({});
   const [analyzingWord, setAnalyzingWord] = useState<string | null>(null);
+  const [wordsReadyForAnalysis, setWordsReadyForAnalysis] = useState<Set<string>>(new Set());
+  const [wordsAnalyzed, setWordsAnalyzed] = useState<Set<string>>(new Set());
   const [currentSession, setCurrentSession] = useState<{
     sessionId: string;
     startTime: string;
@@ -561,6 +577,19 @@ export default function Toolbar({
     console.log('🎤 Starting practice for word:', word);
     console.log('🎤 Current practicing word:', practicingWord);
     console.log('🎤 Current recording state:', isRecording);
+    
+    // Reset analysis state for this word
+    setWordsAnalyzed(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(word);
+      return newSet;
+    });
+    setWordsReadyForAnalysis(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(word);
+      return newSet;
+    });
+    
     setPracticingWord(word);
     setCurrentAttempt(0);
     startRecording();
@@ -638,14 +667,27 @@ export default function Toolbar({
         console.log('🎤 Audio blob created, size:', audioBlob.size);
         await analyzePronunciation(audioBlob);
         setIsRecording(false);
+        
+        // Mark word as ready for analysis
+        if (practicingWord) {
+          setWordsReadyForAnalysis(prev => new Set([...prev, practicingWord]));
+          console.log('✅ Word marked as ready for analysis:', practicingWord);
+        }
+        
         console.log('🎤 Recording state set to false');
       };
 
+      // Start recording immediately
       recorder.start();
       setMediaRecorder(recorder);
-      setIsRecording(true);
-      console.log('🎤 Recording started for pronunciation practice');
-      console.log('🎤 Recording state set to true');
+      
+      // Set recording state after a small delay to ensure recorder is ready
+      setTimeout(() => {
+        setIsRecording(true);
+        console.log('🎤 Recording started for pronunciation practice');
+        console.log('🎤 Recording state set to true');
+      }, 100);
+      
     } catch (error) {
       console.error('❌ Error starting recording:', error);
       console.error('❌ Error details:', {
@@ -749,6 +791,14 @@ export default function Toolbar({
         ...prev,
         [word]: mockAnalysis
       }));
+      
+      // Mark word as analyzed
+      setWordsAnalyzed(prev => new Set([...prev, word]));
+      setWordsReadyForAnalysis(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(word);
+        return newSet;
+      });
       
       console.log('✅ Individual word analysis completed for:', word);
     } catch (error) {
@@ -1101,6 +1151,8 @@ export default function Toolbar({
                             onAnalyzeWord={analyzeIndividualWord}
                             isAnalyzing={analyzingWord === word.original}
                             wordAnalysis={individualWordAnalysis[word.original]}
+                            isReadyForAnalysis={wordsReadyForAnalysis.has(word.original)}
+                            hasBeenAnalyzed={wordsAnalyzed.has(word.original)}
                           />
                         ))}
                       </div>
