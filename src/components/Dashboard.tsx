@@ -883,6 +883,29 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('🔗 Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
     console.log('🔑 Supabase Key exists:', !!import.meta.env.VITE_SUPABASE_ANON_KEY);
     
+    // For now, let's create mock data to test the UI
+    console.log('🧪 Using mock data for testing...');
+    
+    const mockData = {
+      words: text.split(' ').map(word => ({
+        original: word,
+        phonetic: `[${word}]`,
+        transliteration: word.toUpperCase(),
+        syllables: [word]
+      }))
+    };
+    
+    console.log('📊 Mock phonetic breakdown data:', mockData);
+    
+    setPhoneticBreakdowns(prev => ({
+      ...prev,
+      [messageId]: mockData.words
+    }));
+    
+    console.log('✅ Mock phonetic breakdown set for message:', messageId);
+    
+    // TODO: Uncomment this when Supabase function is working
+    /*
     try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/phonetic-breakdown`, {
         method: 'POST',
@@ -923,6 +946,7 @@ export default function Dashboard({ user }: DashboardProps) {
         stack: error.stack
       });
     }
+    */
   };
 
   const playWordAudio = async (word: string, speed: number = globalPlaybackSpeed) => {
@@ -4534,20 +4558,25 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                               <div>
                                 {!phoneticData && (
                                   <button
-                                    onClick={() => {
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
                                       console.log('🖱️ Pronunciation guide button clicked!');
                                       console.log('📝 Message content:', message.content);
                                       console.log('🆔 Message ID:', message.id);
+                                      console.log('🎭 Message role:', message.role);
                                       console.log('🔧 Toolbar states before:', {
                                         activeTab: toolbarActiveTab,
                                         showToolbar,
                                         collapsed: toolbarCollapsed
                                       });
                                       
-                                      // Open pronunciation tab and get phonetic breakdown
-                                      setToolbarActiveTab('pronunciation');
+                                      // Force toolbar to show
                                       setShowToolbar(true);
                                       setToolbarCollapsed(false);
+                                      setToolbarActiveTab('pronunciation');
+                                      
+                                      // Get phonetic breakdown
                                       getPhoneticBreakdown(message.content, message.id);
                                       
                                       console.log('🔧 Toolbar states after:', {
@@ -4556,7 +4585,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                                         collapsed: false
                                       });
                                     }}
-                                    className="text-xs text-blue-600 hover:text-blue-800 underline"
+                                    className="text-xs text-blue-600 hover:text-blue-800 underline cursor-pointer"
+                                    style={{ pointerEvents: 'auto' }}
                                   >
                                     Get pronunciation guide
                                   </button>
