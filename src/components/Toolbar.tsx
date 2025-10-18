@@ -1257,23 +1257,6 @@ export default function Toolbar({
     }
   };
 
-  // Progress tracking functions
-  const getProgressStats = () => {
-    const sessions = JSON.parse(localStorage.getItem('practice_sessions') || '[]');
-    const totalWordsPracticed = sessions.reduce((total: number, session: any) => total + session.wordsPracticed.length, 0);
-    const totalScore = sessions.reduce((total: number, session: any) => total + session.totalScore, 0);
-    const averageScore = sessions.length > 0 ? totalScore / sessions.length : 0;
-    
-    return {
-      level: Math.floor(totalWordsPracticed / 10) + 1,
-      xp: totalWordsPracticed * 10,
-      xpToNextLevel: 10 - (totalWordsPracticed % 10),
-      totalWordsMastered: masteredWords.size,
-      streak: sessions.length,
-      achievements: ['first_practice', 'perfect_score', 'word_master']
-    };
-  };
-
   const getSessionStats = () => {
     if (!currentSession) return null;
     
