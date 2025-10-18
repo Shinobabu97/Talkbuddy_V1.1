@@ -46,6 +46,17 @@ const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
 }) => {
   const [wordSpeed, setWordSpeed] = useState(globalSpeed);
 
+  // Debug logging for analyze button state
+  console.log(`🔍 WordPracticeCard for "${word.original}":`, {
+    isReadyForAnalysis,
+    hasBeenAnalyzed,
+    isAnalyzing,
+    isRecording,
+    buttonText: !isReadyForAnalysis ? 'Record First' : 
+               hasBeenAnalyzed ? 'Analyzed' :
+               isAnalyzing ? 'Analyzing...' : 'Analyze'
+  });
+
   const handleSpeedChange = (newSpeed: number) => {
     setWordSpeed(newSpeed);
     if (onSpeedChange) {
@@ -671,12 +682,6 @@ export default function Toolbar({
         // Don't set isRecording to false here - let the stopRecording function handle it
         await analyzePronunciation(audioBlob);
         
-        // Mark word as ready for analysis
-        if (practicingWord) {
-          setWordsReadyForAnalysis(prev => new Set([...prev, practicingWord]));
-          console.log('✅ Word marked as ready for analysis:', practicingWord);
-        }
-        
         console.log('🎤 Recording analysis completed');
       };
 
@@ -714,6 +719,13 @@ export default function Toolbar({
       
       // Set recording state to false immediately when user clicks stop
       setIsRecording(false);
+      
+      // Mark word as ready for analysis immediately
+      if (practicingWord) {
+        setWordsReadyForAnalysis(prev => new Set([...prev, practicingWord]));
+        console.log('✅ Word marked as ready for analysis:', practicingWord);
+      }
+      
       console.log('🎤 Recording stopped and state set to false');
       
       // Reset the stopping flag after a short delay
@@ -721,7 +733,7 @@ export default function Toolbar({
         isStoppingRef.current = false;
         console.log('🛑 Stopping flag reset');
       }, 1000);
-    } else {
+        } else {
       console.log('🛑 Cannot stop recording - no recorder, not recording, or already stopping');
     }
   };
