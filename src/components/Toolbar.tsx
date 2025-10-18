@@ -423,6 +423,18 @@ export default function Toolbar({
     return saved ? JSON.parse(saved) : [];
   });
   const [showProgressModal, setShowProgressModal] = useState(false);
+  const [dailyBadges, setDailyBadges] = useState(() => {
+    const saved = localStorage.getItem('pronunciation_daily_badges');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [currentStreak, setCurrentStreak] = useState(() => {
+    const saved = localStorage.getItem('pronunciation_current_streak');
+    return saved ? parseInt(saved) : 0;
+  });
+  const [longestStreak, setLongestStreak] = useState(() => {
+    const saved = localStorage.getItem('pronunciation_longest_streak');
+    return saved ? parseInt(saved) : 0;
+  });
   const [currentSession, setCurrentSession] = useState<{
     sessionId: string;
     startTime: string;
@@ -995,6 +1007,10 @@ export default function Toolbar({
     
     setProgressHistory(recentHistory);
     localStorage.setItem('pronunciation_progress_history', JSON.stringify(recentHistory));
+    
+    // Update streak and award badges
+    updateStreak();
+    awardDailyBadge(newRecord.wordsPracticed, newRecord.pointsEarned);
   };
 
   const getProgressStats = () => {
@@ -1037,6 +1053,76 @@ export default function Toolbar({
     }
     
     return streak;
+  };
+
+  // Streak and Badge Management
+  const updateStreak = () => {
+    const newStreak = calculateStreak();
+    setCurrentStreak(newStreak);
+    localStorage.setItem('pronunciation_current_streak', newStreak.toString());
+    
+    if (newStreak > longestStreak) {
+      setLongestStreak(newStreak);
+      localStorage.setItem('pronunciation_longest_streak', newStreak.toString());
+    }
+  };
+
+  const awardDailyBadge = (wordsPracticed: number, pointsEarned: number) => {
+    const today = new Date().toDateString();
+    const existingBadge = dailyBadges.find((badge: any) => badge.date === today);
+    
+    if (existingBadge) return; // Already awarded today
+    
+    let badgeType = '';
+    let badgeIcon = '';
+    let badgeColor = '';
+    
+    if (wordsPracticed >= 20) {
+      badgeType = 'Word Master';
+      badgeIcon = '🏆';
+      badgeColor = 'gold';
+    } else if (wordsPracticed >= 10) {
+      badgeType = 'Word Warrior';
+      badgeIcon = '⚔️';
+      badgeColor = 'silver';
+    } else if (wordsPracticed >= 5) {
+      badgeType = 'Word Explorer';
+      badgeIcon = '🗺️';
+      badgeColor = 'bronze';
+    } else if (wordsPracticed >= 1) {
+      badgeType = 'Daily Practice';
+      badgeIcon = '⭐';
+      badgeColor = 'blue';
+    }
+    
+    if (badgeType) {
+      const newBadge = {
+        date: today,
+        type: badgeType,
+        icon: badgeIcon,
+        color: badgeColor,
+        wordsPracticed,
+        pointsEarned
+      };
+      
+      const updatedBadges = [...dailyBadges, newBadge].slice(-30); // Keep last 30 badges
+      setDailyBadges(updatedBadges);
+      localStorage.setItem('pronunciation_daily_badges', JSON.stringify(updatedBadges));
+      
+      console.log(`🏅 Badge earned: ${badgeType} ${badgeIcon}`);
+    }
+  };
+
+  const getStreakMilestones = () => {
+    const milestones = [
+      { days: 7, badge: '🔥', name: 'Week Warrior' },
+      { days: 14, badge: '💪', name: 'Two Week Champion' },
+      { days: 30, badge: '👑', name: 'Monthly Master' },
+      { days: 60, badge: '🌟', name: 'Two Month Legend' },
+      { days: 100, badge: '🏆', name: 'Century Champion' }
+    ];
+    
+    return milestones.filter(milestone => currentStreak >= milestone.days);
   };
 
   const endPracticeSession = () => {
@@ -1356,6 +1442,20 @@ export default function Toolbar({
                       </div>
                     </div>
                     
+                    {/* Streak Display */}
+                    <div className="flex items-center space-x-2">
+                      <div className="text-right">
+                        <div className="text-xs text-gray-500">Streak</div>
+                        <div className="text-sm font-bold text-orange-600">{currentStreak} 🔥</div>
+                      </div>
+                      {longestStreak > currentStreak && (
+                        <div className="text-right">
+                          <div className="text-xs text-gray-500">Best</div>
+                          <div className="text-sm font-semibold text-purple-600">{longestStreak} 👑</div>
+                        </div>
+                      )}
+                    </div>
+                    
                     {/* Recent Points Animation */}
                     {recentPointsEarned > 0 && (
                       <div className="animate-bounce">
@@ -1658,6 +1758,49 @@ export default function Toolbar({
                                   <div className="text-right">
                                     <div className="font-bold text-blue-600">{day.averageScore}%</div>
                                     <div className="text-sm text-green-600">+{day.pointsEarned} pts</div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Daily Badges */}
+                        {dailyBadges.length > 0 && (
+                          <div>
+                            <h4 className="font-semibold text-gray-800 mb-3">Recent Badges</h4>
+                            <div className="grid grid-cols-2 gap-2">
+                              {dailyBadges.slice(-6).reverse().map((badge: any, index: number) => (
+                                <div key={index} className={`p-3 rounded-lg border-2 ${
+                                  badge.color === 'gold' ? 'bg-yellow-50 border-yellow-200' :
+                                  badge.color === 'silver' ? 'bg-gray-50 border-gray-200' :
+                                  badge.color === 'bronze' ? 'bg-orange-50 border-orange-200' :
+                                  'bg-blue-50 border-blue-200'
+                                }`}>
+                                  <div className="flex items-center space-x-2">
+                                    <span className="text-lg">{badge.icon}</span>
+                                    <div>
+                                      <div className="font-semibold text-sm">{badge.type}</div>
+                                      <div className="text-xs text-gray-600">{badge.date}</div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Streak Milestones */}
+                        {getStreakMilestones().length > 0 && (
+                          <div>
+                            <h4 className="font-semibold text-gray-800 mb-3">Streak Achievements</h4>
+                            <div className="space-y-2">
+                              {getStreakMilestones().map((milestone, index) => (
+                                <div key={index} className="flex items-center space-x-3 bg-gradient-to-r from-orange-50 to-red-50 rounded-lg p-3 border border-orange-200">
+                                  <span className="text-2xl">{milestone.badge}</span>
+                                  <div>
+                                    <div className="font-semibold text-orange-800">{milestone.name}</div>
+                                    <div className="text-sm text-orange-600">{milestone.days} days streak</div>
                                   </div>
                                 </div>
                               ))}
