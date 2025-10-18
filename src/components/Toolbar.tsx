@@ -13,6 +13,17 @@ interface WordPracticeCardProps {
   onStartRecording: () => void;
   onStopRecording: () => void;
   pronunciationScore?: number;
+  onAnalyzeWord?: (word: string) => void;
+  isAnalyzing?: boolean;
+  wordAnalysis?: {
+    score: number;
+    feedback: string;
+    syllableAnalysis?: Array<{
+      syllable: string;
+      score: number;
+      feedback: string;
+    }>;
+  };
 }
 
 const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
@@ -24,7 +35,10 @@ const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
   isRecording,
   onStartRecording,
   onStopRecording,
-  pronunciationScore
+  pronunciationScore,
+  onAnalyzeWord,
+  isAnalyzing = false,
+  wordAnalysis
 }) => {
   const [wordSpeed, setWordSpeed] = useState(globalSpeed);
 
@@ -108,31 +122,116 @@ const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
 
       {/* Practice Button */}
       <div className="flex items-center space-x-3">
+        {!isRecording ? (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log('🖱️ Practice button clicked for word:', word.original);
+              console.log('🖱️ onPractice function exists:', !!onPractice);
+              onPractice(word.original);
+            }}
+            className="flex items-center space-x-2 px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 cursor-pointer"
+            style={{ pointerEvents: 'auto' }}
+          >
+            <Mic className="h-4 w-4" />
+            <span>Practice</span>
+          </button>
+        ) : (
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2 px-3 py-2 bg-red-100 text-red-800 rounded-lg">
+              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+              <span className="text-sm font-medium">Recording...</span>
+            </div>
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('🛑 Stop recording button clicked');
+                onStopRecording();
+              }}
+              className="flex items-center space-x-2 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 cursor-pointer"
+              style={{ pointerEvents: 'auto' }}
+            >
+              <MicOff className="h-4 w-4" />
+              <span>Stop Recording</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Individual Analysis Button */}
+      <div className="flex items-center space-x-3">
         <button
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            console.log('🖱️ Practice button clicked for word:', word.original);
-            console.log('🖱️ onPractice function exists:', !!onPractice);
-            onPractice(word.original);
+            console.log('🔍 Analyze button clicked for word:', word.original);
+            if (onAnalyzeWord) {
+              onAnalyzeWord(word.original);
+            }
           }}
-          className="flex items-center space-x-2 px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 cursor-pointer"
+          disabled={isAnalyzing}
+          className="flex items-center space-x-2 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 cursor-pointer"
           style={{ pointerEvents: 'auto' }}
         >
-          <Mic className="h-4 w-4" />
-          <span>Practice</span>
+          {isAnalyzing ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Target className="h-4 w-4" />
+          )}
+          <span>{isAnalyzing ? 'Analyzing...' : 'Analyze'}</span>
         </button>
-        
-        {isRecording && (
-          <button
-            onClick={onStopRecording}
-            className="flex items-center space-x-2 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
-          >
-            <MicOff className="h-4 w-4" />
-            <span>Stop Recording</span>
-          </button>
-        )}
       </div>
+
+      {/* Individual Word Analysis Results */}
+      {wordAnalysis && (
+        <div className="mt-4 p-3 bg-gray-50 rounded-lg border">
+          <h6 className="text-sm font-semibold text-gray-700 mb-2">Analysis Results</h6>
+          
+          {/* Overall Score */}
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-medium text-gray-600">Overall Score:</span>
+            <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+              wordAnalysis.score >= 90 ? 'bg-green-100 text-green-800' :
+              wordAnalysis.score >= 70 ? 'bg-yellow-100 text-yellow-800' :
+              'bg-red-100 text-red-800'
+            }`}>
+              {wordAnalysis.score}/100
+            </div>
+          </div>
+
+          {/* Feedback */}
+          <div className="mb-3">
+            <span className="text-sm font-medium text-gray-600">Feedback:</span>
+            <p className="text-sm text-gray-700 mt-1">{wordAnalysis.feedback}</p>
+          </div>
+
+          {/* Syllable Analysis */}
+          {wordAnalysis.syllableAnalysis && wordAnalysis.syllableAnalysis.length > 0 && (
+            <div>
+              <span className="text-sm font-medium text-gray-600">Syllable Breakdown:</span>
+              <div className="mt-2 space-y-2">
+                {wordAnalysis.syllableAnalysis.map((syllable, index) => (
+                  <div key={index} className="flex items-center justify-between text-sm">
+                    <span className="font-medium text-gray-800">{syllable.syllable}</span>
+                    <div className="flex items-center space-x-2">
+                      <div className={`px-2 py-1 rounded text-xs ${
+                        syllable.score >= 90 ? 'bg-green-100 text-green-800' :
+                        syllable.score >= 70 ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-red-100 text-red-800'
+                      }`}>
+                        {syllable.score}/100
+                      </div>
+                      <span className="text-gray-500 italic text-xs">{syllable.feedback}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -262,6 +361,16 @@ export default function Toolbar({
   const [masteredWords, setMasteredWords] = useState<Set<string>>(new Set());
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [individualWordAnalysis, setIndividualWordAnalysis] = useState<{[key: string]: {
+    score: number;
+    feedback: string;
+    syllableAnalysis?: Array<{
+      syllable: string;
+      score: number;
+      feedback: string;
+    }>;
+  }}>({});
+  const [analyzingWord, setAnalyzingWord] = useState<string | null>(null);
   const [currentSession, setCurrentSession] = useState<{
     sessionId: string;
     startTime: string;
@@ -617,6 +726,38 @@ export default function Toolbar({
     }
   };
 
+  // Individual word analysis function
+  const analyzeIndividualWord = async (word: string) => {
+    console.log('🔍 Analyzing individual word:', word);
+    setAnalyzingWord(word);
+    
+    try {
+      // For now, create mock analysis data
+      const mockAnalysis = {
+        score: Math.floor(Math.random() * 40) + 60, // Random score between 60-100
+        feedback: `Good pronunciation of "${word}". Focus on the vowel sounds for better accuracy.`,
+        syllableAnalysis: word.split('').map((char, index) => ({
+          syllable: char,
+          score: Math.floor(Math.random() * 30) + 70,
+          feedback: `Good pronunciation of "${char}"`
+        }))
+      };
+      
+      console.log('📊 Mock analysis for word:', word, mockAnalysis);
+      
+      setIndividualWordAnalysis(prev => ({
+        ...prev,
+        [word]: mockAnalysis
+      }));
+      
+      console.log('✅ Individual word analysis completed for:', word);
+    } catch (error) {
+      console.error('❌ Error analyzing individual word:', error);
+    } finally {
+      setAnalyzingWord(null);
+    }
+  };
+
   const endPracticeSession = () => {
     if (currentSession) {
       const sessionData = {
@@ -957,6 +1098,9 @@ export default function Toolbar({
                             onStartRecording={startRecording}
                             onStopRecording={stopRecording}
                             pronunciationScore={pronunciationWords.find(w => w.word === word.original)?.score}
+                            onAnalyzeWord={analyzeIndividualWord}
+                            isAnalyzing={analyzingWord === word.original}
+                            wordAnalysis={individualWordAnalysis[word.original]}
                           />
                         ))}
                       </div>
