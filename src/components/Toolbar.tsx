@@ -1375,7 +1375,7 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
                             <div className="mt-3 p-3 bg-white rounded-lg border">
                               <p className="text-xs font-medium text-gray-700 mb-2">Syllable Analysis:</p>
                               <div className="space-y-1">
-                                {wordData.syllableAnalysis.map((syllable: any, idx: number) => (
+                                {wordData.syllableAnalysis.map((syllable: {syllable: string, score: number, feedback: string, phoneticExpected: string, phoneticActual?: string}, idx: number) => (
                                   <div key={idx} className="flex items-center justify-between text-xs">
                                     <span className="font-medium">{syllable.syllable}</span>
                                     <div className="flex items-center space-x-2">

@@ -31,7 +31,7 @@ serve(async (req) => {
   }
 
   try {
-    const { text, language = 'de' }: PhoneticBreakdownRequest = await req.json()
+    const { text }: PhoneticBreakdownRequest = await req.json()
 
     if (!text) {
       return new Response(
@@ -116,7 +116,7 @@ Guidelines:
         words: parsedData.words || [],
         success: true
       }
-    } catch (parseError) {
+    } catch {
       // If JSON parsing fails, create basic breakdown
       const words = text.split(' ').filter(word => word.length > 0)
       breakdown = {

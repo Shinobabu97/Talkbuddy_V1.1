@@ -48,7 +48,7 @@ serve(async (req) => {
   }
 
   try {
-    const { audioData, transcription, language = 'de' }: PronunciationAnalysisRequest = await req.json()
+    const { audioData, transcription }: PronunciationAnalysisRequest = await req.json()
 
     // Get OpenAI API key from environment
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
@@ -155,7 +155,7 @@ Return ONLY a JSON object with this structure:
     let analysis: PronunciationAnalysisResponse
     try {
       analysis = JSON.parse(analysisText)
-    } catch (parseError) {
+    } catch {
       // If JSON parsing fails, return a basic analysis
       analysis = {
         hasPronunciationErrors: false,

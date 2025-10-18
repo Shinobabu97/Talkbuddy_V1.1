@@ -286,7 +286,7 @@ export default function Dashboard({ user }: DashboardProps) {
     const saved = localStorage.getItem('talkbuddy-playback-speed');
     return saved ? parseFloat(saved) : 1.0;
   });
-  const [phoneticBreakdowns, setPhoneticBreakdowns] = useState<{[key: string]: any}>({});
+  const [phoneticBreakdowns, setPhoneticBreakdowns] = useState<{[key: string]: Array<{original: string, phonetic: string, transliteration: string, syllables: string[]}>}>({});
   const [showPronunciationBreakdown, setShowPronunciationBreakdown] = useState<{[key: string]: boolean}>({});
   
   // Debug messageInput state changes
@@ -4546,7 +4546,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                                           )}
                                         </div>
                                         <div className="space-y-1">
-                                          {phoneticData.map((word: any, index: number) => (
+                                          {phoneticData.map((word: {original: string, phonetic: string, transliteration: string, syllables: string[]}, index: number) => (
                                             <div key={index} className="flex items-center space-x-2 text-xs">
                                               <span className="font-medium text-gray-800">{word.original}</span>
                                               <span className="text-gray-600">[{word.phonetic}]</span>
