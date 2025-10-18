@@ -387,6 +387,7 @@ export default function Toolbar({
   const [analyzingWord, setAnalyzingWord] = useState<string | null>(null);
   const [wordsReadyForAnalysis, setWordsReadyForAnalysis] = useState<Set<string>>(new Set());
   const [wordsAnalyzed, setWordsAnalyzed] = useState<Set<string>>(new Set());
+  const isStoppingRef = useRef(false);
   const [currentSession, setCurrentSession] = useState<{
     sessionId: string;
     startTime: string;
@@ -578,7 +579,8 @@ export default function Toolbar({
     console.log('🎤 Current practicing word:', practicingWord);
     console.log('🎤 Current recording state:', isRecording);
     
-    // Reset analysis state for this word
+    // Reset stopping flag and analysis state for this word
+    isStoppingRef.current = false;
     setWordsAnalyzed(prev => {
       const newSet = new Set(prev);
       newSet.delete(word);
@@ -665,8 +667,9 @@ export default function Toolbar({
         console.log('🎤 Recording stopped, analyzing audio...');
         const audioBlob = new Blob(chunks, { type: 'audio/webm' });
         console.log('🎤 Audio blob created, size:', audioBlob.size);
+        
+        // Don't set isRecording to false here - let the stopRecording function handle it
         await analyzePronunciation(audioBlob);
-        setIsRecording(false);
         
         // Mark word as ready for analysis
         if (practicingWord) {
@@ -674,7 +677,7 @@ export default function Toolbar({
           console.log('✅ Word marked as ready for analysis:', practicingWord);
         }
         
-        console.log('🎤 Recording state set to false');
+        console.log('🎤 Recording analysis completed');
       };
 
       // Start recording immediately
@@ -702,13 +705,24 @@ export default function Toolbar({
     console.log('🛑 stopRecording called');
     console.log('🛑 MediaRecorder exists:', !!mediaRecorder);
     console.log('🛑 Is recording:', isRecording);
+    console.log('🛑 Is stopping:', isStoppingRef.current);
     
-    if (mediaRecorder && isRecording) {
+    if (mediaRecorder && isRecording && !isStoppingRef.current) {
       console.log('🛑 Stopping recording...');
+      isStoppingRef.current = true;
       mediaRecorder.stop();
-      console.log('🎤 Recording stopped');
-        } else {
-      console.log('🛑 Cannot stop recording - no recorder or not recording');
+      
+      // Set recording state to false immediately when user clicks stop
+      setIsRecording(false);
+      console.log('🎤 Recording stopped and state set to false');
+      
+      // Reset the stopping flag after a short delay
+      setTimeout(() => {
+        isStoppingRef.current = false;
+        console.log('🛑 Stopping flag reset');
+      }, 1000);
+    } else {
+      console.log('🛑 Cannot stop recording - no recorder, not recording, or already stopping');
     }
   };
 
