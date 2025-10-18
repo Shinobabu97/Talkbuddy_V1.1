@@ -880,6 +880,9 @@ export default function Dashboard({ user }: DashboardProps) {
   // Pronunciation feature functions
   const getPhoneticBreakdown = async (text: string, messageId: string) => {
     console.log('🎯 Getting phonetic breakdown for:', text, 'Message ID:', messageId);
+    console.log('🔗 Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
+    console.log('🔑 Supabase Key exists:', !!import.meta.env.VITE_SUPABASE_ANON_KEY);
+    
     try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/phonetic-breakdown`, {
         method: 'POST',
@@ -891,6 +894,7 @@ export default function Dashboard({ user }: DashboardProps) {
       });
 
       console.log('📡 Phonetic breakdown response status:', response.status);
+      console.log('📡 Response headers:', Object.fromEntries(response.headers.entries()));
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -907,11 +911,17 @@ export default function Dashboard({ user }: DashboardProps) {
           [messageId]: data.words
         }));
         console.log('✅ Phonetic breakdown set for message:', messageId);
+        console.log('📊 Updated phoneticBreakdowns:', { ...phoneticBreakdowns, [messageId]: data.words });
       } else {
         console.error('❌ Phonetic breakdown failed:', data.error);
       }
     } catch (error) {
       console.error('❌ Error getting phonetic breakdown:', error);
+      console.error('❌ Error details:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
     }
   };
 
@@ -4525,11 +4535,26 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                                 {!phoneticData && (
                                   <button
                                     onClick={() => {
+                                      console.log('🖱️ Pronunciation guide button clicked!');
+                                      console.log('📝 Message content:', message.content);
+                                      console.log('🆔 Message ID:', message.id);
+                                      console.log('🔧 Toolbar states before:', {
+                                        activeTab: toolbarActiveTab,
+                                        showToolbar,
+                                        collapsed: toolbarCollapsed
+                                      });
+                                      
                                       // Open pronunciation tab and get phonetic breakdown
                                       setToolbarActiveTab('pronunciation');
                                       setShowToolbar(true);
                                       setToolbarCollapsed(false);
                                       getPhoneticBreakdown(message.content, message.id);
+                                      
+                                      console.log('🔧 Toolbar states after:', {
+                                        activeTab: 'pronunciation',
+                                        showToolbar: true,
+                                        collapsed: false
+                                      });
                                     }}
                                     className="text-xs text-blue-600 hover:text-blue-800 underline"
                                   >
