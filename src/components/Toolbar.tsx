@@ -113,7 +113,11 @@ const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
       {/* Listen Button with Speed Control */}
       <div className="flex items-center space-x-3">
         <button
-          onClick={() => onPlayAudio?.(word.original, wordSpeed)}
+          onClick={() => {
+            onPlayAudio?.(word.original, wordSpeed);
+            // Add gamification points for listening to word
+            onAddExperience?.(2, 'word_listen');
+          }}
           className="flex items-center space-x-2 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
         >
           <Volume2 className="h-4 w-4" />
@@ -293,6 +297,7 @@ const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
 interface ToolbarProps {
   isVisible: boolean;
   currentMessage?: string;
+  currentMessageId?: string;
   onAddToVocab: (word: string, meaning: string) => void;
   autoLoadExplanations?: boolean;
   comprehensiveAnalysis?: any;
@@ -305,6 +310,7 @@ interface ToolbarProps {
   onPlayWordAudio?: (word: string, speed?: number) => void;
   globalPlaybackSpeed?: number;
   onSpeedChange?: (speed: number) => void;
+  onAddExperience?: (amount: number, source: string) => void;
 }
 
 interface VocabItem {
@@ -362,6 +368,7 @@ interface ComprehensiveAnalysis {
 export default function Toolbar({ 
   isVisible, 
   currentMessage, 
+  currentMessageId,
   onAddToVocab, 
   autoLoadExplanations = false, 
   comprehensiveAnalysis, 
@@ -373,7 +380,8 @@ export default function Toolbar({
   phoneticBreakdowns = {},
   onPlayWordAudio,
   globalPlaybackSpeed = 1.0,
-  onSpeedChange
+  onSpeedChange,
+  onAddExperience
 }: ToolbarProps) {
   const [internalActiveTab, setInternalActiveTab] = useState<'vocab' | 'explain' | 'pronunciation'>('explain');
   
@@ -660,6 +668,9 @@ export default function Toolbar({
     console.log('🎤 Current practicing word:', practicingWord);
     console.log('🎤 Current recording state:', isRecording);
     
+    // Add gamification points for starting practice
+    onAddExperience?.(5, 'word_practice_start');
+    
     // Reset stopping flag and analysis state for this word
     isStoppingRef.current = false;
     setWordsAnalyzed(prev => {
@@ -871,21 +882,48 @@ export default function Toolbar({
     }
   };
 
+  // Helper function to generate dynamic feedback based on score
+  const generateScoreBasedFeedback = (word: string, score: number): string => {
+    if (score >= 90) {
+      return `Excellent pronunciation of "${word}"! Very clear and accurate.`;
+    } else if (score >= 80) {
+      return `Very good pronunciation of "${word}". Minor improvements possible.`;
+    } else if (score >= 70) {
+      return `Good pronunciation of "${word}". Some areas need slight refinement.`;
+    } else if (score >= 60) {
+      return `Fair pronunciation of "${word}". Needs more practice for better accuracy.`;
+    } else {
+      return `"${word}" requires significant practice. Focus on pronunciation fundamentals.`;
+    }
+  };
+
   // Individual word analysis function
   const analyzeIndividualWord = async (word: string) => {
     console.log('🔍 Analyzing individual word:', word);
     setAnalyzingWord(word);
     
+    // Add gamification points for starting analysis
+    onAddExperience?.(3, 'word_analysis_start');
+    
     try {
       // For now, create mock analysis data
-      const mockAnalysis = {
-        score: Math.floor(Math.random() * 40) + 60, // Random score between 60-100
-        feedback: `Good pronunciation of "${word}". Focus on the vowel sounds for better accuracy.`,
-        syllableAnalysis: word.split('').map((char, index) => ({
+      const syllableAnalysis = word.split('').map((char, index) => {
+        const syllableScore = Math.floor(Math.random() * 30) + 70;
+        return {
           syllable: char,
-          score: Math.floor(Math.random() * 30) + 70,
-          feedback: `Good pronunciation of "${char}"`
-        }))
+          score: syllableScore,
+          feedback: generateScoreBasedFeedback(char, syllableScore)
+        };
+      });
+      
+      // Calculate overall score based on syllable scores
+      const syllableScores = syllableAnalysis.map(s => s.score);
+      const calculatedScore = Math.round(syllableScores.reduce((sum, score) => sum + score, 0) / syllableScores.length);
+      
+      const mockAnalysis = {
+        score: calculatedScore,
+        feedback: generateScoreBasedFeedback(word, calculatedScore),
+        syllableAnalysis: syllableAnalysis
       };
       
       console.log('📊 Mock analysis for word:', word, mockAnalysis);
@@ -948,17 +986,30 @@ export default function Toolbar({
     console.log('🔍 Analyzing sentence:', currentMessage);
     setIsAnalyzing(true);
     
+    // Add gamification points for sentence analysis
+    onAddExperience?.(10, 'sentence_analysis');
+    
     try {
       // For now, create mock sentence analysis data
       const words = currentMessage?.split(' ') || [];
+      const overallScore = Math.floor(Math.random() * 30) + 70; // Random score between 70-100
       const mockSentenceAnalysis = {
-        overallScore: Math.floor(Math.random() * 30) + 70, // Random score between 70-100
-        feedback: `Good overall pronunciation of the sentence. Pay attention to word stress and rhythm.`,
-        wordScores: words.map(word => ({
-          word: word,
-          score: Math.floor(Math.random() * 40) + 60, // Random score between 60-100
-          feedback: `Good pronunciation of "${word}"`
-        }))
+        overallScore: overallScore,
+        feedback: overallScore >= 90 ? 
+          `Excellent overall pronunciation! Very clear and natural.` :
+          overallScore >= 80 ? 
+          `Very good pronunciation overall. Minor improvements possible.` :
+          overallScore >= 70 ? 
+          `Good pronunciation overall. Some areas need slight refinement.` :
+          `Fair pronunciation overall. Focus on word stress and rhythm for better accuracy.`,
+        wordScores: words.map(word => {
+          const score = Math.floor(Math.random() * 40) + 60; // Random score between 60-100
+          return {
+            word: word,
+            score: score,
+            feedback: generateScoreBasedFeedback(word, score)
+          };
+        })
       };
       
       console.log('📊 Mock sentence analysis:', mockSentenceAnalysis);
@@ -1508,8 +1559,25 @@ export default function Toolbar({
 
         {activeTab === 'pronunciation' && (
           <div className="space-y-6">
-            {currentMessage ? (
-              <div className="space-y-6">
+            {(() => {
+              // Check if there are any phonetic breakdowns available
+              const hasPhoneticData = Object.keys(phoneticBreakdowns).some(id => 
+                phoneticBreakdowns[id] && phoneticBreakdowns[id].length > 0
+              );
+              
+              if (!hasPhoneticData) {
+                return (
+                  <div className="text-center py-8">
+                    <Volume2 className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                    <p className="text-sm text-gray-600">
+                      Pronunciation practice will be available when the AI sends a message
+                    </p>
+                  </div>
+                );
+              }
+              
+              return (
+                <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <h4 className="font-semibold text-gray-900 text-base">Pronunciation Practice</h4>
                   
@@ -1720,11 +1788,10 @@ export default function Toolbar({
                   
                   {/* Word Breakdown Display */}
                   {(() => {
-                    // Get phonetic breakdown for current message
-                    const messageId = Object.keys(phoneticBreakdowns).find(id => 
-                      phoneticBreakdowns[id] && phoneticBreakdowns[id].length > 0
-                    );
-                    const words = messageId ? phoneticBreakdowns[messageId] : [];
+                    // Get phonetic breakdown for current message using currentMessageId
+                    const words = currentMessageId && phoneticBreakdowns[currentMessageId] 
+                      ? phoneticBreakdowns[currentMessageId] 
+                      : [];
                   
                   if (words.length === 0) {
                     return (
@@ -1801,14 +1868,8 @@ export default function Toolbar({
                 )}
                 </div>
               </div>
-            ) : (
-              <div className="text-center py-8">
-                <Volume2 className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-sm text-gray-600">
-                  Pronunciation practice will be available when the AI sends a message
-                </p>
-              </div>
-            )}
+              );
+            })()}
             
             {/* Progress Modal */}
             {showProgressModal && (

@@ -19,25 +19,52 @@ serve(async (req) => {
   }
 
   try {
-    const { audioData, language = 'de', storeForAnalysis = true }: WhisperRequest = await req.json()
+    const { audioData, language = 'auto', storeForAnalysis = true }: WhisperRequest = await req.json()
+
+    console.log('Whisper function called with:', { 
+      audioDataLength: audioData?.length, 
+      language, 
+      storeForAnalysis 
+    })
 
     // Get OpenAI API key from environment
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
     if (!openaiApiKey) {
+      console.error('OpenAI API key not configured')
       throw new Error('OpenAI API key not configured')
     }
 
+    // Validate audio data
+    if (!audioData || audioData.length === 0) {
+      console.error('No audio data provided')
+      throw new Error('No audio data provided')
+    }
+
     // Convert base64 to blob
-    const audioBlob = new Blob([Uint8Array.from(atob(audioData), c => c.charCodeAt(0))], {
-      type: 'audio/webm'
-    })
+    let audioBlob;
+    try {
+      audioBlob = new Blob([Uint8Array.from(atob(audioData), c => c.charCodeAt(0))], {
+        type: 'audio/webm'
+      })
+      console.log('Audio blob created:', { size: audioBlob.size, type: audioBlob.type })
+    } catch (conversionError) {
+      console.error('Error converting base64 to blob:', conversionError)
+      throw new Error('Invalid audio data format')
+    }
 
     // Create form data for Whisper API
     const formData = new FormData()
     formData.append('file', audioBlob, 'recording.webm')
     formData.append('model', 'whisper-1')
-    formData.append('language', language)
+    
+    // Only add language if it's not 'auto'
+    if (language !== 'auto') {
+      formData.append('language', language)
+    }
+    
     formData.append('response_format', 'json')
+
+    console.log('Calling OpenAI Whisper API...')
 
     // Call OpenAI Whisper API
     const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
@@ -48,17 +75,25 @@ serve(async (req) => {
       body: formData,
     })
 
+    console.log('Whisper API response status:', response.status)
+
     if (!response.ok) {
       const error = await response.text()
-      throw new Error(`OpenAI Whisper API error: ${error}`)
+      console.error('OpenAI Whisper API error:', error)
+      throw new Error(`OpenAI Whisper API error: ${response.status} - ${error}`)
     }
 
     const data = await response.json()
+    console.log('Whisper API response data:', data)
+    
     const transcription = data.text
 
-    if (!transcription) {
+    if (!transcription || transcription.trim() === '') {
+      console.error('Empty transcription received from Whisper')
       throw new Error('No transcription received from Whisper')
     }
+
+    console.log('Transcription successful:', transcription)
 
     // Store audio for pronunciation analysis if requested
     let audioId = null

@@ -74,12 +74,19 @@ For each word, provide:
 6. Syllable-by-syllable analysis with individual scores
 
 Scoring criteria:
-- 90-100: Native-like pronunciation
-- 80-89: Very good, minor issues
-- 70-79: Good, some noticeable issues
-- 60-69: Fair, several issues
-- 50-59: Poor, many issues
-- 0-49: Very poor, major issues
+- 90-100: Excellent pronunciation - Native-like, very clear and accurate
+- 80-89: Very good pronunciation - Minor improvements possible
+- 70-79: Good pronunciation - Some areas need slight refinement
+- 60-69: Fair pronunciation - Needs more practice for better accuracy
+- 50-59: Poor pronunciation - Requires significant practice
+- 0-49: Very poor pronunciation - Focus on pronunciation fundamentals
+
+CRITICAL: The feedback text MUST match the score ranges exactly:
+- For scores 90-100: Use "Excellent pronunciation" feedback
+- For scores 80-89: Use "Very good pronunciation" feedback  
+- For scores 70-79: Use "Good pronunciation" feedback
+- For scores 60-69: Use "Fair pronunciation" feedback
+- For scores below 60: Use feedback indicating "significant practice needed"
 
 Return ONLY a JSON object with this structure:
 {
@@ -98,14 +105,14 @@ Return ONLY a JSON object with this structure:
         {
           "syllable": "Stra",
           "score": 85,
-          "feedback": "Good pronunciation of 'Str' cluster",
+          "feedback": "Very good pronunciation of 'Str' cluster. Minor improvements possible.",
           "phoneticExpected": "ʃtʁa",
           "phoneticActual": "ʃtʁa"
         },
         {
           "syllable": "ße",
           "score": 65,
-          "feedback": "The 'ß' sound needs work - should be sharper",
+          "feedback": "Fair pronunciation of 'ß'. Needs more practice for better accuracy.",
           "phoneticExpected": "sə",
           "phoneticActual": "zə"
         }
@@ -155,16 +162,74 @@ Return ONLY a JSON object with this structure:
     let analysis: PronunciationAnalysisResponse
     try {
       analysis = JSON.parse(analysisText)
+      
+      // Normalize feedback to match score ranges
+      const normalizeFeedback = (score: number, originalFeedback: string, word?: string): string => {
+        if (score >= 90) {
+          return word ? `Excellent pronunciation of "${word}"! Very clear and accurate.` : `Excellent pronunciation! Very clear and accurate.`;
+        } else if (score >= 80) {
+          return word ? `Very good pronunciation of "${word}". Minor improvements possible.` : `Very good pronunciation. Minor improvements possible.`;
+        } else if (score >= 70) {
+          return word ? `Good pronunciation of "${word}". Some areas need slight refinement.` : `Good pronunciation. Some areas need slight refinement.`;
+        } else if (score >= 60) {
+          return word ? `Fair pronunciation of "${word}". Needs more practice for better accuracy.` : `Fair pronunciation. Needs more practice for better accuracy.`;
+        } else {
+          return word ? `"${word}" requires significant practice. Focus on pronunciation fundamentals.` : `Requires significant practice. Focus on pronunciation fundamentals.`;
+        }
+      };
+      
+      // Apply consistent feedback to all words and syllables, and recalculate overall scores
+      analysis.words = analysis.words.map(word => {
+        // Calculate overall word score based on syllable scores
+        let calculatedOverallScore = word.score; // Default to original score
+        
+        if (word.syllableAnalysis && word.syllableAnalysis.length > 0) {
+          const syllableScores = word.syllableAnalysis.map(s => s.score);
+          const averageSyllableScore = syllableScores.reduce((sum, score) => sum + score, 0) / syllableScores.length;
+          calculatedOverallScore = Math.round(averageSyllableScore);
+        }
+        
+        return {
+          ...word,
+          score: calculatedOverallScore, // Use calculated score based on syllables
+          feedback: normalizeFeedback(calculatedOverallScore, word.feedback, word.word),
+          syllableAnalysis: word.syllableAnalysis?.map(syllable => ({
+            ...syllable,
+            feedback: normalizeFeedback(syllable.score, syllable.feedback, syllable.syllable)
+          }))
+        };
+      });
+      
+      // Recalculate overall analysis score based on word scores
+      if (analysis.words.length > 0) {
+        const wordScores = analysis.words.map(w => w.score);
+        analysis.overallScore = Math.round(wordScores.reduce((sum, score) => sum + score, 0) / wordScores.length);
+      }
+      
     } catch {
-      // If JSON parsing fails, return a basic analysis
+      // If JSON parsing fails, return a basic analysis with dynamic feedback
+      const generateScoreBasedFeedback = (word: string, score: number): string => {
+        return normalizeFeedback(score, '', word);
+      };
+      
       analysis = {
         hasPronunciationErrors: false,
-        words: words.map(word => ({
-          word,
-          score: 85,
-          needsPractice: false,
-          feedback: 'Good pronunciation'
-        })),
+        words: words.map(word => {
+          const score = 85; // Default score for fallback
+          return {
+            word,
+            score: score,
+            needsPractice: false,
+            feedback: generateScoreBasedFeedback(word, score),
+            syllableAnalysis: word.split('').map(char => ({
+              syllable: char,
+              score: score, // Use same score for syllables in fallback
+              feedback: generateScoreBasedFeedback(char, score),
+              phoneticExpected: char,
+              phoneticActual: char
+            }))
+          };
+        }),
         overallScore: 85,
         suggestions: []
       }

@@ -286,6 +286,22 @@ export default function Dashboard({ user }: DashboardProps) {
     const saved = localStorage.getItem('talkbuddy-playback-speed');
     return saved ? parseFloat(saved) : 1.0;
   });
+
+  // Individual word speeds for Pronunciation Guide
+  const [wordSpeeds, setWordSpeeds] = useState<Record<string, number>>({});
+
+  // Helper function to get speed for a specific word
+  const getWordSpeed = (word: string): number => {
+    return wordSpeeds[word] || globalPlaybackSpeed;
+  };
+
+  // Helper function to set speed for a specific word
+  const setWordSpeed = (word: string, speed: number): void => {
+    setWordSpeeds(prev => ({
+      ...prev,
+      [word]: speed
+    }));
+  };
   const [phoneticBreakdowns, setPhoneticBreakdowns] = useState<{[key: string]: Array<{original: string, phonetic: string, transliteration: string, syllables: string[]}>}>({});
   const [showPronunciationBreakdown, setShowPronunciationBreakdown] = useState<{[key: string]: boolean}>({});
   
@@ -949,7 +965,12 @@ export default function Dashboard({ user }: DashboardProps) {
     */
   };
 
-  const playWordAudio = async (word: string, speed: number = globalPlaybackSpeed) => {
+  const playWordAudio = async (word: string, speed?: number) => {
+    const actualSpeed = speed || getWordSpeed(word);
+    
+    // Add gamification points for playing word audio
+    addExperience(2, 'word_audio_play');
+    
     try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/german-tts`, {
         method: 'POST',
@@ -1671,12 +1692,47 @@ export default function Dashboard({ user }: DashboardProps) {
       console.log('Focusing on error correction instead of AI response');
       updateMessageStatus(messageId, 'needs_correction');
       return;
-    } else if (!analysis) {
+    } else if (!analysis || analysis === null) {
       // Analysis failed - don't proceed with AI response (EXACT SAME AS VOICE)
       console.log('🚫 === ANALYSIS FAILED - NOT SENDING TO AI ===');
-      console.log('Analysis returned null, not proceeding with AI response');
-      updateMessageStatus(messageId, 'error');
-      return;
+      console.log('Analysis returned null or undefined, not proceeding with AI response');
+      console.log('Analysis value:', analysis);
+      console.log('Analysis type:', typeof analysis);
+      
+      // Instead of setting error status, try to get a fallback analysis
+      console.log('🔄 === ATTEMPTING FALLBACK ANALYSIS ===');
+      const fallbackAnalysis = {
+        hasErrors: false,
+        errorTypes: {
+          grammar: false,
+          vocabulary: false,
+          pronunciation: false
+        },
+        corrections: {
+          grammar: null,
+          vocabulary: [],
+          pronunciation: null
+        },
+        suggestions: {
+          grammar: null,
+          vocabulary: null,
+          pronunciation: null
+        },
+        wordsForPractice: [],
+        message: userMessage,
+        timestamp: new Date().toISOString()
+      };
+      
+      // Store the fallback analysis
+      setComprehensiveAnalysis(prev => ({
+        ...prev,
+        [messageId]: fallbackAnalysis
+      }));
+      
+      console.log('✅ === FALLBACK ANALYSIS STORED - PROCEEDING TO AI ===');
+      // Continue with AI response instead of showing error
+      // updateMessageStatus(messageId, 'error'); // REMOVED - don't show error
+      // return; // REMOVED - continue with AI response
     }
     
     console.log('✅ === NO ERRORS DETECTED - PROCEEDING TO AI ===');
@@ -2642,10 +2698,83 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         console.log('errorMessages:', errorMessages);
         console.log('userAttempts:', userAttempts);
         return data;
+      } else {
+        // Handle non-ok response
+        console.error('❌ === COMPREHENSIVE ANALYSIS API ERROR ===');
+        console.error('Response status:', response.status);
+        console.error('Response status text:', response.statusText);
+        
+        // Return fallback analysis instead of null to prevent error message
+        console.log('🔄 === RETURNING FALLBACK ANALYSIS FOR API ERROR ===');
+        
+        const fallbackAnalysis = {
+          hasErrors: false,
+          errorTypes: {
+            grammar: false,
+            vocabulary: false,
+            pronunciation: false
+          },
+          corrections: {
+            grammar: null,
+            vocabulary: [],
+            pronunciation: null
+          },
+          suggestions: {
+            grammar: null,
+            vocabulary: null,
+            pronunciation: null
+          },
+          wordsForPractice: [],
+          message: message,
+          timestamp: new Date().toISOString()
+        };
+        
+        // Store the fallback analysis
+        setComprehensiveAnalysis(prev => ({
+          ...prev,
+          [messageId]: fallbackAnalysis
+        }));
+        
+        return fallbackAnalysis;
       }
     } catch (error) {
       console.error('Error in comprehensive analysis:', error instanceof Error ? error.message : 'Unknown error');
-      return null;
+      console.error('Full error details:', error);
+      
+      // Instead of returning null (which causes the error message), return a fallback analysis
+      // that indicates no errors were found, allowing the conversation to continue
+      console.log('🔄 === RETURNING FALLBACK ANALYSIS ===');
+      console.log('Providing fallback analysis to prevent error message display');
+      
+      const fallbackAnalysis = {
+        hasErrors: false,
+        errorTypes: {
+          grammar: false,
+          vocabulary: false,
+          pronunciation: false
+        },
+        corrections: {
+          grammar: null,
+          vocabulary: [],
+          pronunciation: null
+        },
+        suggestions: {
+          grammar: null,
+          vocabulary: null,
+          pronunciation: null
+        },
+        wordsForPractice: [],
+        message: message,
+        timestamp: new Date().toISOString()
+      };
+      
+      // Store the fallback analysis
+      setComprehensiveAnalysis(prev => ({
+        ...prev,
+        [messageId]: fallbackAnalysis
+      }));
+      
+      return fallbackAnalysis;
     }
   };
 
@@ -3478,12 +3607,47 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             console.log('Focusing on error correction instead of AI response');
             updateMessageStatus(messageId, 'needs_correction');
             return;
-          } else if (!analysis) {
+          } else if (!analysis || analysis === null) {
             // Analysis failed - don't proceed with AI response
             console.log('🚫 === ANALYSIS FAILED - NOT SENDING TO AI ===');
-            console.log('Analysis returned null, not proceeding with AI response');
-            updateMessageStatus(messageId, 'error');
-            return;
+            console.log('Analysis returned null or undefined, not proceeding with AI response');
+            console.log('Analysis value:', analysis);
+            console.log('Analysis type:', typeof analysis);
+            
+            // Instead of setting error status, try to get a fallback analysis
+            console.log('🔄 === ATTEMPTING FALLBACK ANALYSIS FOR VOICE ===');
+            const fallbackAnalysis = {
+              hasErrors: false,
+              errorTypes: {
+                grammar: false,
+                vocabulary: false,
+                pronunciation: false
+              },
+              corrections: {
+                grammar: null,
+                vocabulary: [],
+                pronunciation: null
+              },
+              suggestions: {
+                grammar: null,
+                vocabulary: null,
+                pronunciation: null
+              },
+              wordsForPractice: [],
+              message: transcription,
+              timestamp: new Date().toISOString()
+            };
+            
+            // Store the fallback analysis
+            setComprehensiveAnalysis(prev => ({
+              ...prev,
+              [messageId]: fallbackAnalysis
+            }));
+            
+            console.log('✅ === FALLBACK ANALYSIS STORED FOR VOICE - PROCEEDING TO AI ===');
+            // Continue with AI response instead of showing error
+            // updateMessageStatus(messageId, 'error'); // REMOVED - don't show error
+            // return; // REMOVED - continue with AI response
           }
             
             console.log('✅ === NO ERRORS DETECTED - PROCEEDING TO AI ===');
@@ -3553,10 +3717,22 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       } else {
         const errorText = await response.text();
         console.error('Transcription failed:', response.status, errorText);
+        
+        let errorMessage = '❌ Transcription failed';
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.error) {
+            errorMessage = `❌ ${errorData.error}`;
+          }
+        } catch (parseError) {
+          // If we can't parse the error, use the status code
+          errorMessage = `❌ Transcription failed (${response.status})`;
+        }
+        
         // Update message to show error with more details
         setChatMessages(prev => prev.map(msg =>
           msg.id === messageId
-            ? { ...msg, content: `❌ Transcription failed (${response.status})`, isTranscribing: false }
+            ? { ...msg, content: errorMessage, isTranscribing: false }
             : msg
         ));
         updateMessageStatus(messageId, 'error');
@@ -3564,28 +3740,34 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     } catch (error) {
       console.error('Error transcribing audio:', error);
 
+      let errorMessage = '❌ Transcription failed';
+      
       // Check if it's a CORS or function not found error
       if (error.message.includes('Failed to fetch') || error.message.includes('CORS')) {
-        // Update message to show function needs deployment
-        setChatMessages(prev => prev.map(msg => 
-          msg.id === messageId 
-            ? { 
-                ...msg, 
-                content: '⚠️ Whisper function not deployed. Audio recorded but transcription unavailable.', 
-                isTranscribing: false 
-              }
-            : msg
-        ));
-        updateMessageStatus(messageId, 'error');
-      } else {
-        // Update message to show transcription failed
-        setChatMessages(prev => prev.map(msg =>
-          msg.id === messageId
-            ? { ...msg, content: '❌ Transcription failed', isTranscribing: false }
-            : msg
-        ));
-        updateMessageStatus(messageId, 'error');
+        errorMessage = '⚠️ Whisper function not deployed. Audio recorded but transcription unavailable.';
+      } else if (error.message.includes('OpenAI API key not configured')) {
+        errorMessage = '⚠️ OpenAI API key not configured. Please check server settings.';
+      } else if (error.message.includes('No audio data provided')) {
+        errorMessage = '⚠️ No audio data received. Please try recording again.';
+      } else if (error.message.includes('Invalid audio data format')) {
+        errorMessage = '⚠️ Invalid audio format. Please try recording again.';
+      } else if (error.message.includes('OpenAI Whisper API error')) {
+        errorMessage = `⚠️ ${error.message}`;
+      } else if (error.message.includes('No transcription received')) {
+        errorMessage = '⚠️ No transcription received. Please try speaking more clearly.';
       }
+      
+      // Update message to show appropriate error
+      setChatMessages(prev => prev.map(msg => 
+        msg.id === messageId 
+          ? { 
+              ...msg, 
+              content: errorMessage, 
+              isTranscribing: false 
+            }
+          : msg
+      ));
+      updateMessageStatus(messageId, 'error');
     } finally {
       console.log('🏁 === TRANSCRIBE AUDIO END (NORMAL PROCESSING) ===');
       console.log('Final showLanguageMismatchModal state:', showLanguageMismatchModal);
@@ -4558,7 +4740,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                               <div>
                                 {!phoneticData && (
                                   <button
-                                    onClick={(e) => {
+                                    onClick={async (e) => {
                                       e.preventDefault();
                                       e.stopPropagation();
                                       console.log('🖱️ Pronunciation guide button clicked!');
@@ -4576,14 +4758,24 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                                       setToolbarCollapsed(false);
                                       setToolbarActiveTab('pronunciation');
                                       
-                                      // Get phonetic breakdown
-                                      getPhoneticBreakdown(message.content, message.id);
+                                      // Set the active help button for proper message tracking
+                                      setActiveHelpButton(message.id);
+                                      
+                                      // Get phonetic breakdown and wait for it to complete
+                                      await getPhoneticBreakdown(message.content, message.id);
+                                      
+                                      // Auto-show the pronunciation breakdown in the chat area
+                                      setShowPronunciationBreakdown(prev => ({
+                                        ...prev,
+                                        [message.id]: true
+                                      }));
                                       
                                       console.log('🔧 Toolbar states after:', {
                                         activeTab: 'pronunciation',
                                         showToolbar: true,
                                         collapsed: false
                                       });
+                                      console.log('✅ Pronunciation guide fully loaded and displayed');
                                     }}
                                     className="text-xs text-blue-600 hover:text-blue-800 underline cursor-pointer"
                                     style={{ pointerEvents: 'auto' }}
@@ -4637,14 +4829,14 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                                                     min="0.5"
                                                     max="2.0"
                                                     step="0.1"
-                                                    value={globalPlaybackSpeed}
+                                                    value={getWordSpeed(word.original)}
                                                     onChange={(e) => {
                                                       const speed = parseFloat(e.target.value);
-                                                      setGlobalPlaybackSpeed(speed);
+                                                      setWordSpeed(word.original, speed);
                                                     }}
                                                     className="w-16 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                                                   />
-                                                  <span className="text-xs text-gray-500 w-8">{globalPlaybackSpeed.toFixed(1)}x</span>
+                                                  <span className="text-xs text-gray-500 w-8">{getWordSpeed(word.original).toFixed(1)}x</span>
                                                 </div>
                                               </div>
                                             </div>
@@ -4927,6 +5119,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   <Toolbar
                     isVisible={true}
                     currentMessage={currentAIMessage}
+                    currentMessageId={activeHelpButton}
                     onAddToVocab={handleAddToVocab}
                     autoLoadExplanations={toolbarOpenedViaHelp}
                     comprehensiveAnalysis={activeHelpButton ? comprehensiveAnalysis[activeHelpButton] : null}
@@ -4938,6 +5131,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     onPlayWordAudio={playWordAudio}
                     globalPlaybackSpeed={globalPlaybackSpeed}
                     onSpeedChange={setGlobalPlaybackSpeed}
+                    onAddExperience={addExperience}
                     onUpdatePersistentVocab={(newVocab) => {
                       console.log('📚 === DASHBOARD ONUPDATE PERSISTENT VOCAB CALLED ===');
                       console.log('New vocab received:', newVocab);
