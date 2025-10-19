@@ -61,7 +61,7 @@ serve(async (req) => {
     
     // For now, we'll use AI analysis since we don't have real pronunciation scoring
     // In a production app, you'd integrate with services like Azure Speech or Google Cloud Speech
-    const systemPrompt = `You are a German pronunciation expert. Analyze the following German words for pronunciation accuracy and provide detailed scoring with syllable-level analysis.
+    const systemPrompt = `You are a German pronunciation expert. Analyze the following German words for pronunciation accuracy and provide detailed scoring with syllable-level analysis including stress patterns.
 
 Words: ${words.join(', ')}
 
@@ -71,7 +71,8 @@ For each word, provide:
 3. Common mistakes for this word
 4. Difficulty level (easy/medium/hard)
 5. Specific sounds to focus on
-6. Syllable-by-syllable analysis with individual scores
+6. Syllable-by-syllable analysis with individual scores AND stress patterns
+7. Stress pattern analysis comparing actual vs expected emphasis
 
 Scoring criteria:
 - 90-100: Excellent pronunciation - Native-like, very clear and accurate
@@ -80,6 +81,12 @@ Scoring criteria:
 - 60-69: Fair pronunciation - Needs more practice for better accuracy
 - 50-59: Poor pronunciation - Requires significant practice
 - 0-49: Very poor pronunciation - Focus on pronunciation fundamentals
+
+Stress Pattern Analysis:
+- Include phoneticExpected and phoneticActual with stress markers (ˈ for primary stress, ˌ for secondary stress)
+- Analyze stress patterns for each syllable
+- Compare actual stress placement with expected stress placement
+- Provide feedback on stress accuracy
 
 CRITICAL: The feedback text MUST match the score ranges exactly:
 - For scores 90-100: Use "Excellent pronunciation" feedback
@@ -106,8 +113,8 @@ Return ONLY a JSON object with this structure:
           "syllable": "Stra",
           "score": 85,
           "feedback": "Very good pronunciation of 'Str' cluster. Minor improvements possible.",
-          "phoneticExpected": "ʃtʁa",
-          "phoneticActual": "ʃtʁa"
+          "phoneticExpected": "ˈʃtʁa",
+          "phoneticActual": "ˈʃtʁa"
         },
         {
           "syllable": "ße",

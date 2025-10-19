@@ -152,12 +152,27 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('Initial userAttempts:', userAttempts);
     console.log('Initial errorMessages:', errorMessages);
     
+    // Add beforeunload event listener for session clearing
+    const handleBeforeUnload = () => {
+      console.log('🔄 === WINDOW CLOSING - CLEARING SESSION ===');
+      resetConversationState();
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
     return () => {
       console.log('🛑 === DASHBOARD COMPONENT UNMOUNTING ===');
       console.log('Final messageInput:', messageInput);
       console.log('Final waitingForCorrection:', waitingForCorrection);
       console.log('Final userAttempts:', userAttempts);
       console.log('Final errorMessages:', errorMessages);
+      
+      // Clear session on unmount
+      console.log('🔄 === COMPONENT UNMOUNTING - CLEARING SESSION ===');
+      resetConversationState();
+      
+      // Remove event listener
+      window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, []);
   
@@ -4071,6 +4086,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     
     // Reset comprehensive analysis
     setComprehensiveAnalysis({});
+    
+    // Reset pronunciation-related states
+    setPhoneticBreakdowns({});
+    setShowPronunciationBreakdown({});
     
     // Reset recording states
     setShowLanguageMenu(false);
