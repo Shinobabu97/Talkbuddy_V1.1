@@ -268,6 +268,18 @@ const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
             {/* 1. Accuracy Rating with RAG Status Background */}
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-gray-600">Accuracy Rating:</span>
+              {wordAnalysis.feedback === 'Analysis in progress... Please wait for results.' ? (
+                <div className="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600">
+                  Will be displayed once analysis is completed
+                </div>
+              ) : wordAnalysis.feedback.includes('No analysis can be done') || 
+                   wordAnalysis.feedback.includes('no word pronunciation was spoken') ||
+                   wordAnalysis.feedback.includes('unrelated and incorrect word pronunciation') ||
+                   wordAnalysis.feedback.includes('irrelevant/incorrect word pronunciation') ? (
+                <div className="px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
+                  No analysis available
+                </div>
+              ) : (
             <div className={`px-3 py-1 rounded-full text-sm font-medium ${
               wordAnalysis.score >= 90 ? 'bg-green-100 text-green-800' :
               wordAnalysis.score >= 70 ? 'bg-yellow-100 text-yellow-800' :
@@ -275,6 +287,7 @@ const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
             }`}>
               {wordAnalysis.score}/100
             </div>
+              )}
           </div>
 
             {/* 2. Feedback */}
@@ -493,6 +506,10 @@ export default function Toolbar({
   const [wordsReadyForAnalysis, setWordsReadyForAnalysis] = useState<Set<string>>(new Set());
   const [wordsAnalyzed, setWordsAnalyzed] = useState<Set<string>>(new Set());
   const [wordsRecordingCompleted, setWordsRecordingCompleted] = useState<Set<string>>(new Set());
+  const [wordsAnalysisComplete, setWordsAnalysisComplete] = useState<Set<string>>(new Set());
+  const [sentenceRecordingCompleted, setSentenceRecordingCompleted] = useState<boolean>(false);
+  const [sentenceReadyForAnalysis, setSentenceReadyForAnalysis] = useState<boolean>(false);
+  const [sentenceAnalysisComplete, setSentenceAnalysisComplete] = useState<boolean>(false);
   const isStoppingRef = useRef(false);
   const [sentenceAnalysis, setSentenceAnalysis] = useState<{
     overallScore: number;
@@ -577,6 +594,60 @@ export default function Toolbar({
       loadSpeakingTips(currentMessage);
     }
   }, [autoLoadExplanations, currentMessage, explanationCache]);
+
+  // Auto-update analysis results when they become available
+  useEffect(() => {
+    // Update individual word analysis results when pronunciationWords changes
+    pronunciationWords.forEach(pronunciationWord => {
+      if (wordsAnalyzed.has(pronunciationWord.word)) {
+        // Check if we have a loading state for this word
+        const currentAnalysis = individualWordAnalysis[pronunciationWord.word];
+        if (currentAnalysis && currentAnalysis.feedback === 'Analysis in progress... Please wait for results.') {
+          console.log('🔄 Updating analysis results for word:', pronunciationWord.word);
+          
+          // Calculate overall score based on syllable scores if available
+          let calculatedScore = pronunciationWord.score;
+          if (pronunciationWord.syllableAnalysis && pronunciationWord.syllableAnalysis.length > 0) {
+            const syllableScores = pronunciationWord.syllableAnalysis.map((s: any) => s.score);
+            calculatedScore = Math.round(syllableScores.reduce((sum: number, score: number) => sum + score, 0) / syllableScores.length);
+          }
+          
+          // Generate true syllable analysis with individual sounds using API data
+          const syllableAnalysis = generateSyllableAnalysis(pronunciationWord.word, calculatedScore, pronunciationWord.syllableAnalysis || []);
+          
+          // Generate specific feedback based on score and syllable analysis
+          const feedback = generateSpecificFeedback(pronunciationWord.word, calculatedScore, syllableAnalysis);
+          
+          const analysisResult = {
+            score: calculatedScore,
+            feedback: feedback,
+            syllableAnalysis: syllableAnalysis
+          };
+          
+          setIndividualWordAnalysis(prev => ({
+            ...prev,
+            [pronunciationWord.word]: analysisResult
+          }));
+          
+          console.log('✅ Analysis results updated for word:', pronunciationWord.word);
+        }
+      }
+    });
+  }, [pronunciationWords, wordsAnalyzed, individualWordAnalysis]);
+
+  // Auto-update sentence analysis results when they become available
+  useEffect(() => {
+    if (sentenceAnalysis && sentenceAnalyzed) {
+      // Check if we have a loading state for sentence analysis
+      if (sentenceAnalysis.feedback === 'Analysis in progress... Please wait for results.') {
+        console.log('🔄 Updating sentence analysis results');
+        
+        // The sentenceAnalysis should already be updated by analyzeSentencePronunciation
+        // This effect will trigger when the real analysis data becomes available
+        console.log('✅ Sentence analysis results updated');
+      }
+    }
+  }, [sentenceAnalysis, sentenceAnalyzed]);
 
   // Load grammar explanation
   const loadGrammarExplanation = async (message: string) => {
@@ -739,6 +810,13 @@ export default function Toolbar({
     // Don't remove from wordsReadyForAnalysis when starting practice
     // The word should remain ready for analysis after recording
     
+    // Reset sentence states when starting individual word practice
+    setSentenceRecordingCompleted(false);
+    setSentenceReadyForAnalysis(false);
+    setSentenceAnalysis(null);
+    setSentenceAnalyzed(false);
+    setSentenceAnalysisComplete(false);
+    
     setPracticingWord(word);
     setCurrentAttempt(0);
     await startRecording();
@@ -748,6 +826,13 @@ export default function Toolbar({
     if (!practicingWord) return;
     
     try {
+      // Reset sentence states when starting individual word practice
+      setSentenceRecordingCompleted(false);
+      setSentenceReadyForAnalysis(false);
+      setSentenceAnalysis(null);
+      setSentenceAnalyzed(false);
+      setSentenceAnalysisComplete(false);
+      
       // Start recording for specific word
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
@@ -812,13 +897,17 @@ export default function Toolbar({
 
       recorder.onstop = async () => {
         console.log('🎤 Recording stopped, analyzing audio...');
+        console.log('🎤 PracticingWord at onstop:', practicingWord);
         const audioBlob = new Blob(chunks, { type: 'audio/webm' });
         console.log('🎤 Audio blob created, size:', audioBlob.size);
         
         // Don't set recording states to false here - let the stopRecording function handle it
+        try {
         await analyzePronunciation(audioBlob);
-        
-        console.log('🎤 Recording analysis completed');
+          console.log('🎤 Recording analysis completed successfully');
+        } catch (error) {
+          console.error('❌ Error in onstop analyzePronunciation:', error);
+        }
       };
 
       // Start recording immediately
@@ -867,20 +956,11 @@ export default function Toolbar({
       // Mark word as recording completed AND ready for analysis immediately
       if (practicingWord) {
         if (practicingWord === 'sentence') {
-          // For sentence practice, mark all words as recording completed
-          const words = currentMessage?.split(' ') || [];
-          setWordsRecordingCompleted(prev => {
-            const newSet = new Set([...prev, ...words]);
-            console.log('✅ All words marked as recording completed:', words);
-            console.log('📊 Updated wordsRecordingCompleted:', Array.from(newSet));
-            return newSet;
-          });
-          // Also mark as ready for analysis immediately
-          setWordsReadyForAnalysis(prev => {
-            const newSet = new Set([...prev, ...words]);
-            console.log('✅ All words marked as ready for analysis immediately:', words);
-            return newSet;
-          });
+          // For sentence practice, use separate sentence states
+          setSentenceRecordingCompleted(true);
+          setSentenceReadyForAnalysis(true);
+          setSentenceAnalysisComplete(true); // Enable button immediately
+          console.log('✅ Sentence marked as recording completed and ready for analysis');
         } else {
           setWordsRecordingCompleted(prev => {
             const newSet = new Set([...prev, practicingWord]);
@@ -892,6 +972,13 @@ export default function Toolbar({
           setWordsReadyForAnalysis(prev => {
             const newSet = new Set([...prev, practicingWord]);
             console.log('✅ Word marked as ready for analysis immediately:', practicingWord);
+            return newSet;
+          });
+          // Mark analysis as complete immediately to enable button
+          setWordsAnalysisComplete(prev => {
+            const newSet = new Set([...prev, practicingWord]);
+            console.log('✅ Word marked as analysis complete immediately:', practicingWord);
+            console.log('📊 Updated wordsAnalysisComplete:', Array.from(newSet));
             return newSet;
           });
         }
@@ -922,8 +1009,16 @@ export default function Toolbar({
       console.log('📊 Analyzing pronunciation for word:', practicingWord);
       console.log('📊 Audio blob size:', audioBlob.size, 'bytes');
       console.log('📊 Current pronunciationWords before analysis:', pronunciationWords);
+      console.log('📊 Current wordsAnalysisComplete before analysis:', Array.from(wordsAnalysisComplete));
       
-      // Enhanced audio validation
+      // Handle sentence practice differently
+      if (practicingWord === 'sentence') {
+        console.log('📊 Handling sentence practice - calling analyzeSentencePronunciation');
+        await analyzeSentencePronunciation(audioBlob);
+        return;
+      }
+      
+      // Enhanced audio validation for individual words
       if (audioBlob.size < 1000) { // Less than 1KB is likely empty or very short
         console.log('❌ Audio blob too small, likely no audio recorded:', audioBlob.size, 'bytes');
         console.log('💡 User needs to record actual audio before analysis');
@@ -1007,15 +1102,35 @@ export default function Toolbar({
                 return [...prev, errorData];
               }
             });
+            
+            // Keep analysis as complete even for errors (button should remain enabled)
+            if (practicingWord) {
+              console.log('✅ Word analysis remains complete (no word detected):', practicingWord);
+            } else {
+              console.log('❌ No practicingWord set when trying to mark analysis complete (no word detected)');
+            }
+            
             console.log('📊 ===== ANALYZE PRONUNCIATION END (NO WORD DETECTED) =====');
             return;
           }
           
           // Check if incorrect/irrelevant word was recorded
-          if (expectedWord && recordedWord && expectedWord !== recordedWord) {
-            console.log('❌ Incorrect word recorded:', { expected: expectedWord, recorded: recordedWord });
+          // Enhanced validation: check for partial matches, common mispronunciations, and irrelevant words
+          const isRelevantWord = expectedWord && recordedWord && (
+            expectedWord === recordedWord ||
+            expectedWord.includes(recordedWord) ||
+            recordedWord.includes(expectedWord) ||
+            // Check for common phonetic variations
+            expectedWord.replace(/[aeiou]/g, '') === recordedWord.replace(/[aeiou]/g, '') ||
+            // Check for similar sounding words (basic phonetic similarity)
+            Math.abs(expectedWord.length - recordedWord.length) <= 2 && 
+            expectedWord.split('').filter((char, i) => char === recordedWord[i]).length >= Math.min(expectedWord.length, recordedWord.length) * 0.6
+          );
+          
+          if (!isRelevantWord) {
+            console.log('❌ Irrelevant/incorrect word recorded:', { expected: expectedWord, recorded: recordedWord });
             
-            const errorMessage = `No analysis can be done because unrelated and incorrect word pronunciation was spoken and recorded. Expected "${practicingWord}" but recorded "${wordAnalysis.word}". Please practice the correct word.`;
+            const errorMessage = `No analysis can be done because irrelevant/incorrect word pronunciation was spoken and recorded. Expected "${practicingWord}" but recorded "${wordAnalysis.word}". Please practice the correct word.`;
             const errorData: PronunciationWord = {
               word: practicingWord || 'Unknown',
               score: 0,
@@ -1033,7 +1148,15 @@ export default function Toolbar({
                 return [...prev, errorData];
               }
             });
-            console.log('📊 ===== ANALYZE PRONUNCIATION END (INCORRECT WORD) =====');
+            
+            // Keep analysis as complete even for errors (button should remain enabled)
+            if (practicingWord) {
+              console.log('✅ Word analysis remains complete (irrelevant word):', practicingWord);
+            } else {
+              console.log('❌ No practicingWord set when trying to mark analysis complete (irrelevant word)');
+            }
+            
+            console.log('📊 ===== ANALYZE PRONUNCIATION END (IRRELEVANT WORD) =====');
             return;
           }
           
@@ -1074,6 +1197,20 @@ export default function Toolbar({
           });
           
           console.log('✅ Pronunciation analysis completed for:', wordAnalysis.word, 'Score:', wordScore, 'RAG:', ragStatus);
+          
+          // Mark analysis as complete for this word (only if not already set)
+          if (practicingWord && !wordsAnalysisComplete.has(practicingWord)) {
+            setWordsAnalysisComplete(prev => {
+              const newSet = new Set([...prev, practicingWord]);
+              console.log('✅ Word analysis marked as complete (success):', practicingWord);
+              console.log('📊 Updated wordsAnalysisComplete:', Array.from(newSet));
+              return newSet;
+            });
+          } else if (practicingWord) {
+            console.log('✅ Word analysis already marked as complete:', practicingWord);
+          } else {
+            console.log('❌ No practicingWord set when trying to mark analysis complete');
+          }
           
           // Note: wordsReadyForAnalysis is already marked in stopRecording for immediate button availability
         } else {
@@ -1149,6 +1286,239 @@ export default function Toolbar({
         }
       });
       console.log('📊 ===== ANALYZE PRONUNCIATION END (ERROR) =====');
+    } finally {
+      console.log('📊 ===== ANALYZE PRONUNCIATION FUNCTION COMPLETED =====');
+      console.log('📊 Final wordsAnalysisComplete:', Array.from(wordsAnalysisComplete));
+    }
+  };
+
+  // Separate function for sentence pronunciation analysis
+  const analyzeSentencePronunciation = async (audioBlob: Blob) => {
+    try {
+      console.log('📊 ===== ANALYZE SENTENCE PRONUNCIATION START =====');
+      console.log('📊 Analyzing sentence pronunciation for:', currentMessage);
+      console.log('📊 Audio blob size:', audioBlob.size, 'bytes');
+      
+      // Enhanced audio validation for sentence
+      if (audioBlob.size < 1000) { // Less than 1KB is likely empty or very short
+        console.log('❌ Audio blob too small, likely no audio recorded:', audioBlob.size, 'bytes');
+        
+        const errorMessage = 'No analysis can be done because no word pronunciation was spoken and recorded. Please speak the sentence clearly and try again.';
+        
+        // Set sentence analysis with error
+        setSentenceAnalysis({
+          overallScore: 0,
+          feedback: errorMessage,
+          wordScores: []
+        });
+        
+        console.log('📊 ===== ANALYZE SENTENCE PRONUNCIATION END (NO AUDIO) =====');
+        return;
+      }
+      
+      // Convert audio to base64
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+
+      // Send to pronunciation analysis
+      console.log('📊 Sending API request to pronunciation-analysis for sentence...');
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pronunciation-analysis`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audioData: base64,
+          transcription: currentMessage || 'Test pronunciation'
+        })
+      });
+
+      console.log('📊 API response status:', response.status);
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('📊 Sentence pronunciation analysis result:', data);
+        
+        if (data.words && data.words.length > 0) {
+          // Enhanced sentence validation
+          const detectedWords = data.words.map((w: any) => w.word?.toLowerCase().trim()).filter(Boolean);
+          const expectedWords = currentMessage?.toLowerCase().split(' ').map(w => w.trim()) || [];
+          
+          console.log('🔍 Sentence validation:', { expected: expectedWords, detected: detectedWords });
+          
+          // Check if no words were detected
+          if (detectedWords.length === 0) {
+            console.log('❌ No words detected in sentence recording');
+            
+            const errorMessage = 'Analysis cannot be done due to no sentence or words being spoken and recorded. Please speak the sentence clearly and try again.';
+            setSentenceAnalysis({
+              overallScore: 0,
+              feedback: errorMessage,
+              wordScores: []
+            });
+            console.log('📊 ===== ANALYZE SENTENCE PRONUNCIATION END (NO WORDS DETECTED) =====');
+            return;
+          }
+          
+          // Enhanced validation: check for relevant words with more sophisticated matching
+          const hasRelevantWords = expectedWords.some(expectedWord => 
+            detectedWords.some(detectedWord => {
+              // Exact match
+              if (expectedWord === detectedWord) return true;
+              
+              // Partial match (one contains the other)
+              if (expectedWord.includes(detectedWord) || detectedWord.includes(expectedWord)) return true;
+              
+              // Phonetic similarity (vowel-independent matching)
+              const expectedConsonants = expectedWord.replace(/[aeiou]/g, '');
+              const detectedConsonants = detectedWord.replace(/[aeiou]/g, '');
+              if (expectedConsonants === detectedConsonants) return true;
+              
+              // Character similarity (for similar sounding words)
+              if (Math.abs(expectedWord.length - detectedWord.length) <= 2) {
+                const matchingChars = expectedWord.split('').filter((char, i) => char === detectedWord[i]).length;
+                const similarityRatio = matchingChars / Math.min(expectedWord.length, detectedWord.length);
+                if (similarityRatio >= 0.6) return true;
+              }
+              
+              return false;
+            })
+          );
+          
+          // Check if mostly irrelevant words were detected
+          const relevantWordCount = expectedWords.filter(expectedWord => 
+            detectedWords.some(detectedWord => {
+              if (expectedWord === detectedWord) return true;
+              if (expectedWord.includes(detectedWord) || detectedWord.includes(expectedWord)) return true;
+              const expectedConsonants = expectedWord.replace(/[aeiou]/g, '');
+              const detectedConsonants = detectedWord.replace(/[aeiou]/g, '');
+              if (expectedConsonants === detectedConsonants) return true;
+              return false;
+            })
+          ).length;
+          
+          const relevanceRatio = relevantWordCount / expectedWords.length;
+          
+          if (!hasRelevantWords || relevanceRatio < 0.5) {
+            console.log('❌ Irrelevant/incorrect words detected in sentence recording:', { 
+              expected: expectedWords, 
+              detected: detectedWords, 
+              relevanceRatio: relevanceRatio 
+            });
+            
+            const errorMessage = `Analysis cannot be done due to incorrect/irrelevant words being spoken and recorded. Expected sentence: "${currentMessage}" but detected mostly different words. Please practice the correct sentence.`;
+            setSentenceAnalysis({
+              overallScore: 0,
+              feedback: errorMessage,
+              wordScores: []
+            });
+            console.log('📊 ===== ANALYZE SENTENCE PRONUNCIATION END (IRRELEVANT WORDS) =====');
+            return;
+          }
+          
+          // Process valid sentence analysis
+          const words = currentMessage?.split(' ') || [];
+          const wordAnalyses = words.map(word => {
+            const wordAnalysis = data.words.find((w: any) => 
+              w.word?.toLowerCase().trim() === word.toLowerCase().trim()
+            );
+            
+            if (wordAnalysis) {
+              // Calculate word score as average of syllable scores
+              let wordScore = wordAnalysis.score || 0;
+              if (wordAnalysis.syllableAnalysis && wordAnalysis.syllableAnalysis.length > 0) {
+                const syllableScores = wordAnalysis.syllableAnalysis.map((s: any) => s.score);
+                wordScore = Math.round(syllableScores.reduce((sum: number, score: number) => sum + score, 0) / syllableScores.length);
+              }
+              
+              // Generate specific feedback for this word
+              const syllableAnalysis = generateSyllableAnalysis(word, wordScore, wordAnalysis.syllableAnalysis || []);
+              const feedback = generateSpecificFeedback(word, wordScore, syllableAnalysis);
+              
+              return {
+                word: word,
+                score: wordScore,
+                feedback: feedback
+              };
+            } else {
+              // Word not found in analysis
+              return {
+                word: word,
+                score: 0,
+                feedback: `"${word}" was not clearly detected in the sentence. Please pronounce this word more clearly.`
+              };
+            }
+          });
+          
+          // Calculate overall sentence score as average of word scores
+          const validScores = wordAnalyses.filter(w => w.score > 0).map(w => w.score);
+          const overallScore = validScores.length > 0 
+            ? Math.round(validScores.reduce((sum, score) => sum + score, 0) / validScores.length)
+            : 0;
+          
+          // Generate specific feedback for sentence
+          const feedback = overallScore >= 90 ? 
+            `Excellent overall pronunciation! All words pronounced clearly. Maintain this level of clarity and accuracy.` :
+            overallScore >= 80 ? 
+            `Very good pronunciation overall. Focus on word stress and rhythm. Overall clarity is good, minor refinements needed.` :
+            overallScore >= 70 ? 
+            `Good pronunciation overall. Pay attention to individual word accuracy and syllable clarity. Clear articulation needed in some areas.` :
+            overallScore > 0 ?
+            `Fair pronunciation overall. Focus on basic pronunciation patterns, syllable clarity, and word stress. Practice individual sounds more.` :
+            `No clear words detected in the sentence. Please practice the words first.`;
+          
+          const sentenceAnalysisResult = {
+            overallScore: overallScore,
+            feedback: feedback,
+            wordScores: wordAnalyses
+          };
+          
+          console.log('📊 Real sentence analysis:', sentenceAnalysisResult);
+          setSentenceAnalysis(sentenceAnalysisResult);
+          setSentenceAnalyzed(true);
+          // Keep analysis complete state (already set in stopRecording)
+          console.log('✅ Sentence analysis remains complete');
+          
+        } else {
+          // No words detected by API
+          console.log('❌ No words detected by API for sentence');
+          
+          const errorMessage = 'No analysis can be done because no word pronunciation was spoken and recorded. Please speak the sentence clearly and try again.';
+          setSentenceAnalysis({
+            overallScore: 0,
+            feedback: errorMessage,
+            wordScores: []
+          });
+          // Keep analysis complete state (already set in stopRecording)
+          console.log('✅ Sentence analysis remains complete (no words detected)');
+          console.log('📊 ===== ANALYZE SENTENCE PRONUNCIATION END (NO WORDS DETECTED BY API) =====');
+        }
+      } else {
+        console.error('❌ Sentence pronunciation analysis failed:', response.status);
+        
+        const errorMessage = 'Analysis cannot be done due to no sentence or words being spoken and recorded. Please speak the sentence clearly and try again.';
+        setSentenceAnalysis({
+          overallScore: 0,
+          feedback: errorMessage,
+          wordScores: []
+        });
+        // Keep analysis complete state (already set in stopRecording)
+        console.log('✅ Sentence analysis remains complete (API failure)');
+        console.log('📊 ===== ANALYZE SENTENCE PRONUNCIATION END (API FAILURE) =====');
+      }
+    } catch (error) {
+      console.error('❌ Error analyzing sentence pronunciation:', error);
+      
+      const errorMessage = 'Analysis cannot be done due to no sentence or words being spoken and recorded. Please speak the sentence clearly and try again.';
+      setSentenceAnalysis({
+        overallScore: 0,
+        feedback: errorMessage,
+        wordScores: []
+      });
+      // Keep analysis complete state (already set in stopRecording)
+      console.log('✅ Sentence analysis remains complete (error)');
+      console.log('📊 ===== ANALYZE SENTENCE PRONUNCIATION END (ERROR) =====');
     }
   };
 
@@ -1336,9 +1706,9 @@ export default function Toolbar({
     console.log('🔍 ===== ANALYZE INDIVIDUAL WORD START =====');
     console.log('🔍 Analyzing individual word:', word);
     
-    // Check if the word has been recorded and is ready for analysis
-    if (!wordsRecordingCompleted.has(word)) {
-      console.log('❌ Word not ready for analysis - no audio recorded:', word);
+    // Check if the word analysis is complete and ready for display
+    if (!wordsAnalysisComplete.has(word)) {
+      console.log('❌ Word analysis not complete - analysis still in progress:', word);
       setAnalyzingWord(null);
       return;
     }
@@ -1355,6 +1725,33 @@ export default function Toolbar({
       
       if (existingAnalysis) {
         console.log('📊 Using existing pronunciation analysis for word:', word);
+        
+        // Check if this is an error case (no words spoken, incorrect word, etc.)
+        if (existingAnalysis.feedback.includes('No analysis can be done') || 
+            existingAnalysis.feedback.includes('no word pronunciation was spoken') ||
+            existingAnalysis.feedback.includes('unrelated and incorrect word pronunciation') ||
+            existingAnalysis.feedback.includes('irrelevant/incorrect word pronunciation')) {
+          console.log('❌ Error case detected - no valid analysis available:', existingAnalysis.feedback);
+          
+          // Show the error message instead of fake analysis
+          const errorResult = {
+            score: 0,
+            feedback: existingAnalysis.feedback,
+            syllableAnalysis: []
+          };
+          
+          setIndividualWordAnalysis(prev => ({
+            ...prev,
+            [word]: errorResult
+          }));
+          
+          // Mark word as analyzed to show error state
+          setWordsAnalyzed(prev => new Set([...prev, word]));
+          
+          console.log('❌ Error state set for word:', word);
+          setAnalyzingWord(null);
+          return;
+        }
         
         // Calculate overall score based on syllable scores if available
         let calculatedScore = existingAnalysis.score;
@@ -1406,6 +1803,24 @@ export default function Toolbar({
       console.log('✅ Individual word analysis completed for:', word);
       } else {
         console.log('❌ No pronunciation analysis available for word:', word);
+        console.log('💡 Analysis may still be in progress, showing loading state...');
+        
+        // Show loading state while analysis is in progress
+        const loadingResult = {
+          score: 0,
+          feedback: 'Analysis in progress... Please wait for results.',
+          syllableAnalysis: []
+        };
+        
+        setIndividualWordAnalysis(prev => ({
+          ...prev,
+          [word]: loadingResult
+        }));
+        
+        // Mark word as analyzed to show loading state
+        setWordsAnalyzed(prev => new Set([...prev, word]));
+        
+        console.log('⏳ Loading state set for word:', word);
         setAnalyzingWord(null);
         return;
       }
@@ -1423,6 +1838,16 @@ export default function Toolbar({
     // Reset sentence analysis state
     setSentenceAnalysis(null);
     setSentenceAnalyzed(false);
+    setSentenceRecordingCompleted(false);
+    setSentenceReadyForAnalysis(false);
+    setSentenceAnalysisComplete(false);
+    
+    // Reset individual word states when starting sentence practice
+    setWordsRecordingCompleted(new Set());
+    setWordsReadyForAnalysis(new Set());
+    setWordsAnalyzed(new Set());
+    setWordsAnalysisComplete(new Set());
+    setIndividualWordAnalysis({});
     
     // Use the same recording logic as individual words
     setPracticingWord('sentence');
@@ -1432,14 +1857,13 @@ export default function Toolbar({
   // Sentence-level analysis function
   const analyzeSentence = async () => {
     console.log('🔍 Analyzing sentence:', currentMessage);
-    console.log('📊 Current wordsReadyForAnalysis size:', wordsReadyForAnalysis.size);
-    console.log('📊 Words ready for analysis:', Array.from(wordsReadyForAnalysis));
+    console.log('📊 Sentence recording completed:', sentenceRecordingCompleted);
+    console.log('📊 Sentence ready for analysis:', sentenceReadyForAnalysis);
     
-    // Check if any words have been recorded and are ready for analysis
-    if (!wordsRecordingCompleted.size) {
-      console.log('❌ No words ready for analysis - no audio recorded');
-      console.log('📊 Words recording completed:', Array.from(wordsRecordingCompleted));
-      console.log('💡 User needs to record audio first before analysis');
+    // Check if sentence analysis is complete and ready for display
+    if (!sentenceAnalysisComplete) {
+      console.log('❌ Sentence analysis not complete - analysis still in progress');
+      console.log('💡 User needs to wait for analysis to complete');
       setIsAnalyzing(false);
       return;
     }
@@ -1450,73 +1874,55 @@ export default function Toolbar({
     onAddExperience?.(10, 'sentence_analysis');
     
     try {
-      // Use actual pronunciation analysis results for sentence analysis
-      const words = currentMessage?.split(' ') || [];
-      const wordAnalyses = words.map(word => {
-        const existingAnalysis = pronunciationWords.find(p => p.word === word);
-        if (existingAnalysis) {
-          // Calculate overall score based on syllable scores if available
-          let calculatedScore = existingAnalysis.score;
-          if (existingAnalysis.syllableAnalysis && existingAnalysis.syllableAnalysis.length > 0) {
-            const syllableScores = existingAnalysis.syllableAnalysis.map(s => s.score);
-            calculatedScore = Math.round(syllableScores.reduce((sum, score) => sum + score, 0) / syllableScores.length);
-          }
-          return {
-          word: word,
-            score: calculatedScore,
-            feedback: generateSpecificFeedback(word, calculatedScore, generateSyllableAnalysis(word, calculatedScore, existingAnalysis.syllableAnalysis || []))
-          };
-        } else {
-          // If no analysis available for this word, use a default low score
-          return {
-            word: word,
-            score: 0,
-            feedback: `No audio recorded for "${word}". Please practice this word first.`
-          };
+      // Check if we already have sentence analysis results from analyzeSentencePronunciation
+      if (sentenceAnalysis) {
+        console.log('📊 Using existing sentence analysis results');
+        
+        // Check if this is an error case (no words spoken, incorrect words, etc.)
+        if (sentenceAnalysis.feedback.includes('Analysis cannot be done') || 
+            sentenceAnalysis.feedback.includes('no sentence or words being spoken') ||
+            sentenceAnalysis.feedback.includes('incorrect/irrelevant words have been spoken') ||
+            sentenceAnalysis.feedback.includes('detected mostly different words')) {
+          console.log('❌ Error case detected - no valid sentence analysis available:', sentenceAnalysis.feedback);
+          
+          // Mark sentence as analyzed to show error state
+          setSentenceAnalyzed(true);
+          
+          console.log('❌ Error state set for sentence analysis');
+          return;
         }
-      });
-      
-      // Calculate overall sentence score as average of word scores
-      const validScores = wordAnalyses.filter(w => w.score > 0).map(w => w.score);
-      const overallScore = validScores.length > 0 
-        ? Math.round(validScores.reduce((sum, score) => sum + score, 0) / validScores.length)
-        : 0;
-      
-      // Generate specific feedback for sentence
-      const feedback = overallScore >= 90 ? 
-        `Excellent overall pronunciation! All words pronounced clearly. Maintain this level of clarity and accuracy.` :
-        overallScore >= 80 ? 
-        `Very good pronunciation overall. Focus on word stress and rhythm. Overall clarity is good, minor refinements needed.` :
-        overallScore >= 70 ? 
-        `Good pronunciation overall. Pay attention to individual word accuracy and syllable clarity. Clear articulation needed in some areas.` :
-        overallScore > 0 ?
-        `Fair pronunciation overall. Focus on basic pronunciation patterns, syllable clarity, and word stress. Practice individual sounds more.` :
-        `No audio recorded for analysis. Please practice the words first.`;
-      
-      const sentenceAnalysisResult = {
-        overallScore: overallScore,
-        feedback: feedback,
-        wordScores: wordAnalyses
-      };
-      
-      console.log('📊 Real sentence analysis:', sentenceAnalysisResult);
-      
-      setSentenceAnalysis(sentenceAnalysisResult);
       
       // Add points for sentence analysis
-      const pointsEarned = calculatePoints(sentenceAnalysisResult.overallScore, true);
+        const pointsEarned = calculatePoints(sentenceAnalysis.overallScore, true);
       addPoints(pointsEarned);
-      console.log(`⭐ Earned ${pointsEarned} points for sentence analysis (score: ${sentenceAnalysisResult.overallScore})`);
+        console.log(`⭐ Earned ${pointsEarned} points for sentence analysis (score: ${sentenceAnalysis.overallScore})`);
       
       // Record progress
-      recordProgress(sentenceAnalysisResult.overallScore, currentMessage.split(' ').length, true);
+        recordProgress(sentenceAnalysis.overallScore, currentMessage.split(' ').length, true);
       
       // Mark sentence as analyzed
       setSentenceAnalyzed(true);
       
-      console.log('✅ Sentence analysis completed');
+        console.log('✅ Sentence analysis completed using existing results');
+      } else {
+        console.log('❌ No sentence analysis results available');
+        console.log('💡 Analysis may still be in progress, showing loading state...');
+        
+        // Show loading state while analysis is in progress
+        setSentenceAnalysis({
+          overallScore: 0,
+          feedback: 'Analysis in progress... Please wait for results.',
+          wordScores: []
+        });
+        
+        // Mark sentence as analyzed to show loading state
+        setSentenceAnalyzed(true);
+        
+        console.log('⏳ Loading state set for sentence analysis');
+      }
+      
     } catch (error) {
-      console.error('❌ Error analyzing sentence:', error);
+      console.error('❌ Error in sentence analysis:', error);
     } finally {
       setIsAnalyzing(false);
     }
@@ -2193,15 +2599,15 @@ export default function Toolbar({
                         console.log('🔍 Sentence analysis button clicked');
                         analyzeSentence();
                       }}
-                      disabled={!wordsRecordingCompleted.size || isAnalyzing || sentenceAnalyzed}
+                      disabled={!sentenceAnalysisComplete || isAnalyzing || sentenceAnalyzed}
                       className={`flex items-center space-x-2 px-4 py-2 rounded-lg cursor-pointer ${
-                        !wordsRecordingCompleted.size || sentenceAnalyzed
+                        !sentenceAnalysisComplete || sentenceAnalyzed
                           ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                           : isAnalyzing
                           ? 'bg-blue-300 text-blue-700 cursor-not-allowed'
                           : 'bg-blue-500 text-white hover:bg-blue-600'
                       }`}
-                      style={{ pointerEvents: wordsRecordingCompleted.size && !sentenceAnalyzed ? 'auto' : 'none' }}
+                      style={{ pointerEvents: sentenceAnalysisComplete && !sentenceAnalyzed ? 'auto' : 'none' }}
                     >
                       {isAnalyzing ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -2209,7 +2615,7 @@ export default function Toolbar({
                         <Target className="h-4 w-4" />
                       )}
                       <span>
-                        {!wordsRecordingCompleted.size ? 'Record First' : 
+                        {!sentenceAnalysisComplete ? 'Record First' : 
                          sentenceAnalyzed ? 'Analyzed' :
                          isAnalyzing ? 'Analyzing...' : 'Analyze Sentence'}
                       </span>
@@ -2221,11 +2627,64 @@ export default function Toolbar({
                     <div className="mt-4 p-3 bg-white rounded-lg border border-purple-200">
                       <h6 className="text-sm font-semibold text-purple-700 mb-3">Sentence Analysis Results</h6>
                       
-                      {/* Two-Part Analysis Display */}
-                      <div className="space-y-3">
-                        {/* 1. Accuracy Rating with RAG Status Background */}
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-gray-600">Accuracy Rating:</span>
+                      {/* Individual Word Analysis First */}
+                      {sentenceAnalysis.wordScores && sentenceAnalysis.wordScores.length > 0 && (
+                        <div className="mb-4">
+                          <h7 className="text-sm font-medium text-gray-700 mb-2">Individual Word Analysis:</h7>
+                          <div className="space-y-2">
+                            {sentenceAnalysis.wordScores.map((wordScore, index) => (
+                              <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                                <div className="flex-1">
+                                  <span className="text-sm font-medium text-gray-800">{wordScore.word}</span>
+                                  <div className="flex items-center space-x-2 mt-1">
+                                    <span className="text-xs text-gray-600">Accuracy:</span>
+                                    {sentenceAnalysis.feedback === 'Analysis in progress... Please wait for results.' ? (
+                                      <div className="px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-600">
+                                        Will be displayed
+                                      </div>
+                                    ) : sentenceAnalysis.feedback.includes('Analysis cannot be done') || 
+                                         sentenceAnalysis.feedback.includes('no sentence or words being spoken') ||
+                                         sentenceAnalysis.feedback.includes('incorrect/irrelevant words have been spoken') ? (
+                                      <div className="px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-800">
+                                        No analysis
+                                      </div>
+                                    ) : (
+                                      <div className={`px-2 py-1 rounded text-xs font-medium ${
+                                        wordScore.score >= 90 ? 'bg-green-100 text-green-800' :
+                                        wordScore.score >= 70 ? 'bg-yellow-100 text-yellow-800' :
+                                        'bg-red-100 text-red-800'
+                                      }`}>
+                                        {wordScore.score}/100
+                                      </div>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-gray-600 mt-1">{wordScore.feedback}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Overall Sentence Analysis */}
+                      <div className="border-t pt-3">
+                        <h7 className="text-sm font-medium text-gray-700 mb-2">Overall Sentence Analysis:</h7>
+                        <div className="space-y-3">
+                          {/* 1. Accuracy Rating with RAG Status Background */}
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-600">Overall Accuracy Rating:</span>
+                            {sentenceAnalysis.feedback === 'Analysis in progress... Please wait for results.' ? (
+                              <div className="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600">
+                                Will be displayed once analysis is completed
+                              </div>
+                            ) : sentenceAnalysis.feedback.includes('Analysis cannot be done') || 
+                                 sentenceAnalysis.feedback.includes('no sentence or words being spoken') ||
+                                 sentenceAnalysis.feedback.includes('incorrect/irrelevant words have been spoken') ||
+                                 sentenceAnalysis.feedback.includes('detected mostly different words') ? (
+                              <div className="px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
+                                No analysis available
+                              </div>
+                            ) : (
                         <div className={`px-3 py-1 rounded-full text-sm font-medium ${
                           sentenceAnalysis.overallScore >= 90 ? 'bg-green-100 text-green-800' :
                           sentenceAnalysis.overallScore >= 70 ? 'bg-yellow-100 text-yellow-800' :
@@ -2233,16 +2692,16 @@ export default function Toolbar({
                         }`}>
                           {sentenceAnalysis.overallScore}/100
                     </div>
+                            )}
                   </div>
-                  
-                        {/* 2. Feedback */}
-                        <div>
-                        <span className="text-sm font-medium text-gray-600">Feedback:</span>
-                        <p className="text-sm text-gray-700 mt-1">{sentenceAnalysis.feedback}</p>
-                        </div>
-                </div>
-
-                      {/* Note: Individual word analysis is displayed within each word card above */}
+                          
+                          {/* 2. Overall Feedback */}
+                          <div>
+                            <span className="text-sm font-medium text-gray-600">Overall Feedback:</span>
+                            <p className="text-sm text-gray-700 mt-1">{sentenceAnalysis.feedback}</p>
+                      </div>
+                    </div>
+                  </div>
                   </div>
                 )}
                         </div>
@@ -2298,7 +2757,7 @@ export default function Toolbar({
                             onAnalyzeWord={analyzeIndividualWord}
                             isAnalyzing={analyzingWord === word.original}
                             wordAnalysis={individualWordAnalysis[word.original]}
-                            isReadyForAnalysis={wordsRecordingCompleted.has(word.original)}
+                            isReadyForAnalysis={wordsAnalysisComplete.has(word.original)}
                             hasBeenAnalyzed={wordsAnalyzed.has(word.original)}
                             onSaveToDifficult={(word) => {
                               const phoneticData = phoneticBreakdowns[currentMessage]?.find((w: any) => w.original === word);
