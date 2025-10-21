@@ -51,6 +51,47 @@ function detectFormalityMismatch(userMessage: string, contextLevel: string): str
   return null;
 }
 
+// Difficulty level instructions function
+function getDifficultyInstructions(difficultyLevel: string): string {
+  switch (difficultyLevel.toLowerCase()) {
+    case 'beginner':
+      return `ANFÄNGER-NIVEAU (A1-A2):
+- Verwende einfaches, alltägliches Vokabular
+- Halte Sätze kurz und einfach (5-10 Wörter)
+- Verwende nur grundlegende Grammatikstrukturen (Präsens, einfaches Perfekt)
+- Vermeide komplexe Nebensätze und Konjunktiv
+- Sprich über vertraute Alltagsthemen (Essen, Familie, Hobbies, Wetter)
+- Wiederhole wichtige Wörter zur Verstärkung
+- Verwende langsames, klares Sprechtempo
+- Beispiel-Antworten: "Ja, das ist gut.", "Was magst du gern?", "Ich verstehe."`;
+    
+    case 'intermediate':
+      return `MITTELSTUFE (B1-B2):
+- Verwende erweitertes Alltagsvokabular und etwas Fachsprache
+- Verwende mittellange Sätze (10-15 Wörter)
+- Nutze verschiedene Zeitformen (Präsens, Perfekt, Präteritum, Futur)
+- Verwende Nebensätze mit weil, dass, wenn, obwohl
+- Sprich über breitere Themen (Arbeit, Reisen, Kultur, aktuelle Ereignisse)
+- Nutze einfache idiomatische Ausdrücke
+- Verwende moderates Sprechtempo
+- Beispiel-Antworten: "Das finde ich interessant, weil...", "Wenn ich darüber nachdenke...", "Meiner Meinung nach..."`;
+    
+    case 'advanced':
+      return `FORTGESCHRITTEN (C1-C2):
+- Verwende anspruchsvolles Vokabular, Fachterminologie und abstrakte Begriffe
+- Verwende komplexe, längere Sätze (15-25 Wörter)
+- Nutze alle Zeitformen und Modi (Konjunktiv I und II, Passiv)
+- Verwende komplexe Satzstrukturen mit mehreren Nebensätzen
+- Sprich über komplexe Themen (Politik, Philosophie, Wissenschaft, Wirtschaft)
+- Nutze idiomatische Wendungen und Redewendungen
+- Verwende natürliches, fließendes Sprechtempo
+- Beispiel-Antworten: "Unter Berücksichtigung dessen...", "Es lässt sich argumentieren, dass...", "Im Hinblick auf..."`;
+    
+    default:
+      return '';
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -188,6 +229,9 @@ WICHTIGE REGELN:
 - KEINE englischen Erklärungen
 - Sprich natürlich und locker
 - Sei wie ein echter Freund
+
+SCHWIERIGKEITSGRAD-ANPASSUNG:
+${getDifficultyInstructions(difficultyLevel)}
 
 KONTEXT-ÜBERWACHUNG:
 Du musst den Gesprächsstil des Nutzers überwachen und EXPLIZITE Erinnerungen geben, wenn der Stil nicht zum gewählten Kontext passt:

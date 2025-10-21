@@ -10,6 +10,7 @@ import {
   Loader2,
   User,
   ChevronDown,
+  Lock,
   Send,
   Play,
   BookOpen,
@@ -77,6 +78,7 @@ interface Conversation {
   context_level: string;
   difficulty_level: string;
   context_locked: boolean;
+  difficulty_locked: boolean;
   created_at: string;
   updated_at: string;
   user_id: string;
@@ -129,6 +131,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [contextLevel, setContextLevel] = useState('Professional');
   const [difficultyLevel, setDifficultyLevel] = useState('Intermediate');
   const [currentConversationContextLocked, setCurrentConversationContextLocked] = useState(false);
+  const [currentConversationDifficultyLocked, setCurrentConversationDifficultyLocked] = useState(false);
   const [showContextDropdown, setShowContextDropdown] = useState(false);
   const [showDifficultyDropdown, setShowDifficultyDropdown] = useState(false);
   const [conversationInput, setConversationInput] = useState('');
@@ -602,7 +605,8 @@ export default function Dashboard({ user }: DashboardProps) {
           preview: conversationInput.slice(0, 100),
           context_level: contextLevel,
           difficulty_level: difficultyLevel,
-          context_locked: false
+          context_locked: false,
+          difficulty_locked: false
         })
         .select()
         .single();
@@ -686,14 +690,18 @@ export default function Dashboard({ user }: DashboardProps) {
 
       setChatMessages(prev => [...prev, assistantMessage]);
       
-      // Lock the context for this conversation
+      // Lock the context AND difficulty for this conversation
       await supabase
         .from('conversations')
-        .update({ context_locked: true })
+        .update({ 
+          context_locked: true,
+          difficulty_locked: true
+        })
         .eq('id', conversationId);
       
       // Update local state
       setCurrentConversationContextLocked(true);
+      setCurrentConversationDifficultyLocked(true);
       
       // Update current message but don't show toolbar automatically
       setCurrentAIMessage(data.message);
@@ -4020,6 +4028,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       setContextLevel(conversation.context_level);
       setDifficultyLevel(conversation.difficulty_level);
       setCurrentConversationContextLocked(conversation.context_locked);
+      setCurrentConversationDifficultyLocked(conversation.difficulty_locked);
     }
     
     // Start new conversation
@@ -4048,6 +4057,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     // Reset context and difficulty states
     setContextLevel('Professional');
     setCurrentConversationContextLocked(false);
+    setCurrentConversationDifficultyLocked(false);
     setDifficultyLevel('Intermediate');
     
     // Reset toolbar states
@@ -4595,6 +4605,24 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                           </span>
                           {contextLevel}
                           {currentConversationContextLocked && (
+                            <span className="ml-1">🔒</span>
+                          )}
+                        </div>
+                      )}
+                      {/* Difficulty Level Badge - NEW ADDITION */}
+                      {selectedConversation && (
+                        <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                          difficultyLevel === 'Beginner' 
+                            ? 'bg-yellow-100 text-yellow-800' 
+                            : difficultyLevel === 'Intermediate'
+                            ? 'bg-orange-100 text-orange-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}>
+                          <span className="mr-1">
+                            {difficultyLevel === 'Beginner' ? '🌱' : difficultyLevel === 'Intermediate' ? '📚' : '🎯'}
+                          </span>
+                          {difficultyLevel}
+                          {currentConversationDifficultyLocked && (
                             <span className="ml-1">🔒</span>
                           )}
                         </div>
@@ -5487,13 +5515,22 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   <div className="flex-1 relative">
                     <label className="block text-sm font-semibold text-slate-800 mb-2 font-heading">Level</label>
                     <button
-                      onClick={() => setShowDifficultyDropdown(!showDifficultyDropdown)}
-                      className="w-full border border-slate-300 rounded-lg px-4 py-3 text-left flex items-center justify-between bg-white shadow-sm hover:shadow-md transition-all duration-200"
+                      onClick={() => !currentConversationDifficultyLocked && setShowDifficultyDropdown(!showDifficultyDropdown)}
+                      disabled={currentConversationDifficultyLocked}
+                      className={`w-full border border-slate-300 rounded-lg px-4 py-3 text-left flex items-center justify-between bg-white shadow-sm transition-all duration-200 ${
+                        currentConversationDifficultyLocked 
+                          ? 'opacity-50 cursor-not-allowed' 
+                          : 'hover:shadow-md'
+                      }`}
                     >
                       <span className="text-sm font-semibold text-slate-800 font-heading">{difficultyLevel}</span>
-                      <ChevronDown className="h-4 w-4 text-gray-400" />
+                      {currentConversationDifficultyLocked ? (
+                        <Lock className="h-4 w-4 text-gray-400" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4 text-gray-400" />
+                      )}
                     </button>
-                    {showDifficultyDropdown && (
+                    {showDifficultyDropdown && !currentConversationDifficultyLocked && (
                       <div className="absolute top-full left-0 right-0 mt-1 bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-lg shadow-lg z-10">
                         {difficultyLevels.map((level) => (
                           <button
