@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { germanTTS } from '../lib/tts';
+import { saveMessageAnalysis, PronunciationData } from '../lib/analysisStorage';
 import {
   Mic,
   MicOff,
@@ -93,6 +94,7 @@ interface ChatMessage {
   isAudio?: boolean; // Flag for audio messages
   isTranscribing?: boolean; // Flag for messages being transcribed
   showTryAgain?: boolean; // Flag to show "Try it again" button
+  pronunciationData?: PronunciationData; // Pronunciation analysis data for German voice messages
 }
 
 type MessageStatus = 'checking' | 'needs_correction' | 'mismatch' | 'error';
@@ -132,6 +134,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [difficultyLevel, setDifficultyLevel] = useState('Intermediate');
   const [currentConversationContextLocked, setCurrentConversationContextLocked] = useState(false);
   const [currentConversationDifficultyLocked, setCurrentConversationDifficultyLocked] = useState(false);
+  const [lastGermanVoiceMessage, setLastGermanVoiceMessage] = useState<any>(null);
   const [showContextDropdown, setShowContextDropdown] = useState(false);
   const [showDifficultyDropdown, setShowDifficultyDropdown] = useState(false);
   const [conversationInput, setConversationInput] = useState('');
@@ -1433,6 +1436,62 @@ export default function Dashboard({ user }: DashboardProps) {
     }
   };
 
+  // Analyze German pronunciation for voice messages
+  const analyzeGermanPronunciation = async (audioBlob: Blob, transcription: string, messageId: string): Promise<PronunciationData | null> => {
+    try {
+      console.log('🎤 === ANALYZING GERMAN PRONUNCIATION ===');
+      console.log('Audio blob size:', audioBlob.size, 'bytes');
+      console.log('Transcription:', transcription);
+      console.log('Message ID:', messageId);
+
+      // Convert audio to base64
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+
+      // Call pronunciation analysis API
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pronunciation-analysis`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audioData: base64,
+          transcription: transcription
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ Pronunciation analysis completed:', data);
+
+        // Save to database
+        if (user && selectedConversation) {
+          const conversation = conversations.find(c => c.id === selectedConversation);
+          if (conversation) {
+            await saveMessageAnalysis(
+              messageId,
+              user.id,
+              conversation.id,
+              transcription,
+              'voice',
+              data,
+              undefined // No grammar topic for pronunciation-only analysis
+            );
+          }
+        }
+
+        return data;
+      } else {
+        console.error('❌ Pronunciation analysis failed:', response.status);
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Error in pronunciation analysis:', error);
+      return null;
+    }
+  };
+
   const handleErrorCorrection = async (messageId: string) => {
     console.log('=== GRAMMAR HELP BUTTON CLICKED ===');
     console.log('Message ID:', messageId);
@@ -1475,6 +1534,11 @@ export default function Dashboard({ user }: DashboardProps) {
       console.log('Running comprehensive analysis for grammar help');
       await runComprehensiveAnalysis(userMessage.content, messageId);
     }
+    
+    // Auto-load grammar explanation when toolbar opens
+    console.log('Auto-loading grammar explanation for:', userMessage.content);
+    // The grammar explanation will be loaded automatically by the Toolbar component
+    // due to the autoLoadExplanations prop being set to true
   };
 
   const generateSuggestedAnswer = async (messageId: string, userMessage: string) => {
@@ -3429,13 +3493,13 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     console.log('New transcription:', transcription);
                     console.log('Practice audio blob exists:', !!practiceAudioBlob);
                     
-                    const newMessage = {
+                    const newMessage: ChatMessage = {
                       ...msg,
                       content: transcription,
                       audioUrl: practiceAudioBlob ? URL.createObjectURL(practiceAudioBlob) : undefined,
                       isAudio: true,
                       isTranscribing: false,
-                      role: 'user',
+                      role: 'user' as const,
                       timestamp: new Date().toISOString()
                     };
                     console.log('✅ NEW MESSAGE CREATED:', JSON.stringify(newMessage, null, 2));
@@ -3617,6 +3681,15 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             
             // For German recordings, run comprehensive analysis and get result immediately
             const analysis = await runComprehensiveAnalysis(transcription, messageId, true);
+            
+            // Store the German voice message for pronunciation analysis
+            const audioArrayBuffer = await audioBlob.arrayBuffer();
+            const audioBase64 = btoa(String.fromCharCode(...new Uint8Array(audioArrayBuffer)));
+            setLastGermanVoiceMessage({
+              transcription: transcription,
+              audioData: audioBase64,
+              messageId: messageId
+            });
             
             console.log('🔍 === CHECKING FOR ERRORS AFTER ANALYSIS ===');
             console.log('Analysis result:', analysis);
@@ -4774,6 +4847,24 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                         )}
                       </div>
 
+                      {/* Pronunciation Badge for German Voice Messages */}
+                      {message.role === 'user' && message.isAudio && lastGermanVoiceMessage && lastGermanVoiceMessage.messageId === message.id && (
+                        <div className="mt-2 flex justify-end">
+                          <button
+                            onClick={() => {
+                              setToolbarActiveTab('pronunciation');
+                              setToolbarCollapsed(false);
+                              setShowToolbar(true);
+                            }}
+                            className="flex items-center space-x-1 px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-full text-xs font-medium transition-colors"
+                            title="Analyze pronunciation"
+                          >
+                            <Volume2 className="h-3 w-3" />
+                            <span>Analyze</span>
+                          </button>
+                        </div>
+                      )}
+
                       {/* Pronunciation Breakdown for Assistant Messages */}
                       {message.role === 'assistant' && (
                         <div className="mt-3">
@@ -5127,7 +5218,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             </div>
             
             {/* Right Sidebar - Collapsible Toolbar */}
-            <div className={`${toolbarCollapsed ? 'w-12' : 'w-96'} bg-white border-l border-gray-200 flex flex-col h-full transition-all duration-300 ease-in-out`}>
+            <div className={`${toolbarCollapsed ? 'w-12' : 'w-[600px] lg:w-[700px]'} bg-white border-l border-gray-200 flex flex-col h-full transition-all duration-300 ease-in-out`}>
               {/* Toolbar Header */}
               <div className="p-4 border-b border-gray-100 flex-shrink-0">
                 <div className="flex items-center justify-between">
@@ -5174,6 +5265,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     onTabChange={setToolbarActiveTab}
                     newVocabItems={newVocabItems}
                     persistentVocab={persistentVocab}
+                    lastGermanVoiceMessage={lastGermanVoiceMessage}
                     phoneticBreakdowns={phoneticBreakdowns}
                     onPlayWordAudio={playWordAudio}
                     globalPlaybackSpeed={globalPlaybackSpeed}

@@ -44,11 +44,40 @@ serve(async (req) => {
       if (comprehensiveResponse.ok) {
         const comprehensiveData = await comprehensiveResponse.json();
         
+        // Extract grammar topic from the analysis
+        let grammarTopic = 'General Grammar';
+        if (comprehensiveData.suggestions?.grammar) {
+          // Extract topic from grammar suggestions
+          const grammarText = comprehensiveData.suggestions.grammar.toLowerCase();
+          if (grammarText.includes('perfect tense') || grammarText.includes('perfekt')) {
+            grammarTopic = 'Perfect Tense';
+          } else if (grammarText.includes('word order') || grammarText.includes('word order')) {
+            grammarTopic = 'Word Order';
+          } else if (grammarText.includes('articles') || grammarText.includes('der/die/das')) {
+            grammarTopic = 'Articles';
+          } else if (grammarText.includes('conjugation') || grammarText.includes('verb')) {
+            grammarTopic = 'Verb Conjugation';
+          } else if (grammarText.includes('case') || grammarText.includes('akkusativ') || grammarText.includes('dativ')) {
+            grammarTopic = 'Cases';
+          } else if (grammarText.includes('adjective') || grammarText.includes('adjektiv')) {
+            grammarTopic = 'Adjectives';
+          } else if (grammarText.includes('preposition') || grammarText.includes('präposition')) {
+            grammarTopic = 'Prepositions';
+          } else if (grammarText.includes('subjunctive') || grammarText.includes('konjunktiv')) {
+            grammarTopic = 'Subjunctive';
+          } else if (grammarText.includes('passive') || grammarText.includes('passiv')) {
+            grammarTopic = 'Passive Voice';
+          } else if (grammarText.includes('modal') || grammarText.includes('modal verb')) {
+            grammarTopic = 'Modal Verbs';
+          }
+        }
+        
         // Extract grammar-specific information
         const grammarAnalysis = {
           analysis: comprehensiveData.suggestions?.grammar || 'No grammar issues found',
           corrections: comprehensiveData.corrections?.grammar,
           hasErrors: comprehensiveData.errorTypes?.grammar || false,
+          grammarTopic: grammarTopic,
           comprehensive: comprehensiveData
         };
 
@@ -100,9 +129,35 @@ serve(async (req) => {
       throw new Error('No response from OpenAI')
     }
 
+    // Extract grammar topic from the analysis text
+    let grammarTopic = 'General Grammar';
+    const analysisText = analysis.toLowerCase();
+    if (analysisText.includes('perfect tense') || analysisText.includes('perfekt')) {
+      grammarTopic = 'Perfect Tense';
+    } else if (analysisText.includes('word order') || analysisText.includes('word order')) {
+      grammarTopic = 'Word Order';
+    } else if (analysisText.includes('articles') || analysisText.includes('der/die/das')) {
+      grammarTopic = 'Articles';
+    } else if (analysisText.includes('conjugation') || analysisText.includes('verb')) {
+      grammarTopic = 'Verb Conjugation';
+    } else if (analysisText.includes('case') || analysisText.includes('akkusativ') || analysisText.includes('dativ')) {
+      grammarTopic = 'Cases';
+    } else if (analysisText.includes('adjective') || analysisText.includes('adjektiv')) {
+      grammarTopic = 'Adjectives';
+    } else if (analysisText.includes('preposition') || analysisText.includes('präposition')) {
+      grammarTopic = 'Prepositions';
+    } else if (analysisText.includes('subjunctive') || analysisText.includes('konjunktiv')) {
+      grammarTopic = 'Subjunctive';
+    } else if (analysisText.includes('passive') || analysisText.includes('passiv')) {
+      grammarTopic = 'Passive Voice';
+    } else if (analysisText.includes('modal') || analysisText.includes('modal verb')) {
+      grammarTopic = 'Modal Verbs';
+    }
+
     return new Response(
       JSON.stringify({
         analysis,
+        grammarTopic,
         usage: data.usage
       }),
       {
