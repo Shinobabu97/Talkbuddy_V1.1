@@ -12,6 +12,7 @@ interface PronunciationSentenceViewProps {
   isRecordingWord?: boolean;
   practicingWord?: string | null;
   onStopWordRecording?: () => void;
+  isRecordingSentence?: boolean;
   globalPlaybackSpeed?: number;
   onSpeedChange?: (speed: number) => void;
 }
@@ -21,10 +22,10 @@ interface WordDetailsProps {
   onRepractice: () => void;
   onClose: () => void;
   isRecording?: boolean;
-  onStopRecording?: () => void;
+  onStopWordRecording?: () => void;
 }
 
-const WordDetails: React.FC<WordDetailsProps> = ({ word, onRepractice, onClose, isRecording = false, onStopRecording }) => {
+const WordDetails: React.FC<WordDetailsProps> = ({ word, onRepractice, onClose, isRecording = false, onStopWordRecording }) => {
   const [showSyllables, setShowSyllables] = useState(false);
   const [showTips, setShowTips] = useState(false);
 
@@ -166,7 +167,7 @@ const WordDetails: React.FC<WordDetailsProps> = ({ word, onRepractice, onClose, 
 
       {/* Repractice Button */}
       <button
-        onClick={isRecording ? onStopRecording : onRepractice}
+        onClick={isRecording ? onStopWordRecording : onRepractice}
         className={`w-full py-2 px-4 rounded-lg flex items-center justify-center space-x-2 ${
           isRecording 
             ? 'bg-red-500 hover:bg-red-600 text-white' 
@@ -198,12 +199,15 @@ const PronunciationSentenceView: React.FC<PronunciationSentenceViewProps> = ({
   isRecordingWord = false,
   practicingWord,
   onStopWordRecording,
+  isRecordingSentence = false,
   globalPlaybackSpeed = 1.0,
   onSpeedChange
 }) => {
   const [selectedWord, setSelectedWord] = useState<PronunciationWord | null>(null);
-  const [isRecordingSentence, setIsRecordingSentence] = useState(false);
   const [sentenceSpeed, setSentenceSpeed] = useState(globalPlaybackSpeed);
+
+  // Check if this is a practice analysis
+  const isPracticeAnalysis = pronunciationData.source === 'practice';
 
   const getWordColor = (score: number) => {
     if (score >= 90) return 'text-green-600 bg-green-50 border-green-200';
@@ -245,7 +249,6 @@ const PronunciationSentenceView: React.FC<PronunciationSentenceViewProps> = ({
   };
 
   const handleRepracticeSentence = () => {
-    setIsRecordingSentence(true);
     if (onRepracticeSentence) {
       onRepracticeSentence();
     }
@@ -289,6 +292,7 @@ const PronunciationSentenceView: React.FC<PronunciationSentenceViewProps> = ({
             'bg-red-100 text-red-800'
           }`}>
             Overall: {pronunciationData.overallScore}/100
+            {isPracticeAnalysis && <span className="ml-1 text-xs opacity-75">(Practice)</span>}
           </div>
         </div>
       </div>

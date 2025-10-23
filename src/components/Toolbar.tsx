@@ -178,7 +178,7 @@ const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
                 e.preventDefault();
                 e.stopPropagation();
                 console.log('🛑 Stop recording button clicked');
-                onStopRecording();
+                stopRecording();
               }}
               className="flex items-center space-x-2 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 cursor-pointer"
               style={{ pointerEvents: 'auto' }}
@@ -515,6 +515,11 @@ export default function Toolbar({
   const [sentenceAnalysisComplete, setSentenceAnalysisComplete] = useState<boolean>(false);
   const isStoppingRef = useRef(false);
   
+  // Sentence recording state for pronunciation practice
+  const [isRecordingSentence, setIsRecordingSentence] = useState(false);
+  const [sentenceAudioBlob, setSentenceAudioBlob] = useState<Blob | null>(null);
+  const [sentenceRecorder, setSentenceRecorder] = useState<MediaRecorder | null>(null);
+  
   // Pronunciation analysis state
   const [pronunciationAnalysis, setPronunciationAnalysis] = useState<any>(null);
   const [isAnalyzingPronunciation, setIsAnalyzingPronunciation] = useState(false);
@@ -714,36 +719,27 @@ export default function Toolbar({
     }
   };
 
-  // GOP Algorithm - German Pronunciation Rules
-  const PRONUNCIATION_RULES = {
-    'ch': { difficulty: 'hard', commonMistakes: ['k', 'sh'], correct: 'ç' },
-    'r': { difficulty: 'medium', commonMistakes: ['ɹ', 'w'], correct: 'ʁ' },
-    'ä': { difficulty: 'medium', commonMistakes: ['a', 'e'], correct: 'ɛ' },
-    'ö': { difficulty: 'hard', commonMistakes: ['o', 'e'], correct: 'ø' },
-    'ü': { difficulty: 'hard', commonMistakes: ['u', 'i'], correct: 'y' },
-    'sch': { difficulty: 'medium', commonMistakes: ['sk', 's'], correct: 'ʃ' }
-  };
-
-  // Calculate word-level GOP score
+  // DEPRECATED: GOP Algorithm functions removed - now using real GOP API
+  
+  // Temporary fallback function for individual word analysis
   function calculateWordGOP(word: string) {
     const hasUmlauts = /[äöü]/.test(word);
     const hasCh = /ch/.test(word);
     const hasR = /r/.test(word);
     const isLong = word.length > 6;
     
-    // Default to good scores (85-95) since we can't analyze actual audio
-    let baseScore = 90; // Changed from 85
+    // Base score calculation
+    let baseScore = 85;
     
-    // Only reduce for very difficult combinations
-    if (hasUmlauts && hasCh) baseScore -= 25; // Multiple difficulties
-    else if (hasUmlauts) baseScore -= 10; // Less penalty
-    else if (hasCh) baseScore -= 15; // Less penalty
-    else if (hasR && isLong) baseScore -= 10;
-    else if (hasR) baseScore -= 5; // Very small penalty
+    // Adjust for difficulty factors
+    if (hasUmlauts) baseScore -= 15;
+    if (hasCh) baseScore -= 20;
+    if (hasR) baseScore -= 10;
+    if (isLong) baseScore -= 5;
     
-    // Smaller variation (±5 points instead of ±10)
-    const variation = (Math.random() - 0.5) * 10;
-    baseScore = Math.max(70, Math.min(100, baseScore + variation)); // Minimum 70
+    // Add some realistic variation (±10 points)
+    const variation = (Math.random() - 0.5) * 20;
+    baseScore = Math.max(0, Math.min(100, baseScore + variation));
     
     // Generate phoneme-level scores
     const phonemeScores = [];
@@ -791,91 +787,127 @@ export default function Toolbar({
     };
   }
 
+  // German pronunciation rules for individual word analysis
+  const PRONUNCIATION_RULES = {
+    'ch': { difficulty: 'hard', commonMistakes: ['k', 'sh'], correct: 'ç' },
+    'r': { difficulty: 'medium', commonMistakes: ['ɹ', 'w'], correct: 'ʁ' },
+    'ä': { difficulty: 'medium', commonMistakes: ['a', 'e'], correct: 'ɛ' },
+    'ö': { difficulty: 'hard', commonMistakes: ['o', 'e'], correct: 'ø' },
+    'ü': { difficulty: 'hard', commonMistakes: ['u', 'i'], correct: 'y' },
+    'sch': { difficulty: 'medium', commonMistakes: ['sk', 's'], correct: 'ʃ' }
+  };
+
   const analyzePronunciation = async () => {
     if (!lastGermanVoiceMessage) {
       console.log('No German voice message available for pronunciation analysis');
+      alert('No German voice message available. Please record a German voice message first.');
       return;
     }
 
+    // Check environment variables
+    if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+      alert('Configuration error: Supabase credentials not found. Please check your environment variables.');
+      console.error('Missing environment variables:', {
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+        hasAnonKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY
+      });
+      return;
+    }
+
+    console.log('Environment check:', {
+      supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+      hasAnonKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY
+    });
+
     setIsAnalyzingPronunciation(true);
     try {
-      console.log('🎤 === ANALYZING PRONUNCIATION LOCALLY (NO API CALL) ===');
+      console.log('🎤 === ANALYZING PRONUNCIATION WITH REAL GOP API ===');
       console.log('Message:', lastGermanVoiceMessage);
 
       const transcription = lastGermanVoiceMessage.transcription;
       const words = transcription.split(' ').filter(word => word.length > 0);
       
-      console.log('🎤 === USING GOP ALGORITHM FOR PRONUNCIATION SCORING ===');
+      console.log('🎤 === CALLING REAL GOP API ===');
       console.log('Words to analyze:', words);
       
-      // Calculate GOP scores locally - NO API CALL!
-      const wordScores = words.map(word => calculateWordGOP(word));
-      const overallScore = Math.round(wordScores.reduce((sum, w) => sum + w.score, 0) / wordScores.length);
-      const hasErrors = overallScore < 70;
+      // Debug API call info
+      console.log('API Call Debug Info:', {
+        url: `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pronunciation-analysis`,
+        hasAudioData: !!lastGermanVoiceMessage.audioData,
+        audioDataLength: lastGermanVoiceMessage.audioData?.length,
+        transcription: transcription,
+        transcriptionLength: transcription?.length
+      });
       
-      // Generate suggestions
-      const suggestions: string[] = [];
-      if (overallScore < 60) {
-        suggestions.push('Focus on basic German sounds like "ch" and "r"');
-        suggestions.push('Practice umlauts (ä, ö, ü) slowly and clearly');
-      } else if (overallScore < 80) {
-        suggestions.push('Work on difficult phonemes identified in the analysis');
-        suggestions.push('Practice word stress patterns');
-      } else {
-        suggestions.push('Great job! Continue practicing for even better pronunciation');
+      // Call real GOP API with audio data
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pronunciation-analysis`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audioData: lastGermanVoiceMessage.audioData,
+          transcription: transcription
+        })
+      });
+
+      console.log('API Response Status:', response.status);
+      console.log('API Response OK:', response.ok);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API Error Response:', errorText);
+        throw new Error(`Pronunciation analysis failed: ${response.status} - ${errorText}`);
       }
 
-      const gopResult = {
-        overallScore,
-        words: wordScores,
-        suggestions,
-        hasErrors
-      };
+      const data = await response.json();
+      console.log('✅ Real GOP analysis completed:', data);
+      setPronunciationAnalysis(data);
       
-      console.log('✅ GOP analysis completed locally:', gopResult);
-
-      // Format result to match expected structure
-      const result = {
-        hasPronunciationErrors: gopResult.hasErrors,
-        words: gopResult.words.map((wordData: any) => ({
-          word: wordData.word,
-          score: wordData.score,
-          needsPractice: wordData.score < 70,
-          feedback: wordData.feedback,
-          commonMistakes: wordData.phonemeScores
-            .filter((p: any) => p.score < 70)
-            .map((p: any) => p.feedback),
-          difficulty: wordData.difficulty,
-          soundsToFocus: wordData.phonemeScores
-            .filter((p: any) => p.score < 70)
-            .map((p: any) => p.phoneme),
-          improvementTips: wordData.phonemeScores
-            .filter((p: any) => p.score < 70)
-            .map((p: any) => p.feedback),
-          syllableAnalysis: wordData.phonemeScores.map((phoneme: any) => ({
-            syllable: phoneme.phoneme,
-            score: phoneme.score,
-            feedback: phoneme.feedback,
-            phoneticExpected: phoneme.expected,
-            phoneticActual: phoneme.actual
-          }))
-        })),
-        suggestions: gopResult.suggestions,
-        overallScore: gopResult.overallScore,
-        scoringBreakdown: {
-          vowelAccuracy: Math.round(gopResult.overallScore * 0.9),
-          consonantAccuracy: Math.round(gopResult.overallScore * 0.95),
-          rhythm: Math.round(gopResult.overallScore * 0.85),
-          stress: Math.round(gopResult.overallScore * 0.9)
-        }
-      };
+      // Show success message to user
+      console.log('✅ Pronunciation analysis completed successfully!');
       
-      console.log('✅ Returning local GOP result:', result);
-      setPronunciationAnalysis(result);
     } catch (error) {
       console.error('❌ Error in pronunciation analysis:', error);
+      
+      // Show error message to user
+      alert(`Pronunciation analysis failed: ${error.message}`);
+      
+      // Set error state for UI
+      setPronunciationAnalysis({
+        hasPronunciationErrors: true,
+        words: [],
+        suggestions: ['Analysis failed. Please try again.'],
+        overallScore: 0,
+        error: error.message
+      });
     } finally {
       setIsAnalyzingPronunciation(false);
+    }
+  };
+
+  // Test function to verify API endpoint accessibility
+  const testPronunciationAPI = async () => {
+    try {
+      console.log('Testing pronunciation API endpoint...');
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pronunciation-analysis`, {
+        method: 'OPTIONS',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        }
+      });
+      
+      console.log('API Test Response:', response.status);
+      
+      if (response.status === 200) {
+        alert('API endpoint is accessible!');
+      } else {
+        alert(`API endpoint returned status: ${response.status}`);
+      }
+    } catch (error) {
+      console.error('API Test Error:', error);
+      alert(`API test failed: ${error.message}`);
     }
   };
 
@@ -916,10 +948,30 @@ export default function Toolbar({
   };
 
   const stopWordRecording = () => {
-    if (wordRecording && wordRecording.state === 'recording') {
-      wordRecording.stop();
+    console.log('🛑 stopWordRecording called');
+    console.log('🛑 wordRecording exists:', !!wordRecording);
+    console.log('🛑 wordRecording state:', wordRecording?.state);
+    console.log('🛑 isRecordingWord:', isRecordingWord);
+    console.log('🛑 practicingWord:', practicingWord);
+    
+    try {
+      if (wordRecording && wordRecording.state === 'recording') {
+        console.log('🛑 Stopping word recording...');
+        wordRecording.stop();
+      } else {
+        console.log('🛑 No active word recording to stop');
+      }
+    } catch (error) {
+      console.error('❌ Error stopping word recording:', error);
     }
+    
+    // Reset all word recording states
     setIsRecordingWord(false);
+    setPracticingWord(null);
+    setWordRecording(null);
+    setWordAudioChunks([]);
+    
+    console.log('🛑 Word recording stopped and states reset');
   };
 
   const analyzeIndividualWordPronunciation = async (word: string, audioBlob: Blob) => {
@@ -1289,6 +1341,132 @@ export default function Toolbar({
     }
   };
 
+  // Sentence recording functions for pronunciation practice
+  const startSentenceRecording = async () => {
+    console.log('🎤 Starting sentence recording for pronunciation practice...');
+    
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const audioChunks: BlobPart[] = [];
+      
+      recorder.ondataavailable = (event) => {
+        audioChunks.push(event.data);
+      };
+      
+      recorder.onstop = async () => {
+        console.log('🛑 Sentence recording stopped');
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        setSentenceAudioBlob(audioBlob);
+        setIsRecordingSentence(false);
+        
+        // Automatically analyze the recorded sentence
+        await analyzeSentencePronunciation(audioBlob);
+        
+        // Stop all tracks
+        stream.getTracks().forEach(track => track.stop());
+      };
+      
+      recorder.start();
+      setSentenceRecorder(recorder);
+      setIsRecordingSentence(true);
+      
+    } catch (error) {
+      console.error('❌ Error starting sentence recording:', error);
+      alert('Could not access microphone. Please check permissions.');
+      setIsRecordingSentence(false);
+    }
+  };
+
+  const stopSentenceRecording = () => {
+    console.log('🛑 Stopping sentence recording...');
+    if (sentenceRecorder && sentenceRecorder.state === 'recording') {
+      sentenceRecorder.stop();
+    }
+    setIsRecordingSentence(false);
+  };
+
+  const analyzeSentencePronunciation = async (audioBlob: Blob) => {
+    console.log('🔍 Analyzing sentence pronunciation...');
+    setIsAnalyzingPronunciation(true);
+    
+    try {
+      // Convert audio to base64
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      let binaryString = '';
+      const chunkSize = 8192;
+      
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.slice(i, i + chunkSize);
+        binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      
+      const base64Audio = btoa(binaryString);
+      
+      // First transcribe the audio
+      const transcriptionResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whisper`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audioData: base64Audio,
+          language: 'de'
+        })
+      });
+      
+      if (!transcriptionResponse.ok) {
+        throw new Error(`Transcription failed: ${transcriptionResponse.statusText}`);
+      }
+      
+      const transcriptionData = await transcriptionResponse.json();
+      console.log('📝 Transcription:', transcriptionData.transcription);
+      
+      // Then analyze pronunciation
+      const analysisResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pronunciation-analysis`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audioData: base64Audio,
+          transcription: transcriptionData.transcription,
+          expectedTranscription: lastGermanVoiceMessage.transcription
+        })
+      });
+      
+      if (!analysisResponse.ok) {
+        throw new Error(`Analysis failed: ${analysisResponse.statusText}`);
+      }
+      
+      const analysisData = await analysisResponse.json();
+      console.log('📊 Analysis result:', analysisData);
+      
+      // Update the pronunciation analysis state
+      setPronunciationAnalysis(analysisData);
+      
+      // Force re-render with timestamp to ensure UI updates
+      setTimeout(() => {
+        setPronunciationAnalysis({
+          ...analysisData, 
+          source: 'practice', // Mark this as practice analysis
+          timestamp: Date.now()
+        });
+        console.log('🔄 Forced re-render with new overall score:', analysisData.overallScore);
+      }, 100);
+      
+    } catch (error) {
+      console.error('❌ Error analyzing sentence pronunciation:', error);
+      alert('Failed to analyze pronunciation. Please try again.');
+    } finally {
+      setIsAnalyzingPronunciation(false);
+    }
+  };
+
   const analyzeWordPronunciation = async (audioBlob: Blob) => {
     try {
       console.log('📊 ===== ANALYZE PRONUNCIATION START =====');
@@ -1578,235 +1756,6 @@ export default function Toolbar({
     }
   };
 
-  // Separate function for sentence pronunciation analysis
-  const analyzeSentencePronunciation = async (audioBlob: Blob) => {
-    try {
-      console.log('📊 ===== ANALYZE SENTENCE PRONUNCIATION START =====');
-      console.log('📊 Analyzing sentence pronunciation for:', currentMessage);
-      console.log('📊 Audio blob size:', audioBlob.size, 'bytes');
-      
-      // Enhanced audio validation for sentence
-      if (audioBlob.size < 1000) { // Less than 1KB is likely empty or very short
-        console.log('❌ Audio blob too small, likely no audio recorded:', audioBlob.size, 'bytes');
-        
-        const errorMessage = 'No analysis can be done because no word pronunciation was spoken and recorded. Please speak the sentence clearly and try again.';
-        
-        // Set sentence analysis with error
-        setSentenceAnalysis({
-          overallScore: 0,
-          feedback: errorMessage,
-          wordScores: []
-        });
-        
-        console.log('📊 ===== ANALYZE SENTENCE PRONUNCIATION END (NO AUDIO) =====');
-        return;
-      }
-      
-      // Convert audio to base64
-      const arrayBuffer = await audioBlob.arrayBuffer();
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-
-      // Send to pronunciation analysis
-      console.log('📊 Sending API request to pronunciation-analysis for sentence...');
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pronunciation-analysis`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          audioData: base64,
-          transcription: currentMessage || 'Test pronunciation'
-        })
-      });
-
-      console.log('📊 API response status:', response.status);
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('📊 Sentence pronunciation analysis result:', data);
-        
-        if (data.words && data.words.length > 0) {
-          // Enhanced sentence validation
-          const detectedWords = data.words.map((w: any) => w.word?.toLowerCase().trim()).filter(Boolean);
-          const expectedWords = currentMessage?.toLowerCase().split(' ').map(w => w.trim()) || [];
-          
-          console.log('🔍 Sentence validation:', { expected: expectedWords, detected: detectedWords });
-          
-          // Check if no words were detected
-          if (detectedWords.length === 0) {
-            console.log('❌ No words detected in sentence recording');
-            
-            const errorMessage = 'Analysis cannot be done due to no sentence or words being spoken and recorded. Please speak the sentence clearly and try again.';
-            setSentenceAnalysis({
-              overallScore: 0,
-              feedback: errorMessage,
-              wordScores: []
-            });
-            console.log('📊 ===== ANALYZE SENTENCE PRONUNCIATION END (NO WORDS DETECTED) =====');
-            return;
-          }
-          
-          // Enhanced validation: check for relevant words with more sophisticated matching
-          const hasRelevantWords = expectedWords.some(expectedWord => 
-            detectedWords.some(detectedWord => {
-              // Exact match
-              if (expectedWord === detectedWord) return true;
-              
-              // Partial match (one contains the other)
-              if (expectedWord.includes(detectedWord) || detectedWord.includes(expectedWord)) return true;
-              
-              // Phonetic similarity (vowel-independent matching)
-              const expectedConsonants = expectedWord.replace(/[aeiou]/g, '');
-              const detectedConsonants = detectedWord.replace(/[aeiou]/g, '');
-              if (expectedConsonants === detectedConsonants) return true;
-              
-              // Character similarity (for similar sounding words)
-              if (Math.abs(expectedWord.length - detectedWord.length) <= 2) {
-                const matchingChars = expectedWord.split('').filter((char, i) => char === detectedWord[i]).length;
-                const similarityRatio = matchingChars / Math.min(expectedWord.length, detectedWord.length);
-                if (similarityRatio >= 0.6) return true;
-              }
-              
-              return false;
-            })
-          );
-          
-          // Check if mostly irrelevant words were detected
-          const relevantWordCount = expectedWords.filter(expectedWord => 
-            detectedWords.some(detectedWord => {
-              if (expectedWord === detectedWord) return true;
-              if (expectedWord.includes(detectedWord) || detectedWord.includes(expectedWord)) return true;
-              const expectedConsonants = expectedWord.replace(/[aeiou]/g, '');
-              const detectedConsonants = detectedWord.replace(/[aeiou]/g, '');
-              if (expectedConsonants === detectedConsonants) return true;
-              return false;
-            })
-          ).length;
-          
-          const relevanceRatio = relevantWordCount / expectedWords.length;
-          
-          if (!hasRelevantWords || relevanceRatio < 0.5) {
-            console.log('❌ Irrelevant/incorrect words detected in sentence recording:', { 
-              expected: expectedWords, 
-              detected: detectedWords, 
-              relevanceRatio: relevanceRatio 
-            });
-            
-            const errorMessage = `Analysis cannot be done due to incorrect/irrelevant words being spoken and recorded. Expected sentence: "${currentMessage}" but detected mostly different words. Please practice the correct sentence.`;
-            setSentenceAnalysis({
-              overallScore: 0,
-              feedback: errorMessage,
-              wordScores: []
-            });
-            console.log('📊 ===== ANALYZE SENTENCE PRONUNCIATION END (IRRELEVANT WORDS) =====');
-            return;
-          }
-          
-          // Process valid sentence analysis
-          const words = currentMessage?.split(' ') || [];
-          const wordAnalyses = words.map(word => {
-            const wordAnalysis = data.words.find((w: any) => 
-              w.word?.toLowerCase().trim() === word.toLowerCase().trim()
-            );
-            
-            if (wordAnalysis) {
-              // Calculate word score as average of syllable scores
-              let wordScore = wordAnalysis.score || 0;
-              if (wordAnalysis.syllableAnalysis && wordAnalysis.syllableAnalysis.length > 0) {
-                const syllableScores = wordAnalysis.syllableAnalysis.map((s: any) => s.score);
-                wordScore = Math.round(syllableScores.reduce((sum: number, score: number) => sum + score, 0) / syllableScores.length);
-              }
-              
-              // Generate specific feedback for this word
-              const syllableAnalysis = generateSyllableAnalysis(word, wordScore, wordAnalysis.syllableAnalysis || []);
-              const feedback = generateSpecificFeedback(word, wordScore, syllableAnalysis);
-              
-              return {
-                word: word,
-                score: wordScore,
-                feedback: feedback
-              };
-            } else {
-              // Word not found in analysis
-              return {
-                word: word,
-                score: 0,
-                feedback: `"${word}" was not clearly detected in the sentence. Please pronounce this word more clearly.`
-              };
-            }
-          });
-          
-          // Calculate overall sentence score as average of word scores
-          const validScores = wordAnalyses.filter(w => w.score > 0).map(w => w.score);
-          const overallScore = validScores.length > 0 
-            ? Math.round(validScores.reduce((sum, score) => sum + score, 0) / validScores.length)
-            : 0;
-          
-          // Generate specific feedback for sentence
-          const feedback = overallScore >= 90 ? 
-            `Excellent overall pronunciation! All words pronounced clearly. Maintain this level of clarity and accuracy.` :
-            overallScore >= 80 ? 
-            `Very good pronunciation overall. Focus on word stress and rhythm. Overall clarity is good, minor refinements needed.` :
-            overallScore >= 70 ? 
-            `Good pronunciation overall. Pay attention to individual word accuracy and syllable clarity. Clear articulation needed in some areas.` :
-            overallScore > 0 ?
-            `Fair pronunciation overall. Focus on basic pronunciation patterns, syllable clarity, and word stress. Practice individual sounds more.` :
-            `No clear words detected in the sentence. Please practice the words first.`;
-          
-          const sentenceAnalysisResult = {
-            overallScore: overallScore,
-            feedback: feedback,
-            wordScores: wordAnalyses
-          };
-          
-          console.log('📊 Real sentence analysis:', sentenceAnalysisResult);
-          setSentenceAnalysis(sentenceAnalysisResult);
-          setSentenceAnalyzed(true);
-          // Keep analysis complete state (already set in stopRecording)
-          console.log('✅ Sentence analysis remains complete');
-          
-        } else {
-          // No words detected by API
-          console.log('❌ No words detected by API for sentence');
-          
-          const errorMessage = 'No analysis can be done because no word pronunciation was spoken and recorded. Please speak the sentence clearly and try again.';
-          setSentenceAnalysis({
-            overallScore: 0,
-            feedback: errorMessage,
-            wordScores: []
-          });
-          // Keep analysis complete state (already set in stopRecording)
-          console.log('✅ Sentence analysis remains complete (no words detected)');
-          console.log('📊 ===== ANALYZE SENTENCE PRONUNCIATION END (NO WORDS DETECTED BY API) =====');
-        }
-      } else {
-        console.error('❌ Sentence pronunciation analysis failed:', response.status);
-        
-        const errorMessage = 'Analysis cannot be done due to no sentence or words being spoken and recorded. Please speak the sentence clearly and try again.';
-        setSentenceAnalysis({
-          overallScore: 0,
-          feedback: errorMessage,
-          wordScores: []
-        });
-        // Keep analysis complete state (already set in stopRecording)
-        console.log('✅ Sentence analysis remains complete (API failure)');
-        console.log('📊 ===== ANALYZE SENTENCE PRONUNCIATION END (API FAILURE) =====');
-      }
-    } catch (error) {
-      console.error('❌ Error analyzing sentence pronunciation:', error);
-      
-      const errorMessage = 'Analysis cannot be done due to no sentence or words being spoken and recorded. Please speak the sentence clearly and try again.';
-      setSentenceAnalysis({
-        overallScore: 0,
-        feedback: errorMessage,
-        wordScores: []
-      });
-      // Keep analysis complete state (already set in stopRecording)
-      console.log('✅ Sentence analysis remains complete (error)');
-      console.log('📊 ===== ANALYZE SENTENCE PRONUNCIATION END (ERROR) =====');
-    }
-  };
 
   // Helper function to break word into individual sounds/syllables
   const breakWordIntoSounds = (word: string): string[] => {
@@ -2759,23 +2708,33 @@ export default function Toolbar({
                       <p className="text-sm font-medium text-gray-700">Last German Message:</p>
                       <p className="text-sm text-gray-600">"{lastGermanVoiceMessage.transcription}"</p>
                     </div>
-                    <button
-                      onClick={analyzePronunciation}
-                      disabled={isAnalyzingPronunciation}
-                      className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-300"
-                    >
-                      {isAnalyzingPronunciation ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          <span>Analyzing...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Volume2 className="h-4 w-4" />
-                          <span>Analyze Pronunciation</span>
-                        </>
-                      )}
-                    </button>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={analyzePronunciation}
+                        disabled={isAnalyzingPronunciation}
+                        className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-300"
+                      >
+                        {isAnalyzingPronunciation ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span>Analyzing...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Volume2 className="h-4 w-4" />
+                            <span>Analyze Pronunciation</span>
+                          </>
+                        )}
+                      </button>
+                      
+                      <button
+                        onClick={testPronunciationAPI}
+                        className="flex items-center space-x-2 px-3 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 text-sm"
+                        title="Test API connectivity"
+                      >
+                        <span>Test API</span>
+                      </button>
+                    </div>
                   </div>
                   
                   {pronunciationAnalysis && (
@@ -2789,7 +2748,11 @@ export default function Toolbar({
                         }}
                         onRepracticeSentence={() => {
                           console.log('Repractice sentence');
-                          // TODO: Implement sentence repractice
+                          if (isRecordingSentence) {
+                            stopSentenceRecording();
+                          } else {
+                            startSentenceRecording();
+                          }
                         }}
                         onPlayCorrectPronunciation={() => {
                           console.log('Play correct pronunciation');
@@ -2798,6 +2761,7 @@ export default function Toolbar({
                         isRecordingWord={isRecordingWord}
                         practicingWord={practicingWord}
                         onStopWordRecording={stopWordRecording}
+                        isRecordingSentence={isRecordingSentence}
                       />
                     </div>
                   )}

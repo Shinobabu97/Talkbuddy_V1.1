@@ -62,9 +62,13 @@ serve(async (req) => {
       formData.append('language', language)
     }
     
-    formData.append('response_format', 'json')
+    formData.append('response_format', 'verbose_json')
+    
+    // Add timestamp granularities for pronunciation analysis
+    formData.append('timestamp_granularities[]', 'word')
+    formData.append('timestamp_granularities[]', 'segment')
 
-    console.log('Calling OpenAI Whisper API...')
+    console.log('Calling OpenAI Whisper API with timing data...')
 
     // Call OpenAI Whisper API
     const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
@@ -87,6 +91,8 @@ serve(async (req) => {
     console.log('Whisper API response data:', data)
     
     const transcription = data.text
+    const words = data.words || [] // Word-level timestamps
+    const segments = data.segments || [] // Segment-level timestamps
 
     if (!transcription || transcription.trim() === '') {
       console.error('Empty transcription received from Whisper')
@@ -94,6 +100,7 @@ serve(async (req) => {
     }
 
     console.log('Transcription successful:', transcription)
+    console.log('Word timing data:', words.length, 'words')
 
     // Store audio for pronunciation analysis if requested
     let audioId = null
@@ -107,6 +114,8 @@ serve(async (req) => {
       JSON.stringify({
         transcription: transcription,
         language: language,
+        words: words, // Include word timing
+        segments: segments, // Include segment timing
         audioId: audioId,
         storedForAnalysis: storeForAnalysis
       }),

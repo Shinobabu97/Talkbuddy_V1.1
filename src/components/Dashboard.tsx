@@ -3268,9 +3268,20 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       console.log('Audio blob type:', audioBlob.type);
       console.log('Recording language:', recordingLanguage);
       
-      // Convert blob to base64
+      // Convert blob to base64 using a safer method for large files
       const arrayBuffer = await audioBlob.arrayBuffer();
-      const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      // Use a more robust base64 conversion that handles large arrays
+      let binaryString = '';
+      const chunkSize = 8192; // Process in 8KB chunks
+      
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.slice(i, i + chunkSize);
+        binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      
+      const base64Audio = btoa(binaryString);
       
       console.log('Base64 audio length:', base64Audio.length);
 
