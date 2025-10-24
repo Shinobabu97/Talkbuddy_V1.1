@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { germanTTS } from '../lib/tts';
+import { saveMessageAnalysis, PronunciationData } from '../lib/analysisStorage';
 import {
   Mic,
   MicOff,
@@ -94,6 +95,7 @@ interface ChatMessage {
   isAudio?: boolean; // Flag for audio messages
   isTranscribing?: boolean; // Flag for messages being transcribed
   showTryAgain?: boolean; // Flag to show "Try it again" button
+  pronunciationData?: PronunciationData; // Pronunciation analysis data for German voice messages
 }
 
 type MessageStatus = 'checking' | 'needs_correction' | 'mismatch' | 'error';
@@ -133,6 +135,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [difficultyLevel, setDifficultyLevel] = useState('Intermediate');
   const [currentConversationContextLocked, setCurrentConversationContextLocked] = useState(false);
   const [currentConversationDifficultyLocked, setCurrentConversationDifficultyLocked] = useState(false);
+  const [lastGermanVoiceMessage, setLastGermanVoiceMessage] = useState<any>(null);
   const [showContextDropdown, setShowContextDropdown] = useState(false);
   const [showDifficultyDropdown, setShowDifficultyDropdown] = useState(false);
   const [conversationInput, setConversationInput] = useState('');
@@ -642,6 +645,16 @@ export default function Dashboard({ user }: DashboardProps) {
     setIsSending(true);
     setIsTyping(true);
     
+    // Store the user's initial message in chatMessages for contextual suggestions
+    const userMessageObj: ChatMessage = {
+      id: '1',
+      role: 'user',
+      content: userMessage,
+      timestamp: new Date().toISOString()
+    };
+    
+    setChatMessages(prev => [...prev, userMessageObj]);
+    
     // Reset retry states for new conversation
     setWaitingForCorrection(false);
     setUserAttempts({});
@@ -1136,6 +1149,22 @@ export default function Dashboard({ user }: DashboardProps) {
     }
     
     try {
+      // Extract conversation context (last 2-3 messages including current message)
+      const currentMessageIndex = chatMessages.findIndex(msg => msg.id === messageId);
+      let conversationContext = '';
+      
+      if (currentMessageIndex >= 0) {
+        // Include messages up to and including the current message
+        const contextMessages = chatMessages.slice(Math.max(0, currentMessageIndex - 2), currentMessageIndex + 1);
+        const contextStrings = contextMessages.map(msg => `${msg.role}: ${msg.content}`);
+        conversationContext = contextStrings.join(' -> ');
+      }
+      
+      // Build enhanced prompt with conversation context
+      const promptContent = conversationContext 
+        ? `Based on this conversation context: ${conversationContext}. Please provide: 1) English translation of: "${germanText}" 2) Three suggested German responses that are relevant to the conversation topic and that a language learner could use to reply. IMPORTANT: The suggestions must be ONLY in German - no English translations in parentheses or brackets. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [suggestion1] | [suggestion2] | [suggestion3]`
+        : `Please provide: 1) English translation of: "${germanText}" 2) Three suggested German responses that a language learner could use to reply. IMPORTANT: The suggestions must be ONLY in German - no English translations in parentheses or brackets. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [suggestion1] | [suggestion2] | [suggestion3]`;
+      
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
         headers: {
@@ -1145,7 +1174,7 @@ export default function Dashboard({ user }: DashboardProps) {
         body: JSON.stringify({
           messages: [{
             role: 'user',
-            content: `Please provide: 1) English translation of: "${germanText}" 2) Three suggested German responses that a language learner could use to reply. IMPORTANT: The suggestions must be ONLY in German - no English translations in parentheses or brackets. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [suggestion1] | [suggestion2] | [suggestion3]`
+            content: promptContent
           }],
           conversationId: 'helper',
           contextLevel,
@@ -1435,6 +1464,71 @@ export default function Dashboard({ user }: DashboardProps) {
     }
   };
 
+  // Analyze German pronunciation for voice messages
+  const analyzeGermanPronunciation = async (audioBlob: Blob, transcription: string, messageId: string): Promise<PronunciationData | null> => {
+    try {
+      console.log('🎤 === ANALYZING GERMAN PRONUNCIATION ===');
+      console.log('Audio blob size:', audioBlob.size, 'bytes');
+      console.log('Transcription:', transcription);
+      console.log('Message ID:', messageId);
+
+      // Convert audio to base64 using chunked conversion for large files
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      let binaryString = '';
+      const chunkSize = 8192; // Process in 8KB chunks
+      
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.slice(i, i + chunkSize);
+        binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      
+      const base64 = btoa(binaryString);
+
+      // Call pronunciation analysis API
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pronunciation-analysis`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audioData: base64,
+          transcription: transcription
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ Pronunciation analysis completed:', data);
+
+        // Save to database
+        if (user && selectedConversation) {
+          const conversation = conversations.find(c => c.id === selectedConversation);
+          if (conversation) {
+            await saveMessageAnalysis(
+              messageId,
+              user.id,
+              conversation.id,
+              transcription,
+              'voice',
+              data,
+              undefined // No grammar topic for pronunciation-only analysis
+            );
+          }
+        }
+
+        return data;
+      } else {
+        console.error('❌ Pronunciation analysis failed:', response.status);
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Error in pronunciation analysis:', error);
+      return null;
+    }
+  };
+
   const handleErrorCorrection = async (messageId: string) => {
     console.log('=== GRAMMAR HELP BUTTON CLICKED ===');
     console.log('Message ID:', messageId);
@@ -1477,6 +1571,11 @@ export default function Dashboard({ user }: DashboardProps) {
       console.log('Running comprehensive analysis for grammar help');
       await runComprehensiveAnalysis(userMessage.content, messageId);
     }
+    
+    // Auto-load grammar explanation when toolbar opens
+    console.log('Auto-loading grammar explanation for:', userMessage.content);
+    // The grammar explanation will be loaded automatically by the Toolbar component
+    // due to the autoLoadExplanations prop being set to true
   };
 
   const generateSuggestedAnswer = async (messageId: string, userMessage: string) => {
@@ -3024,9 +3123,21 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               if (mismatchMessageId) {
                 setChatMessages(prev => prev.map(msg =>
                   msg.id === mismatchMessageId
-                    ? { ...msg, content: transcription }
+                    ? { ...msg, content: transcription, isAudio: true }
                     : msg
                 ));
+                
+                // Store the German voice message for pronunciation analysis
+                setLastGermanVoiceMessage({
+                  transcription: transcription,
+                  audioData: base64Data,
+                  messageId: mismatchMessageId
+                });
+                
+                console.log('🎤 === STORED GERMAN VOICE MESSAGE FOR PRONUNCIATION ANALYSIS ===');
+                console.log('Transcription:', transcription);
+                console.log('Message ID:', mismatchMessageId);
+                console.log('Audio data length:', base64Data.length);
                 
                 // Process the German message normally
                 await processTextMessage(transcription, mismatchMessageId, false);
@@ -3228,9 +3339,20 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       console.log('Audio blob type:', audioBlob.type);
       console.log('Recording language:', recordingLanguage);
       
-      // Convert blob to base64
+      // Convert blob to base64 using a safer method for large files
       const arrayBuffer = await audioBlob.arrayBuffer();
-      const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      // Use a more robust base64 conversion that handles large arrays
+      let binaryString = '';
+      const chunkSize = 8192; // Process in 8KB chunks
+      
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.slice(i, i + chunkSize);
+        binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      
+      const base64Audio = btoa(binaryString);
       
       console.log('Base64 audio length:', base64Audio.length);
 
@@ -3453,13 +3575,13 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     console.log('New transcription:', transcription);
                     console.log('Practice audio blob exists:', !!practiceAudioBlob);
                     
-                    const newMessage = {
+                    const newMessage: ChatMessage = {
                       ...msg,
                       content: transcription,
                       audioUrl: practiceAudioBlob ? URL.createObjectURL(practiceAudioBlob) : undefined,
                       isAudio: true,
                       isTranscribing: false,
-                      role: 'user',
+                      role: 'user' as const,
                       timestamp: new Date().toISOString()
                     };
                     console.log('✅ NEW MESSAGE CREATED:', JSON.stringify(newMessage, null, 2));
@@ -3641,6 +3763,24 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             
             // For German recordings, run comprehensive analysis and get result immediately
             const analysis = await runComprehensiveAnalysis(transcription, messageId, true);
+            
+            // Store the German voice message for pronunciation analysis
+            const audioArrayBuffer = await audioBlob.arrayBuffer();
+            const uint8Array = new Uint8Array(audioArrayBuffer);
+            let binaryString = '';
+            const chunkSize = 8192; // Process in 8KB chunks
+            
+            for (let i = 0; i < uint8Array.length; i += chunkSize) {
+              const chunk = uint8Array.slice(i, i + chunkSize);
+              binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+            }
+            
+            const audioBase64 = btoa(binaryString);
+            setLastGermanVoiceMessage({
+              transcription: transcription,
+              audioData: audioBase64,
+              messageId: messageId
+            });
             
             console.log('🔍 === CHECKING FOR ERRORS AFTER ANALYSIS ===');
             console.log('Analysis result:', analysis);
@@ -4043,6 +4183,9 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
   };
 
   const startNewConversation = (conversationId: string) => {
+    // Clear the last German voice message when starting new conversation
+    setLastGermanVoiceMessage(null);
+    
     // Reset all states first
     resetConversationState();
     
@@ -4140,6 +4283,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     setMismatchMessageId('');
     setGermanSuggestion('');
     setPracticeAudioBlob(null);
+    setLastGermanVoiceMessage(null);
     setRecordingLanguage('german');
     setRecordingDuration(0);
     
@@ -4823,6 +4967,24 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                         )}
                       </div>
 
+                      {/* Pronunciation Badge for German Voice Messages */}
+                      {message.role === 'user' && message.isAudio && lastGermanVoiceMessage && lastGermanVoiceMessage.messageId === message.id && (
+                        <div className="mt-2 flex justify-end">
+                          <button
+                            onClick={() => {
+                              setToolbarActiveTab('pronunciation');
+                              setToolbarCollapsed(false);
+                              setShowToolbar(true);
+                            }}
+                            className="flex items-center space-x-1 px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-full text-xs font-medium transition-colors"
+                            title="Analyze pronunciation"
+                          >
+                            <Volume2 className="h-3 w-3" />
+                            <span>Analyze</span>
+                          </button>
+                        </div>
+                      )}
+
                       {/* Pronunciation Breakdown for Assistant Messages */}
                       {message.role === 'assistant' && (
                         <div className="mt-3">
@@ -5176,7 +5338,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             </div>
             
             {/* Right Sidebar - Collapsible Toolbar */}
-            <div className={`${toolbarCollapsed ? 'w-12' : 'w-96'} bg-white border-l border-gray-200 flex flex-col h-full transition-all duration-300 ease-in-out`}>
+            <div className={`${toolbarCollapsed ? 'w-12' : 'w-[600px] lg:w-[700px]'} bg-white border-l border-gray-200 flex flex-col h-full transition-all duration-300 ease-in-out`}>
               {/* Toolbar Header */}
               <div className="p-4 border-b border-gray-100 flex-shrink-0">
                 <div className="flex items-center justify-between">
@@ -5223,6 +5385,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     onTabChange={setToolbarActiveTab}
                     newVocabItems={newVocabItems}
                     persistentVocab={persistentVocab}
+                    lastGermanVoiceMessage={lastGermanVoiceMessage}
                     phoneticBreakdowns={phoneticBreakdowns}
                     onPlayWordAudio={playWordAudio}
                     globalPlaybackSpeed={globalPlaybackSpeed}
