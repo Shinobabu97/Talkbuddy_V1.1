@@ -379,6 +379,7 @@ interface ToolbarProps {
   globalPlaybackSpeed?: number;
   onSpeedChange?: (speed: number) => void;
   onAddExperience?: (amount: number, source: string) => void;
+  onWordLearned?: () => void;
 }
 
 interface VocabItem {
@@ -449,13 +450,94 @@ export default function Toolbar({
   onPlayWordAudio,
   globalPlaybackSpeed = 1.0,
   onSpeedChange,
-  onAddExperience
+  onAddExperience,
+  onWordLearned
 }: ToolbarProps) {
   const [internalActiveTab, setInternalActiveTab] = useState<'vocab' | 'explain' | 'pronunciation'>('explain');
   
   // Use external activeTab if provided, otherwise use internal state
   const activeTab = externalActiveTab || internalActiveTab;
   const setActiveTab = onTabChange || setInternalActiveTab;
+  
+  // State for My Vocab - words that user has starred
+  const [myVocab, setMyVocab] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem('myVocab');
+    return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
+  
+  // Function to toggle word in My Vocab (add/remove)
+  const handleAddToMyVocab = (word: string, meaning: string) => {
+    setMyVocab(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(word)) {
+        // If already starred, remove it (unstar)
+        newSet.delete(word);
+        console.log('⭐ Removed from My Vocab:', word);
+      } else {
+        // If not starred, add it
+        newSet.add(word);
+        console.log('⭐ Added to My Vocab:', word);
+        // Also call the parent's onAddToVocab only when adding
+        onAddToVocab(word, meaning);
+      }
+      // Save to localStorage
+      localStorage.setItem('myVocab', JSON.stringify(Array.from(newSet)));
+      console.log('⭐ My Vocab updated:', Array.from(newSet));
+      return newSet;
+    });
+  };
+  
+  // Function to handle deleting word from vocabulary
+  const handleDeleteFromVocab = (word: string) => {
+    console.log('🗑️ Deleting from vocabulary:', word);
+    
+    // Remove from My Vocab set
+    setMyVocab(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(word);
+      // Save to localStorage
+      localStorage.setItem('myVocab', JSON.stringify(Array.from(newSet)));
+      console.log('🗑️ My Vocab updated after deletion:', Array.from(newSet));
+      return newSet;
+    });
+    
+    // Remove from persistent vocab if onUpdatePersistentVocab is provided
+    if (onUpdatePersistentVocab) {
+      const updatedPersistentVocab = persistentVocab.filter(item => item.word !== word);
+      onUpdatePersistentVocab(updatedPersistentVocab);
+      console.log('🗑️ Persistent vocab updated after deletion');
+    }
+    
+    // Increment words learned counter
+    if (onWordLearned) {
+      onWordLearned();
+      console.log('🎯 Words learned incremented');
+    }
+  };
+  
+  // Function to handle audio playback for vocabulary words
+  const handlePlayAudio = (word: string) => {
+    console.log('🔊 Playing audio for word:', word);
+    if ('speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(word);
+      utterance.lang = 'de-DE'; // Set language to German
+      
+      // Try to find a German voice
+      const voices = window.speechSynthesis.getVoices();
+      const germanVoice = voices.find(voice => voice.lang === 'de-DE' || voice.lang.startsWith('de'));
+      if (germanVoice) {
+        utterance.voice = germanVoice;
+      }
+      
+      window.speechSynthesis.speak(utterance);
+      utterance.onerror = (event) => {
+        console.error("Error playing vocabulary audio:", event.error);
+      };
+    } else {
+      console.error("Web Speech API not supported in this browser.");
+    }
+  };
+  
   // Use persistent vocabulary from props instead of local state
   const vocabItems = persistentVocab.map(item => ({
     word: item.word,
@@ -2270,14 +2352,14 @@ export default function Toolbar({
       <div className="flex border-b border-gray-200">
         <button
           onClick={() => setActiveTab('vocab')}
-          className={`flex-1 px-4 py-3 text-sm font-semibold transition-all duration-200 ${
+          className={`flex-1 px-4 py-3 text-sm font-semibold transition-all duration-200 flex flex-col items-center justify-center space-y-1 ${
             activeTab === 'vocab'
               ? 'text-blue-700 border-b-2 border-blue-600 bg-gradient-to-r from-blue-50 to-indigo-50'
               : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100'
           }`}
         >
-          <BookOpen className="h-4 w-4 inline mr-2" />
-          Vocabulary
+          <BookOpen className="h-5 w-5" />
+          <span>Vocabulary</span>
         </button>
         <button
           onClick={() => setActiveTab('explain')}
@@ -2292,14 +2374,14 @@ export default function Toolbar({
         </button>
         <button
           onClick={() => setActiveTab('pronunciation')}
-          className={`flex-1 px-4 py-3 text-sm font-semibold transition-all duration-200 ${
+          className={`flex-1 px-4 py-3 text-sm font-semibold transition-all duration-200 flex flex-col items-center justify-center space-y-1 ${
             activeTab === 'pronunciation'
               ? 'text-blue-700 border-b-2 border-blue-600 bg-gradient-to-r from-blue-50 to-indigo-50'
               : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100'
           }`}
         >
-          <Volume2 className="h-4 w-4 inline mr-2" />
-          Pronunciation
+          <Volume2 className="h-5 w-5" />
+          <span>Pronunciation</span>
         </button>
       </div>
 
@@ -2331,46 +2413,128 @@ export default function Toolbar({
             <div className="space-y-3">
                 {vocabItems
                 .filter(item => vocabFilter === 'all' || item.category === vocabFilter)
-                  .map((item, index) => (
-                  <div key={index} className="bg-gray-50 rounded-lg p-3">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-semibold text-gray-900">{item.word}</h4>
-                        <p className="text-sm text-gray-600">{item.meaning}</p>
-                        <p className="text-xs text-gray-500 mt-1">{item.category}</p>
+                  .map((item, index) => {
+                    const isStarred = myVocab.has(item.word);
+                    return (
+                      <div key={index} className="bg-gray-50 rounded-lg p-3">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="font-semibold text-gray-900">{item.word}</h4>
+                            <p className="text-sm text-gray-600">{item.meaning}</p>
+                            <p className="text-xs text-gray-500 mt-1">{item.category}</p>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            {/* Audio Button */}
+                            <div className="relative group">
+                              <button
+                                onClick={() => handlePlayAudio(item.word)}
+                                className="text-blue-500 hover:text-blue-600 transition-colors"
+                              >
+                                <Volume2 className="h-4 w-4" />
+                              </button>
+                              <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+                                Listen
+                              </div>
+                            </div>
+                            
+                            {/* Delete Button */}
+                            <div className="relative group">
+                              <button
+                                onClick={() => handleDeleteFromVocab(item.word)}
+                                className="text-red-500 hover:text-red-600 transition-colors"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                              <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+                                Learnt the word, Let's delete it
+                              </div>
+                            </div>
+                            
+                            {/* Star Button */}
+                            <div className="relative group">
+                              <button
+                                onClick={() => handleAddToMyVocab(item.word, item.meaning)}
+                                className={`transition-colors ${
+                                  isStarred 
+                                    ? 'text-yellow-500 hover:text-yellow-600' 
+                                    : 'text-gray-400 hover:text-blue-500'
+                                }`}
+                              >
+                                <Star className={`h-4 w-4 ${isStarred ? 'fill-yellow-500' : ''}`} />
+                              </button>
+                              <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+                                {isStarred ? 'Remove from Vocabulary' : 'Add to Vocabulary'}
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        <button
-                        onClick={() => onAddToVocab(item.word, item.meaning)}
-                        className="text-blue-500 hover:text-blue-700"
-                      >
-                        <Star className="h-4 w-4" />
-                        </button>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
               </div>
 
             {/* New Vocabulary Items */}
             {newVocabItems && newVocabItems.length > 0 && (
               <div className="space-y-3">
                 <h3 className="font-semibold text-gray-900">New Words</h3>
-                {newVocabItems.map((item, index) => (
-                  <div key={index} className="bg-blue-50 rounded-lg p-3">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-semibold text-blue-900">{item.word}</h4>
-                        <p className="text-sm text-blue-700">{item.meaning}</p>
-                        <p className="text-xs text-blue-600 mt-1">{item.context}</p>
-                </div>
-                      <button
-                        onClick={() => onAddToVocab(item.word, item.meaning)}
-                        className="text-blue-500 hover:text-blue-700"
-                      >
-                        <Star className="h-4 w-4" />
-                      </button>
-                </div>
-                  </div>
-                ))}
+                {newVocabItems.map((item, index) => {
+                  const isStarred = myVocab.has(item.word);
+                  return (
+                    <div key={index} className="bg-blue-50 rounded-lg p-3">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h4 className="font-semibold text-blue-900">{item.word}</h4>
+                          <p className="text-sm text-blue-700">{item.meaning}</p>
+                          <p className="text-xs text-blue-600 mt-1">{item.context}</p>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          {/* Audio Button */}
+                          <div className="relative group">
+                            <button
+                              onClick={() => handlePlayAudio(item.word)}
+                              className="text-blue-500 hover:text-blue-600 transition-colors"
+                            >
+                              <Volume2 className="h-4 w-4" />
+                            </button>
+                            <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+                              Listen
+                            </div>
+                          </div>
+                          
+                          {/* Delete Button */}
+                          <div className="relative group">
+                            <button
+                              onClick={() => handleDeleteFromVocab(item.word)}
+                              className="text-red-500 hover:text-red-600 transition-colors"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                            <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+                              Learnt the word, Let's delete it
+                            </div>
+                          </div>
+                          
+                          {/* Star Button */}
+                          <div className="relative group">
+                            <button
+                              onClick={() => handleAddToMyVocab(item.word, item.meaning)}
+                              className={`transition-colors ${
+                                isStarred 
+                                  ? 'text-yellow-500 hover:text-yellow-600' 
+                                  : 'text-blue-500 hover:text-blue-700'
+                              }`}
+                            >
+                              <Star className={`h-4 w-4 ${isStarred ? 'fill-yellow-500' : ''}`} />
+                            </button>
+                            <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+                              {isStarred ? 'Remove from Vocabulary' : 'Add to Vocabulary'}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

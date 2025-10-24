@@ -26,6 +26,7 @@ import { supabase, AuthUser } from '../lib/supabase';
 import OnboardingFlow from './OnboardingFlow';
 import ProfilePictureModal from './ProfilePictureModal';
 import Toolbar from './Toolbar';
+import VocabularyBuilderModal from './VocabularyBuilderModal';
 
 interface DashboardProps {
   user: AuthUser;
@@ -229,6 +230,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [suggestedAnswers, setSuggestedAnswers] = useState<{[key: string]: string}>({});
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const [messageStatus, setMessageStatus] = useState<{[key: string]: MessageStatus}>({});
+  const [showVocabBuilder, setShowVocabBuilder] = useState(false);
 
   const updateMessageStatus = (messageId: string, status: MessageStatus | null) => {
     setMessageStatus(prev => {
@@ -2055,8 +2057,14 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('📚 === ADDING TO PERSISTENT VOCAB IMMEDIATELY ===');
     console.log('New vocab item:', newVocabItem);
     
-    // Add to persistent vocabulary immediately (for session persistence)
+    // Add to persistent vocabulary immediately (for session persistence) - check for duplicates
     setPersistentVocab(prev => {
+      // Check if word already exists
+      const exists = prev.some(item => item.word === word);
+      if (exists) {
+        console.log('📚 === WORD ALREADY EXISTS IN PERSISTENT VOCAB, SKIPPING ===');
+        return prev;
+      }
       const updated = [newVocabItem, ...prev];
       console.log('📚 === UPDATED PERSISTENT VOCAB ===');
       console.log('New persistent vocab count:', updated.length);
@@ -2065,15 +2073,31 @@ export default function Dashboard({ user }: DashboardProps) {
       return updated;
     });
     
-    // Also add to new vocab items for Toolbar processing (when toolbar is open)
+    // Also add to new vocab items for Toolbar processing (when toolbar is open) - check for duplicates
     console.log('📚 === ADDING TO NEW VOCAB ITEMS FOR TOOLBAR ===');
     setNewVocabItems(prev => {
+      // Check if word already exists
+      const exists = prev.some(item => item.word === word);
+      if (exists) {
+        console.log('📚 === WORD ALREADY EXISTS IN NEW VOCAB ITEMS, SKIPPING ===');
+        return prev;
+      }
       const updated = [...prev, newVocabItem];
       console.log('📚 === UPDATED NEW VOCAB ITEMS ===');
       console.log('New vocab items count:', updated.length);
       console.log('New vocab items:', updated);
       return updated;
     });
+    
+    // Auto-open the toolbar and switch to vocab tab
+    console.log('📚 === AUTO-OPENING TOOLBAR AND SWITCHING TO VOCAB TAB ===');
+    console.log('Before - toolbarCollapsed:', toolbarCollapsed);
+    console.log('Before - toolbarActiveTab:', toolbarActiveTab);
+    setShowToolbar(true);
+    setToolbarCollapsed(false);
+    setToolbarActiveTab('vocab');
+    console.log('After setting - toolbarCollapsed should be false');
+    console.log('After setting - toolbarActiveTab should be vocab');
     
     console.log('📚 === DASHBOARD HANDLE ADD TO VOCAB COMPLETED ===');
   };
@@ -4048,6 +4072,13 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
   // Reset all states when ending conversation
   const resetConversationState = () => {
+    // Increment conversations completed
+    setPlayerStats(prev => ({
+      ...prev,
+      conversationsCompleted: prev.conversationsCompleted + 1
+    }));
+    console.log('🎯 Conversations completed incremented');
+    
     // Reset conversation states
     setSelectedConversation(null);
     setChatMessages([]);
@@ -4381,12 +4412,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 Progress
               </button>
               <button
-                onClick={() => setCurrentView('vocab')}
-                className={`flex-1 px-3 py-2 text-sm font-semibold rounded-lg transition-all duration-200 ${
-                  currentView === 'vocab'
-                    ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md'
-                    : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100'
-                }`}
+                onClick={() => setShowVocabBuilder(true)}
+                className="flex-1 px-3 py-2 text-sm font-semibold rounded-lg transition-all duration-200 text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100"
               >
                 <BookOpen className="h-4 w-4 inline mr-1" />
                 Vocab List
@@ -4407,12 +4434,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 <BarChart3 className="h-4 w-4" />
               </button>
               <button
-                onClick={() => setCurrentView('vocab')}
-                className={`p-2 text-sm font-medium rounded-lg transition-colors ${
-                  currentView === 'vocab'
-                    ? 'bg-blue-50 text-blue-600'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                }`}
+                onClick={() => setShowVocabBuilder(true)}
+                className="p-2 text-sm font-medium rounded-lg transition-colors text-gray-600 hover:text-gray-900 hover:bg-gray-50"
                 title="Vocab List"
               >
                 <BookOpen className="h-4 w-4" />
@@ -4572,9 +4595,35 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         )}
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col bg-gradient-to-br from-white to-slate-50 overflow-hidden">
-        {selectedConversation ? (
+      {/* Vocabulary Builder Panel - Conditionally Rendered */}
+      {showVocabBuilder && (
+        <VocabularyBuilderModal
+          isOpen={showVocabBuilder}
+          onClose={() => setShowVocabBuilder(false)}
+          myVocabWords={Array.from(new Set(JSON.parse(localStorage.getItem('myVocab') || '[]')))}
+          persistentVocab={persistentVocab}
+          onPlayAudio={(word) => {
+            if ('speechSynthesis' in window) {
+              const utterance = new SpeechSynthesisUtterance(word);
+              utterance.lang = 'de-DE';
+              const voices = window.speechSynthesis.getVoices();
+              const germanVoice = voices.find(voice => voice.lang === 'de-DE' || voice.lang.startsWith('de'));
+              if (germanVoice) {
+                utterance.voice = germanVoice;
+              }
+              window.speechSynthesis.speak(utterance);
+            }
+          }}
+          onUpdatePersistentVocab={(newVocab) => {
+            setPersistentVocab(newVocab);
+          }}
+        />
+      )}
+
+      {/* Main Content - Hidden when vocab builder is open */}
+      {!showVocabBuilder && (
+        <div className="flex-1 flex flex-col bg-gradient-to-br from-white to-slate-50 overflow-hidden">
+          {selectedConversation ? (
           // Conversation View
           <div className="flex-1 flex h-full overflow-hidden">
             {/* Main Chat Area */}
@@ -5179,6 +5228,13 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     globalPlaybackSpeed={globalPlaybackSpeed}
                     onSpeedChange={setGlobalPlaybackSpeed}
                     onAddExperience={addExperience}
+                    onWordLearned={() => {
+                      setPlayerStats(prev => ({
+                        ...prev,
+                        wordsLearned: prev.wordsLearned + 1
+                      }));
+                      console.log('🎯 Words learned incremented from Dashboard');
+                    }}
                     onUpdatePersistentVocab={(newVocab) => {
                       console.log('📚 === DASHBOARD ONUPDATE PERSISTENT VOCAB CALLED ===');
                       console.log('New vocab received:', newVocab);
@@ -5585,7 +5641,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             </div>
           </div>
         )}
-      </div>
+        </div>
+      )}
 
       <ProfilePictureModal
         isOpen={showProfileModal}
