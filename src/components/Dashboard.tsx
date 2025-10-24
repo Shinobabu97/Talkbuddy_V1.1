@@ -643,6 +643,16 @@ export default function Dashboard({ user }: DashboardProps) {
     setIsSending(true);
     setIsTyping(true);
     
+    // Store the user's initial message in chatMessages for contextual suggestions
+    const userMessageObj: ChatMessage = {
+      id: '1',
+      role: 'user',
+      content: userMessage,
+      timestamp: new Date().toISOString()
+    };
+    
+    setChatMessages(prev => [...prev, userMessageObj]);
+    
     // Reset retry states for new conversation
     setWaitingForCorrection(false);
     setUserAttempts({});
@@ -1137,6 +1147,22 @@ export default function Dashboard({ user }: DashboardProps) {
     }
     
     try {
+      // Extract conversation context (last 2-3 messages including current message)
+      const currentMessageIndex = chatMessages.findIndex(msg => msg.id === messageId);
+      let conversationContext = '';
+      
+      if (currentMessageIndex >= 0) {
+        // Include messages up to and including the current message
+        const contextMessages = chatMessages.slice(Math.max(0, currentMessageIndex - 2), currentMessageIndex + 1);
+        const contextStrings = contextMessages.map(msg => `${msg.role}: ${msg.content}`);
+        conversationContext = contextStrings.join(' -> ');
+      }
+      
+      // Build enhanced prompt with conversation context
+      const promptContent = conversationContext 
+        ? `Based on this conversation context: ${conversationContext}. Please provide: 1) English translation of: "${germanText}" 2) Three suggested German responses that are relevant to the conversation topic and that a language learner could use to reply. IMPORTANT: The suggestions must be ONLY in German - no English translations in parentheses or brackets. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [suggestion1] | [suggestion2] | [suggestion3]`
+        : `Please provide: 1) English translation of: "${germanText}" 2) Three suggested German responses that a language learner could use to reply. IMPORTANT: The suggestions must be ONLY in German - no English translations in parentheses or brackets. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [suggestion1] | [suggestion2] | [suggestion3]`;
+      
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
         headers: {
@@ -1146,7 +1172,7 @@ export default function Dashboard({ user }: DashboardProps) {
         body: JSON.stringify({
           messages: [{
             role: 'user',
-            content: `Please provide: 1) English translation of: "${germanText}" 2) Three suggested German responses that a language learner could use to reply. IMPORTANT: The suggestions must be ONLY in German - no English translations in parentheses or brackets. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [suggestion1] | [suggestion2] | [suggestion3]`
+            content: promptContent
           }],
           conversationId: 'helper',
           contextLevel,
@@ -3073,9 +3099,21 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               if (mismatchMessageId) {
                 setChatMessages(prev => prev.map(msg =>
                   msg.id === mismatchMessageId
-                    ? { ...msg, content: transcription }
+                    ? { ...msg, content: transcription, isAudio: true }
                     : msg
                 ));
+                
+                // Store the German voice message for pronunciation analysis
+                setLastGermanVoiceMessage({
+                  transcription: transcription,
+                  audioData: base64Data,
+                  messageId: mismatchMessageId
+                });
+                
+                console.log('🎤 === STORED GERMAN VOICE MESSAGE FOR PRONUNCIATION ANALYSIS ===');
+                console.log('Transcription:', transcription);
+                console.log('Message ID:', mismatchMessageId);
+                console.log('Audio data length:', base64Data.length);
                 
                 // Process the German message normally
                 await processTextMessage(transcription, mismatchMessageId, false);

@@ -177,7 +177,6 @@ const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                console.log('🛑 Stop recording button clicked');
                 stopRecording();
               }}
               className="flex items-center space-x-2 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 cursor-pointer"
@@ -307,24 +306,6 @@ const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
                   <div key={index} className="flex items-center justify-between text-sm">
                     <div className="flex items-center space-x-2">
                     <span className="font-medium text-gray-800">{syllable.syllable}</span>
-                      {syllable.actualEmphasis && syllable.expectedEmphasis && (
-                        <div className="flex items-center space-x-1">
-                          <span className={`text-xs px-2 py-1 rounded ${
-                            syllable.actualEmphasis === 'High' ? 'bg-green-100 text-green-700' :
-                            syllable.actualEmphasis === 'Medium' ? 'bg-yellow-100 text-yellow-700' :
-                            'bg-red-100 text-red-700'
-                          }`}>
-                            Actual: {syllable.actualEmphasis}
-                          </span>
-                          <span className={`text-xs px-2 py-1 rounded ${
-                            syllable.expectedEmphasis === 'High' ? 'bg-blue-100 text-blue-700' :
-                            syllable.expectedEmphasis === 'Medium' ? 'bg-purple-100 text-purple-700' :
-                            'bg-gray-100 text-gray-700'
-                          }`}>
-                            Expected: {syllable.expectedEmphasis}
-                          </span>
-                        </div>
-                      )}
                     </div>
                     <div className="flex items-center space-x-2">
                       <div className={`px-2 py-1 rounded text-xs ${
@@ -341,20 +322,6 @@ const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
               </div>
               
               {/* Emphasis Analysis Summary */}
-              {wordAnalysis.syllableAnalysis.some(s => s.emphasisComparison) && (
-                <div className="mt-3 p-2 bg-blue-50 rounded-lg">
-                  <span className="text-xs font-medium text-blue-700">Emphasis Analysis:</span>
-                  <div className="mt-1 space-y-1">
-                    {wordAnalysis.syllableAnalysis.map((syllable, index) => (
-                      syllable.emphasisComparison && (
-                        <div key={index} className="text-xs text-blue-600">
-                          <span className="font-medium">{syllable.syllable}:</span> {syllable.emphasisComparison}
-                        </div>
-                      )
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -706,7 +673,7 @@ export default function Toolbar({
         }));
         
         // Save grammar topic to database if we have the necessary data
-        if (currentMessageId && user) {
+        if (currentMessageId) {
           // This will be handled by the parent component when grammar analysis is triggered
           console.log('Grammar topic identified:', grammarTopic);
         }
@@ -746,7 +713,7 @@ export default function Toolbar({
     const phonemes = word.split('').filter(char => ['ä', 'ö', 'ü', 'r', 'ch'].includes(char));
     
     for (const phoneme of phonemes) {
-      const rule = PRONUNCIATION_RULES[phoneme];
+      const rule = PRONUNCIATION_RULES[phoneme as keyof typeof PRONUNCIATION_RULES];
       if (rule) {
         const isCorrect = Math.random() > 0.3; // 70% chance of correct pronunciation
         const actual = isCorrect ? rule.correct : rule.commonMistakes[Math.floor(Math.random() * rule.commonMistakes.length)];
@@ -825,7 +792,7 @@ export default function Toolbar({
       console.log('Message:', lastGermanVoiceMessage);
 
       const transcription = lastGermanVoiceMessage.transcription;
-      const words = transcription.split(' ').filter(word => word.length > 0);
+      const words = transcription.split(' ').filter((word: string) => word.length > 0);
       
       console.log('🎤 === CALLING REAL GOP API ===');
       console.log('Words to analyze:', words);
@@ -872,7 +839,7 @@ export default function Toolbar({
       console.error('❌ Error in pronunciation analysis:', error);
       
       // Show error message to user
-      alert(`Pronunciation analysis failed: ${error.message}`);
+      alert(`Pronunciation analysis failed: ${(error as Error).message}`);
       
       // Set error state for UI
       setPronunciationAnalysis({
@@ -880,36 +847,13 @@ export default function Toolbar({
         words: [],
         suggestions: ['Analysis failed. Please try again.'],
         overallScore: 0,
-        error: error.message
+        error: (error as Error).message
       });
     } finally {
       setIsAnalyzingPronunciation(false);
     }
   };
 
-  // Test function to verify API endpoint accessibility
-  const testPronunciationAPI = async () => {
-    try {
-      console.log('Testing pronunciation API endpoint...');
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pronunciation-analysis`, {
-        method: 'OPTIONS',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        }
-      });
-      
-      console.log('API Test Response:', response.status);
-      
-      if (response.status === 200) {
-        alert('API endpoint is accessible!');
-      } else {
-        alert(`API endpoint returned status: ${response.status}`);
-      }
-    } catch (error) {
-      console.error('API Test Error:', error);
-      alert(`API test failed: ${error.message}`);
-    }
-  };
 
   // Word repractice functionality
   const [isRecordingWord, setIsRecordingWord] = useState(false);
@@ -1267,9 +1211,9 @@ export default function Toolbar({
     } catch (error) {
       console.error('❌ Error starting recording:', error);
       console.error('❌ Error details:', {
-        name: error.name,
-        message: error.message,
-        stack: error.stack
+        name: (error as Error).name,
+        message: (error as Error).message,
+        stack: (error as Error).stack
       });
     }
   };
@@ -2023,7 +1967,7 @@ export default function Toolbar({
       
       // Add to difficult words if score is low
         if (analysisResult.score < 70) {
-        const phoneticData = phoneticBreakdowns[currentMessage]?.find((w: any) => w.original === word);
+        const phoneticData = phoneticBreakdowns[currentMessage || '']?.find((w: any) => w.original === word);
         if (phoneticData) {
             addToDifficultWords(word, analysisResult.score, phoneticData.phonetic, phoneticData.transliteration);
         }
@@ -2133,7 +2077,7 @@ export default function Toolbar({
         console.log(`⭐ Earned ${pointsEarned} points for sentence analysis (score: ${sentenceAnalysis.overallScore})`);
       
       // Record progress
-        recordProgress(sentenceAnalysis.overallScore, currentMessage.split(' ').length, true);
+        recordProgress(sentenceAnalysis.overallScore, (currentMessage || '').split(' ').length, true);
       
       // Mark sentence as analyzed
       setSentenceAnalyzed(true);
@@ -2727,13 +2671,6 @@ export default function Toolbar({
                       )}
                     </button>
                       
-                      <button
-                        onClick={testPronunciationAPI}
-                        className="flex items-center space-x-2 px-3 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 text-sm"
-                        title="Test API connectivity"
-                      >
-                        <span>Test API</span>
-                    </button>
                     </div>
                   </div>
                   
@@ -2947,7 +2884,7 @@ export default function Toolbar({
                       {/* Individual Word Analysis First */}
                       {sentenceAnalysis.wordScores && sentenceAnalysis.wordScores.length > 0 && (
                         <div className="mb-4">
-                          <h7 className="text-sm font-medium text-gray-700 mb-2">Individual Word Analysis:</h7>
+                          <h6 className="text-sm font-medium text-gray-700 mb-2">Individual Word Analysis:</h6>
                           <div className="space-y-2">
                             {sentenceAnalysis.wordScores.map((wordScore, index) => (
                               <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
@@ -2985,7 +2922,7 @@ export default function Toolbar({
                       
                       {/* Overall Sentence Analysis */}
                       <div className="border-t pt-3">
-                        <h7 className="text-sm font-medium text-gray-700 mb-2">Overall Sentence Analysis:</h7>
+                        <h6 className="text-sm font-medium text-gray-700 mb-2">Overall Sentence Analysis:</h6>
                         <div className="space-y-3">
                           {/* 1. Accuracy Rating with RAG Status Background */}
                           <div className="flex items-center justify-between">
@@ -3077,7 +3014,7 @@ export default function Toolbar({
                             isReadyForAnalysis={wordsAnalysisComplete.has(word.original)}
                             hasBeenAnalyzed={wordsAnalyzed.has(word.original)}
                             onSaveToDifficult={(word) => {
-                              const phoneticData = phoneticBreakdowns[currentMessage]?.find((w: any) => w.original === word);
+                              const phoneticData = phoneticBreakdowns[currentMessage || '']?.find((w: any) => w.original === word);
                               if (phoneticData) {
                                 addToDifficultWords(word, individualWordAnalysis[word]?.score || 0, phoneticData.phonetic, phoneticData.transliteration);
                               }
@@ -3292,7 +3229,7 @@ export default function Toolbar({
                                     <button
                                       onClick={() => {
                                         // Practice this word
-                                        setCurrentMessage(word.word);
+                                        // Practice this word - functionality handled by parent component
                                         setShowDifficultWordsModal(false);
                                       }}
                                       className="px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm"
