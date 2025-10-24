@@ -466,21 +466,81 @@ export default function Toolbar({
   });
   
   // Function to toggle word in My Vocab (add/remove)
-  const handleAddToMyVocab = (word: string, meaning: string) => {
+  const handleAddToMyVocab = async (word: string, meaning: string) => {
     setMyVocab(prev => {
       const newSet = new Set(prev);
       if (newSet.has(word)) {
         // If already starred, remove it (unstar)
         newSet.delete(word);
         console.log('⭐ Removed from My Vocab:', word);
+        
+        // Remove from localStorage details
+        try {
+          const savedDetails = JSON.parse(localStorage.getItem('myVocabDetails') || '[]');
+          const filtered = savedDetails.filter((w: any) => w.word !== word);
+          localStorage.setItem('myVocabDetails', JSON.stringify(filtered));
+        } catch (e) {
+          console.error('Error removing vocab details:', e);
+        }
       } else {
         // If not starred, add it
         newSet.add(word);
         console.log('⭐ Added to My Vocab:', word);
+        
+        // Fetch grammar details from LanguageTool API and save to localStorage
+        (async () => {
+          try {
+            // Find context from persistentVocab if available
+            const vocabItem = persistentVocab.find((v: any) => v.word === word);
+            const contextFromVocab = vocabItem?.context || '';
+            
+            console.log('🔍 Fetching grammar details for:', word);
+            console.log('📝 Context from vocab:', contextFromVocab);
+            
+            // Import the fetch function
+            const { fetchGrammarDetails } = await import('../utils/languageTool');
+            
+            const grammarDetails = await fetchGrammarDetails(word);
+            console.log('✅ Grammar details received:', grammarDetails);
+            
+            // Save full word details with grammar to localStorage
+            const savedDetails = JSON.parse(localStorage.getItem('myVocabDetails') || '[]');
+            const exists = savedDetails.find((w: any) => w.word === word);
+            if (!exists) {
+              const wordDetails = { 
+                word, 
+                meaning, 
+                context: contextFromVocab,
+                ...grammarDetails  // Merge grammar details
+              };
+              savedDetails.push(wordDetails);
+              localStorage.setItem('myVocabDetails', JSON.stringify(savedDetails));
+              console.log('💾 Saved word details with grammar to localStorage:', wordDetails);
+            } else {
+              console.log('⚠️ Word already exists in myVocabDetails, not overwriting');
+            }
+          } catch (error) {
+            console.error('❌ Error fetching grammar details, saving without grammar:', error);
+            // Fallback: save without grammar details
+            const savedDetails = JSON.parse(localStorage.getItem('myVocabDetails') || '[]');
+            const exists = savedDetails.find((w: any) => w.word === word);
+            if (!exists) {
+              const vocabItem = persistentVocab.find((v: any) => v.word === word);
+              savedDetails.push({ 
+                word, 
+                meaning, 
+                context: vocabItem?.context || '' 
+              });
+              localStorage.setItem('myVocabDetails', JSON.stringify(savedDetails));
+              console.log('💾 Saved word details (without grammar) to localStorage:', { word, meaning });
+            }
+          }
+        })();
+        
         // Also call the parent's onAddToVocab only when adding
         onAddToVocab(word, meaning);
       }
-      // Save to localStorage
+      // Save to localStorage (word names)
       localStorage.setItem('myVocab', JSON.stringify(Array.from(newSet)));
       console.log('⭐ My Vocab updated:', Array.from(newSet));
       return newSet;

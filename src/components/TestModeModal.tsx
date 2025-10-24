@@ -10,7 +10,7 @@ interface WordDetails {
 interface TestModeModalProps {
   words: WordDetails[];
   onClose: () => void;
-  onReturnToFlashcards: () => void;
+  onReturnToFlashcards: (incorrectWords?: WordDetails[]) => void;
 }
 
 interface Question {
@@ -31,6 +31,7 @@ const TestModeModal: React.FC<TestModeModalProps> = ({
   const [correctAnswers, setCorrectAnswers] = useState<boolean[]>([]);
   const [showResults, setShowResults] = useState(false);
   const [finalScore, setFinalScore] = useState({ correct: 0, total: 0, percentage: 0 });
+  const [incorrectWords, setIncorrectWords] = useState<WordDetails[]>([]);
 
   // Generate questions only once on mount
   useEffect(() => {
@@ -115,6 +116,19 @@ const TestModeModal: React.FC<TestModeModalProps> = ({
         
         const scoreData = { correct, total, percentage };
         setFinalScore(scoreData);
+        
+        // Calculate incorrect words for review
+        const wrongWords: WordDetails[] = [];
+        newCorrect.forEach((isCorrect, index) => {
+          if (!isCorrect && questions[index]) {
+            const word = words.find(w => w.word === questions[index].word);
+            if (word) {
+              wrongWords.push(word);
+            }
+          }
+        });
+        setIncorrectWords(wrongWords);
+        console.log('❌ Incorrect words for review:', wrongWords);
         
         // Save score to localStorage with timestamp
         const testResult = {
@@ -278,10 +292,12 @@ const TestModeModal: React.FC<TestModeModalProps> = ({
           {showResults ? (
             <div className="flex gap-4">
               <button
-                onClick={onReturnToFlashcards}
+                onClick={() => onReturnToFlashcards(incorrectWords.length > 0 ? incorrectWords : undefined)}
                 className="flex-1 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-semibold transition-all shadow-md hover:shadow-lg"
               >
-                Review Flashcards
+                {incorrectWords.length > 0 
+                  ? `Review ${incorrectWords.length} Incorrect Word${incorrectWords.length !== 1 ? 's' : ''}`
+                  : 'Review Flashcards'}
               </button>
               <button
                 onClick={onClose}
