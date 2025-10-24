@@ -955,12 +955,12 @@ export default function Toolbar({
     console.log('🛑 practicingWord:', practicingWord);
     
     try {
-      if (wordRecording && wordRecording.state === 'recording') {
+    if (wordRecording && wordRecording.state === 'recording') {
         console.log('🛑 Stopping word recording...');
-        wordRecording.stop();
+      wordRecording.stop();
       } else {
         console.log('🛑 No active word recording to stop');
-      }
+    }
     } catch (error) {
       console.error('❌ Error stopping word recording:', error);
     }
@@ -2709,23 +2709,23 @@ export default function Toolbar({
                       <p className="text-sm text-gray-600">"{lastGermanVoiceMessage.transcription}"</p>
                     </div>
                     <div className="flex space-x-2">
-                      <button
-                        onClick={analyzePronunciation}
-                        disabled={isAnalyzingPronunciation}
-                        className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-300"
-                      >
-                        {isAnalyzingPronunciation ? (
-                          <>
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            <span>Analyzing...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Volume2 className="h-4 w-4" />
-                            <span>Analyze Pronunciation</span>
-                          </>
-                        )}
-                      </button>
+                    <button
+                      onClick={analyzePronunciation}
+                      disabled={isAnalyzingPronunciation}
+                      className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-blue-300"
+                    >
+                      {isAnalyzingPronunciation ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Analyzing...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Volume2 className="h-4 w-4" />
+                          <span>Analyze Pronunciation</span>
+                        </>
+                      )}
+                    </button>
                       
                       <button
                         onClick={testPronunciationAPI}
@@ -2733,7 +2733,7 @@ export default function Toolbar({
                         title="Test API connectivity"
                       >
                         <span>Test API</span>
-                      </button>
+                    </button>
                     </div>
                   </div>
                   

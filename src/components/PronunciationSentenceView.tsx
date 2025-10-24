@@ -230,6 +230,14 @@ const PronunciationSentenceView: React.FC<PronunciationSentenceViewProps> = ({
       wordData = pronunciationData.words.find(w => w.word === cleanWord);
     }
     
+    // NEW: Add partial matching as final fallback
+    if (!wordData) {
+      wordData = pronunciationData.words.find(w => 
+        w.word.toLowerCase().includes(word.toLowerCase()) ||
+        word.toLowerCase().includes(w.word.toLowerCase())
+      );
+    }
+    
     console.log(`Word: "${word}", Found: ${!!wordData}, Score: ${wordData?.score || 0}`);
     return wordData?.score || 0;
   };

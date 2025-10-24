@@ -1444,9 +1444,18 @@ export default function Dashboard({ user }: DashboardProps) {
       console.log('Transcription:', transcription);
       console.log('Message ID:', messageId);
 
-      // Convert audio to base64
+      // Convert audio to base64 using chunked conversion for large files
       const arrayBuffer = await audioBlob.arrayBuffer();
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      const uint8Array = new Uint8Array(arrayBuffer);
+      let binaryString = '';
+      const chunkSize = 8192; // Process in 8KB chunks
+      
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.slice(i, i + chunkSize);
+        binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      
+      const base64 = btoa(binaryString);
 
       // Call pronunciation analysis API
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pronunciation-analysis`, {
@@ -3695,7 +3704,16 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             
             // Store the German voice message for pronunciation analysis
             const audioArrayBuffer = await audioBlob.arrayBuffer();
-            const audioBase64 = btoa(String.fromCharCode(...new Uint8Array(audioArrayBuffer)));
+            const uint8Array = new Uint8Array(audioArrayBuffer);
+            let binaryString = '';
+            const chunkSize = 8192; // Process in 8KB chunks
+            
+            for (let i = 0; i < uint8Array.length; i += chunkSize) {
+              const chunk = uint8Array.slice(i, i + chunkSize);
+              binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+            }
+            
+            const audioBase64 = btoa(binaryString);
             setLastGermanVoiceMessage({
               transcription: transcription,
               audioData: audioBase64,
