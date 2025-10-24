@@ -4159,6 +4159,9 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
   };
 
   const startNewConversation = (conversationId: string) => {
+    // Clear the last German voice message when starting new conversation
+    setLastGermanVoiceMessage(null);
+    
     // Reset all states first
     resetConversationState();
     
@@ -4249,6 +4252,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     setMismatchMessageId('');
     setGermanSuggestion('');
     setPracticeAudioBlob(null);
+    setLastGermanVoiceMessage(null);
     setRecordingLanguage('german');
     setRecordingDuration(0);
     

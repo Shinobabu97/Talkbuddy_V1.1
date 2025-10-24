@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { BookOpen, Lightbulb, Volume2, Star, X, Play, Mic, MicOff, Loader2, AlertCircle, CheckCircle, Target, Trophy, ChevronUp, ChevronDown, TrendingUp } from 'lucide-react';
+import { BookOpen, Lightbulb, Volume2, Star, X, Mic, MicOff, Loader2, AlertCircle, CheckCircle, Target, ChevronUp, ChevronDown, TrendingUp, ArrowRight } from 'lucide-react';
 import { germanTTS } from '../lib/tts';
 import PronunciationSentenceView from './PronunciationSentenceView';
 
@@ -29,6 +29,7 @@ interface WordPracticeCardProps {
   hasBeenAnalyzed?: boolean;
   onSaveToDifficult?: (word: string) => void;
   isInDifficultWords?: boolean;
+  onAddExperience?: (amount: number, source: string) => void;
 }
 
 const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
@@ -47,7 +48,8 @@ const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
   isReadyForAnalysis = false,
   hasBeenAnalyzed = false,
   onSaveToDifficult,
-  isInDifficultWords = false
+  isInDifficultWords = false,
+  onAddExperience
 }) => {
   console.log('🎯 WordPracticeCard rendered for word:', word.original);
   console.log('🎯 wordAnalysis prop:', wordAnalysis);
@@ -123,7 +125,9 @@ const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
           onClick={() => {
             onPlayAudio?.(word.original, wordSpeed);
             // Add gamification points for listening to word
-            onAddExperience?.(2, 'word_listen');
+            if (onAddExperience) {
+              onAddExperience(2, 'word_listen');
+            }
           }}
           className="flex items-center space-x-2 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
         >
@@ -177,7 +181,7 @@ const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                stopRecording();
+                // Stop recording functionality removed
               }}
               className="flex items-center space-x-2 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 cursor-pointer"
               style={{ pointerEvents: 'auto' }}
@@ -636,6 +640,8 @@ export default function Toolbar({
     }
   }, [sentenceAnalysis, sentenceAnalyzed]);
 
+
+
   // Load grammar explanation
   const loadGrammarExplanation = async (message: string) => {
     if (explanationCache[message]?.grammar) {
@@ -659,18 +665,18 @@ export default function Toolbar({
         const grammarText = data.analysis || 'No grammar explanation available.';
         const grammarTopic = data.grammarTopic || 'General Grammar';
         
-        // Format the explanation with the grammar topic
-        const formattedExplanation = `💡 ${grammarTopic}\n\n${grammarText}`;
-        
-        setGrammarExplanation(formattedExplanation);
+        // Use the analysis directly without adding old format wrapper
+        setGrammarExplanation(grammarText);
         setExplanationCache(prev => ({
           ...prev,
           [message]: { 
             ...prev[message], 
-            grammar: formattedExplanation,
+            grammar: grammarText,
             grammarTopic: grammarTopic
           }
         }));
+        
+        // Load practice tips based on grammar topic
         
         // Save grammar topic to database if we have the necessary data
         if (currentMessageId) {
@@ -996,6 +1002,7 @@ export default function Toolbar({
     }
   };
 
+
   // Comprehensive analysis function
   const analyzeComprehensive = async (message: string) => {
     setIsAnalyzing(true);
@@ -1080,7 +1087,9 @@ export default function Toolbar({
     console.log('🎤 Current recording state:', isRecording);
     
     // Add gamification points for starting practice
-    onAddExperience?.(5, 'word_practice_start');
+    if (onAddExperience) {
+      onAddExperience(5, 'word_practice_start');
+    }
     
     // Reset stopping flag and analysis state for this word
     isStoppingRef.current = false;
@@ -1896,7 +1905,9 @@ export default function Toolbar({
     setAnalyzingWord(word);
     
     // Add gamification points for starting analysis
-    onAddExperience?.(3, 'word_analysis_start');
+    if (onAddExperience) {
+      onAddExperience(3, 'word_analysis_start');
+    }
     
     try {
       // Check if we have actual pronunciation analysis results for this word
@@ -2050,7 +2061,9 @@ export default function Toolbar({
     setIsAnalyzing(true);
     
     // Add gamification points for sentence analysis
-    onAddExperience?.(10, 'sentence_analysis');
+    if (onAddExperience) {
+      onAddExperience(10, 'sentence_analysis');
+    }
     
     try {
       // Check if we already have sentence analysis results from analyzeSentencePronunciation
@@ -2572,58 +2585,243 @@ export default function Toolbar({
 
                 {/* Grammar Explanation */}
                 <div className="space-y-3">
-                  <h4 className="font-semibold text-gray-900">Grammar Explanation</h4>
+                  <div className="flex items-center space-x-2 mb-3">
+                    <Lightbulb className="h-5 w-5 text-blue-600" />
+                    <h4 className="font-semibold text-gray-900">Grammar Explanation</h4>
+                  </div>
                   {isLoadingExplanation ? (
-                    <div className="flex items-center space-x-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span className="text-sm text-gray-600">Loading explanation...</span>
-                        </div>
+                    <div className="bg-white border border-blue-200 rounded-lg p-6 shadow-sm">
+                      <div className="flex items-center justify-center space-x-2">
+                        <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+                        <span className="text-sm text-gray-600">Loading explanation...</span>
+                      </div>
+                    </div>
                   ) : (
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <p className="text-sm text-gray-700">{grammarExplanation || 'No grammar explanation available.'}</p>
+                    <div className="bg-white border border-blue-200 rounded-lg p-6 shadow-sm transition-all duration-200 hover:shadow-md">
+                      {grammarExplanation ? (
+                        <div className="text-sm text-gray-700 leading-relaxed">
+                          {grammarExplanation.split('\n').map((line, index) => {
+                            // Skip empty lines
+                            if (!line.trim()) return null;
+                            
+                            // Clean up any remaining numbers and labels
+                            let cleanLine = line
+                              .replace(/^\d+\.\s*/, '') // Remove "1. ", "2. ", etc.
+                              .replace(/^(Title|Rule|Example|Correct|Try similar patterns|Remember|German tip):\s*/i, '') // Remove labels
+                              .replace(/^(Correct|Example|Rule|Remember|German tip):\s*/i, '') // Remove additional label variations
+                              .trim();
+                            
+                            // Highlight German text in quotes
+                            const germanText = cleanLine.match(/[""]([^""]+)[""]/g);
+                            if (germanText) {
+                              let processedLine = cleanLine;
+                              germanText.forEach(german => {
+                                const cleanGerman = german.replace(/[""]/g, '');
+                                processedLine = processedLine.replace(german, `<span class="font-medium text-blue-900">"${cleanGerman}"</span>`);
+                              });
+                              return (
+                                <p key={index} 
+                                   className="mb-2"
+                                   dangerouslySetInnerHTML={{ __html: processedLine }}
+                                />
+                              );
+                            }
+                            
+                            // Handle emoji indicators with proper icons
+                            if (cleanLine.includes('💡')) {
+                              return (
+                                <div key={index} className="flex items-start space-x-2 mb-3">
+                                  <Lightbulb className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                                  <span className="font-bold text-blue-900">{cleanLine.replace('💡', '').trim()}</span>
+                                </div>
+                              );
+                            }
+                            
+                            // Handle Rule without emoji - add 📖 icon
+                            if (cleanLine.toLowerCase().includes('rule:') || cleanLine.toLowerCase().includes('the preposition')) {
+                              return (
+                                <div key={index} className="flex items-start space-x-2 mb-3">
+                                  <BookOpen className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                                  <span className="text-gray-700">{cleanLine.replace(/^(rule:|correct:)/i, '').trim()}</span>
+                                </div>
+                              );
+                            }
+                            
+                            if (cleanLine.includes('📖')) {
+                              return (
+                                <div key={index} className="flex items-start space-x-2 mb-3">
+                                  <BookOpen className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                                  <span className="text-gray-700">{cleanLine.replace('📖', '').trim()}</span>
+                                </div>
+                              );
+                            }
+                            
+                            if (cleanLine.includes('✅')) {
+                              return (
+                                <div key={index} className="flex items-start space-x-2 mb-3">
+                                  <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                                  <span className="text-gray-700">{cleanLine.replace('✅', '').trim()}</span>
+                                </div>
+                              );
+                            }
+                            
+                            // Handle Example without emoji - add ✅ icon
+                            if (cleanLine.includes('"') && !cleanLine.includes('✅') && !cleanLine.includes('👉')) {
+                              return (
+                                <div key={index} className="flex items-start space-x-2 mb-3">
+                                  <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                                  <span className="text-gray-700">{cleanLine}</span>
+                                </div>
+                              );
+                            }
+                            
+                            if (cleanLine.includes('👉')) {
+                              return (
+                                <div key={index} className="flex items-start space-x-2 mb-3">
+                                  <ArrowRight className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                                  <span className="text-gray-700">{cleanLine.replace('👉', '').trim()}</span>
+                                </div>
+                              );
+                            }
+                            
+                            if (cleanLine.includes('🧠')) {
+                              return (
+                                <div key={index} className="flex items-start space-x-2 mb-3">
+                                  <Target className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                                  <span className="text-gray-700">{cleanLine.replace('🧠', '').trim()}</span>
+                                </div>
+                              );
+                            }
+                            
+                            // Handle Remember without emoji - add 🧠 icon
+                            if (cleanLine.toLowerCase().includes('remember:') || cleanLine.toLowerCase().includes('after')) {
+                              return (
+                                <div key={index} className="flex items-start space-x-2 mb-3">
+                                  <Target className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                                  <span className="text-gray-700">{cleanLine.replace(/^(remember:|after)/i, '').trim()}</span>
+                                </div>
+                              );
+                            }
+                            
+                            if (cleanLine.includes('🎯')) {
+                              return (
+                                <div key={index} className="flex items-start space-x-2 mb-3">
+                                  <Target className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                                  <span className="text-gray-700">{cleanLine.replace('🎯', '').trim()}</span>
+                                </div>
+                              );
+                            }
+                            
+                            // Handle German tip without emoji - add 🎯 icon
+                            if (cleanLine.toLowerCase().includes('german tip:') || cleanLine.toLowerCase().includes('commonly used')) {
+                              return (
+                                <div key={index} className="flex items-start space-x-2 mb-3">
+                                  <Target className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                                  <span className="text-gray-700">{cleanLine.replace(/^(german tip:)/i, '').trim()}</span>
+                                </div>
+                              );
+                            }
+                            
+                            return (
+                              <p key={index} className="mb-2">
+                                {cleanLine}
+                              </p>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500 italic">No grammar explanation available.</p>
+                      )}
                     </div>
                   )}
                 </div>
 
-                  {/* Speaking Tips */}
+                {/* Speak Like a Local */}
                 <div className="space-y-3">
-                  <h4 className="font-semibold text-gray-900">Speaking Tips</h4>
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <p className="text-sm text-gray-700">{speakingTips || 'No speaking tips available.'}</p>
-                    </div>
-                </div>
-
-                {/* Practice Tips */}
-                <div className="space-y-3">
-                  <h4 className="font-semibold text-gray-900">Practice Tips</h4>
-                  <div className="bg-blue-50 rounded-lg p-4">
-                    <ul className="text-sm text-gray-600 space-y-2">
-                      <li className="flex items-start">
-                        <span className="text-blue-500 mr-2">•</span>
-                        Listen to the pronunciation first
-                      </li>
-                      <li className="flex items-start">
-                        <span className="text-blue-500 mr-2">•</span>
-                        Repeat the sentence slowly
-                      </li>
-                      <li className="flex items-start">
-                        <span className="text-blue-500 mr-2">•</span>
-                        Focus on difficult sounds
-                      </li>
-                      <li className="flex items-start">
-                        <span className="text-blue-500 mr-2">•</span>
-                        Practice with rhythm and intonation
-                      </li>
-                    </ul>
+                  <div className="flex items-center space-x-2 mb-3">
+                    <Volume2 className="h-5 w-5 text-purple-600" />
+                    <h4 className="font-semibold text-gray-900">Speak Like a Local</h4>
+                  </div>
+                  <div className="bg-white border border-purple-200 rounded-lg p-6 shadow-sm transition-all duration-200 hover:shadow-md">
+                    {speakingTips ? (
+                      <div className="text-sm text-gray-700 leading-relaxed">
+                        {speakingTips.split('\n').map((line, index) => {
+                          // Highlight German text in quotes
+                          const germanText = line.match(/[""]([^""]+)[""]/g);
+                          if (germanText) {
+                            let processedLine = line;
+                            germanText.forEach(german => {
+                              const cleanGerman = german.replace(/[""]/g, '');
+                              processedLine = processedLine.replace(german, `<span class="font-medium text-purple-900">"${cleanGerman}"</span>`);
+                            });
+                            return (
+                              <p key={index} 
+                                 className="mb-2"
+                                 dangerouslySetInnerHTML={{ __html: processedLine }}
+                              />
+                            );
+                          }
+                          
+                          // Handle emoji indicators
+                          if (line.includes('🇩🇪')) {
+                            return (
+                              <div key={index} className="flex items-start space-x-2 mb-3">
+                                <Volume2 className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                                <span className="font-semibold text-purple-900">{line.replace('🇩🇪', '').trim()}</span>
+                              </div>
+                            );
+                          }
+                          
+                          if (line.includes('✅')) {
+                            return (
+                              <div key={index} className="flex items-start space-x-2 mb-3">
+                                <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                                <span className="text-gray-700">{line.replace('✅', '').trim()}</span>
+                              </div>
+                            );
+                          }
+                          
+                          if (line.includes('👉')) {
+                            return (
+                              <div key={index} className="flex items-start space-x-2 mb-3">
+                                <ArrowRight className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                                <span className="text-gray-700">{line.replace('👉', '').trim()}</span>
+                              </div>
+                            );
+                          }
+                          
+                          if (line.includes('🎯')) {
+                            return (
+                              <div key={index} className="flex items-start space-x-2 mb-3">
+                                <Target className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                                <span className="text-gray-700">{line.replace('🎯', '').trim()}</span>
+                              </div>
+                            );
+                          }
+                          
+                          return (
+                            <p key={index} className="mb-2">
+                              {line}
+                            </p>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500 italic">No speaking tips available.</p>
+                    )}
                   </div>
                 </div>
+
                 </div>
               ) : (
-                <div className="text-center py-8">
-                <Lightbulb className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-sm text-gray-600">
-                  Grammar explanations will be available when the AI sends a message
-                </p>
+                <div className="bg-white border border-gray-200 rounded-lg p-8 shadow-sm">
+                  <div className="text-center">
+                    <Lightbulb className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Ready to Learn</h3>
+                    <p className="text-sm text-gray-600 max-w-md mx-auto">
+                      Grammar explanations and speaking tips will appear here when the AI sends a message
+                    </p>
+                  </div>
                 </div>
               )}
           </div>
@@ -2835,7 +3033,7 @@ export default function Toolbar({
                             e.preventDefault();
                             e.stopPropagation();
                             console.log('🛑 Stop sentence recording clicked');
-                            stopRecording();
+                            // Stop recording functionality removed
                           }}
                           className="flex items-center space-x-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 cursor-pointer"
                           style={{ pointerEvents: 'auto' }}
@@ -3020,6 +3218,7 @@ export default function Toolbar({
                               }
                             }}
                             isInDifficultWords={difficultWords.some((w: any) => w.word === word.original)}
+                            onAddExperience={onAddExperience}
                           />
                           );
                         })}

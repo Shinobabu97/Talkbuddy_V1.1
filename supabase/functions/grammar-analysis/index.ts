@@ -57,7 +57,7 @@ serve(async (req) => {
             grammarTopic = 'Articles';
           } else if (grammarText.includes('conjugation') || grammarText.includes('verb')) {
             grammarTopic = 'Verb Conjugation';
-          } else if (grammarText.includes('case') || grammarText.includes('akkusativ') || grammarText.includes('dativ')) {
+          } else if (grammarText.includes('case') || grammarText.includes('akkusativ') || grammarText.includes('dativ') || grammarText.includes('genitiv')) {
             grammarTopic = 'Cases';
           } else if (grammarText.includes('adjective') || grammarText.includes('adjektiv')) {
             grammarTopic = 'Adjectives';
@@ -69,6 +69,12 @@ serve(async (req) => {
             grammarTopic = 'Passive Voice';
           } else if (grammarText.includes('modal') || grammarText.includes('modal verb')) {
             grammarTopic = 'Modal Verbs';
+          } else if (grammarText.includes('relative') || grammarText.includes('relativ')) {
+            grammarTopic = 'Relative Clauses';
+          } else if (grammarText.includes('compound') || grammarText.includes('zusammengesetzt')) {
+            grammarTopic = 'Compound Words';
+          } else if (grammarText.includes('separable') || grammarText.includes('trennbar')) {
+            grammarTopic = 'Separable Verbs';
           }
         }
         
@@ -140,7 +146,7 @@ serve(async (req) => {
       grammarTopic = 'Articles';
     } else if (analysisText.includes('conjugation') || analysisText.includes('verb')) {
       grammarTopic = 'Verb Conjugation';
-    } else if (analysisText.includes('case') || analysisText.includes('akkusativ') || analysisText.includes('dativ')) {
+    } else if (analysisText.includes('case') || analysisText.includes('akkusativ') || analysisText.includes('dativ') || analysisText.includes('genitiv')) {
       grammarTopic = 'Cases';
     } else if (analysisText.includes('adjective') || analysisText.includes('adjektiv')) {
       grammarTopic = 'Adjectives';
@@ -152,6 +158,12 @@ serve(async (req) => {
       grammarTopic = 'Passive Voice';
     } else if (analysisText.includes('modal') || analysisText.includes('modal verb')) {
       grammarTopic = 'Modal Verbs';
+    } else if (analysisText.includes('relative') || analysisText.includes('relativ')) {
+      grammarTopic = 'Relative Clauses';
+    } else if (analysisText.includes('compound') || analysisText.includes('zusammengesetzt')) {
+      grammarTopic = 'Compound Words';
+    } else if (analysisText.includes('separable') || analysisText.includes('trennbar')) {
+      grammarTopic = 'Separable Verbs';
     }
 
     return new Response(
