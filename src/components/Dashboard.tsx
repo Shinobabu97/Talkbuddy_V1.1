@@ -232,7 +232,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [isSending, setIsSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [translatedMessages, setTranslatedMessages] = useState<{[key: string]: string}>({});
-  const [suggestedResponses, setSuggestedResponses] = useState<{[key: string]: string[]}>({});
+  const [suggestedResponses, setSuggestedResponses] = useState<{[key: string]: Array<{german: string; english: string}>}>({});
   const [showTranslation, setShowTranslation] = useState<{[key: string]: boolean}>({});
   const [showSuggestions, setShowSuggestions] = useState<{[key: string]: boolean}>({});
   const [hoveredConversation, setHoveredConversation] = useState<string | null>(null);
@@ -1157,8 +1157,9 @@ export default function Dashboard({ user }: DashboardProps) {
     }
   };
 
-  const useSuggestedResponse = (suggestion: string) => {
-    setMessageInput(suggestion);
+  const useSuggestedResponse = (suggestion: string | {german: string; english: string}) => {
+    const suggestionText = typeof suggestion === 'string' ? suggestion : suggestion.german;
+    setMessageInput(suggestionText);
   };
 
   // Generate suggestions on demand when user clicks on suggested responses
@@ -1181,8 +1182,8 @@ export default function Dashboard({ user }: DashboardProps) {
       
       // Build enhanced prompt with conversation context
       const promptContent = conversationContext 
-        ? `Based on this conversation context: ${conversationContext}. Please provide: 1) English translation of: "${germanText}" 2) Three suggested German responses that are relevant to the conversation topic and that a language learner could use to reply. IMPORTANT: The suggestions must be ONLY in German - no English translations in parentheses or brackets. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [suggestion1] | [suggestion2] | [suggestion3]`
-        : `Please provide: 1) English translation of: "${germanText}" 2) Three suggested German responses that a language learner could use to reply. IMPORTANT: The suggestions must be ONLY in German - no English translations in parentheses or brackets. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [suggestion1] | [suggestion2] | [suggestion3]`;
+        ? `Based on this conversation context: ${conversationContext}. Please provide: 1) English translation of: "${germanText}" 2) Three suggested German responses with their English translations that are relevant to the conversation topic and that a language learner could use to reply. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [german1]~[english1] | [german2]~[english2] | [german3]~[english3]`
+        : `Please provide: 1) English translation of: "${germanText}" 2) Three suggested German responses with their English translations that a language learner could use to reply. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [german1]~[english1] | [german2]~[english2] | [german3]~[english3]`;
       
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
@@ -1198,7 +1199,7 @@ export default function Dashboard({ user }: DashboardProps) {
           conversationId: 'helper',
           contextLevel,
           difficultyLevel,
-          systemInstruction: "When providing German suggestions, respond ONLY in German. Do not include any English translations in parentheses or brackets in the suggestions."
+          systemInstruction: "Provide German suggestions with their English translations in the exact format specified. Use ~ to separate German and English versions."
         })
       });
 
@@ -1218,25 +1219,46 @@ export default function Dashboard({ user }: DashboardProps) {
         }
         
         if (suggestionsMatch) {
-          const suggestions = suggestionsMatch[1].split('|').map(s => s.trim()).filter(s => s.length > 0);
-          
-          // Clean up any English translations that might be in parentheses or brackets
-          const cleanedSuggestions = suggestions.map(suggestion => {
-            // Remove English text in parentheses like (English translation)
-            let cleaned = suggestion.replace(/\([^)]*[A-Za-z][^)]*\)/g, '');
-            // Remove English text in brackets like [English translation]
-            cleaned = cleaned.replace(/\[[^\]]*[A-Za-z][^\]]*\]/g, '');
-            // Remove any remaining English text patterns
-            cleaned = cleaned.replace(/\([^)]*\)/g, '');
-            cleaned = cleaned.replace(/\[[^\]]*\]/g, '');
-            // Trim whitespace
-            return cleaned.trim();
-          }).filter(s => s.length > 0);
-          
-          setSuggestedResponses(prev => ({
-            ...prev,
-            [messageId]: cleanedSuggestions
-          }));
+          try {
+            const suggestions = suggestionsMatch[1].split('|').map(s => s.trim()).filter(s => s.length > 0);
+            
+            // Parse German~English pairs
+            const parsedSuggestions = suggestions.map(suggestion => {
+              const parts = suggestion.split('~');
+              if (parts.length === 2) {
+                return {
+                  german: parts[0].trim(),
+                  english: parts[1].trim()
+                };
+              } else {
+                // Fallback: treat as German-only if format is wrong
+                console.warn('Suggestion format error, treating as German-only:', suggestion);
+                return {
+                  german: suggestion.trim(),
+                  english: ''
+                };
+              }
+            }).filter(s => s.german.length > 0);
+            
+            if (parsedSuggestions.length > 0) {
+              setSuggestedResponses(prev => ({
+                ...prev,
+                [messageId]: parsedSuggestions
+              }));
+            } else {
+              console.warn('No valid suggestions parsed from response');
+            }
+          } catch (parseError) {
+            console.error('Error parsing suggestions:', parseError);
+            // Fallback: try to parse as simple German suggestions
+            const fallbackSuggestions = suggestionsMatch[1].split('|').map(s => s.trim()).filter(s => s.length > 0);
+            if (fallbackSuggestions.length > 0) {
+              setSuggestedResponses(prev => ({
+                ...prev,
+                [messageId]: fallbackSuggestions.map(s => ({ german: s, english: '' }))
+              }));
+            }
+          }
         }
       }
     } catch (error) {
@@ -5305,7 +5327,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                           return (
                             <button
                               key={index}
-                              onClick={() => useSuggestedResponse(suggestionText)}
+                              onClick={() => useSuggestedResponse(suggestion)}
                               className="block w-full text-left bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors"
                             >
                               <div className="font-medium">{suggestionText}</div>
