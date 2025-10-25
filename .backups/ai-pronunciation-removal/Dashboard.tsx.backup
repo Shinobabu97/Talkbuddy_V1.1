@@ -302,7 +302,29 @@ export default function Dashboard({ user }: DashboardProps) {
   // Comprehensive analysis state
   const [comprehensiveAnalysis, setComprehensiveAnalysis] = useState<{[key: string]: any}>({});
   
+  // Pronunciation features state
+  const [globalPlaybackSpeed, setGlobalPlaybackSpeed] = useState<number>(() => {
+    const saved = localStorage.getItem('talkbuddy-playback-speed');
+    return saved ? parseFloat(saved) : 1.0;
+  });
 
+  // Individual word speeds for Pronunciation Guide
+  const [wordSpeeds, setWordSpeeds] = useState<Record<string, number>>({});
+
+  // Helper function to get speed for a specific word
+  const getWordSpeed = (word: string): number => {
+    return wordSpeeds[word] || globalPlaybackSpeed;
+  };
+
+  // Helper function to set speed for a specific word
+  const setWordSpeed = (word: string, speed: number): void => {
+    setWordSpeeds(prev => ({
+      ...prev,
+      [word]: speed
+    }));
+  };
+  const [phoneticBreakdowns, setPhoneticBreakdowns] = useState<{[key: string]: Array<{original: string, phonetic: string, transliteration: string, syllables: string[]}>}>({});
+  const [showPronunciationBreakdown, setShowPronunciationBreakdown] = useState<{[key: string]: boolean}>({});
   
   // Debug messageInput state changes
   React.useEffect(() => {
@@ -312,6 +334,10 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('Trimmed:', messageInput.trim());
   }, [messageInput]);
 
+  // Persist global playback speed to localStorage
+  useEffect(() => {
+    localStorage.setItem('talkbuddy-playback-speed', globalPlaybackSpeed.toString());
+  }, [globalPlaybackSpeed]);
   
   // Debug errorMessages state changes
   React.useEffect(() => {
@@ -903,7 +929,114 @@ export default function Dashboard({ user }: DashboardProps) {
     await germanTTS.speak(text);
   };
 
+  // Pronunciation feature functions
+  const getPhoneticBreakdown = async (text: string, messageId: string) => {
+    console.log('🎯 Getting phonetic breakdown for:', text, 'Message ID:', messageId);
+    console.log('🔗 Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
+    console.log('🔑 Supabase Key exists:', !!import.meta.env.VITE_SUPABASE_ANON_KEY);
+    
+    // For now, let's create mock data to test the UI
+    console.log('🧪 Using mock data for testing...');
+    
+    const mockData = {
+      words: text.split(' ').map(word => ({
+        original: word,
+        phonetic: `[${word}]`,
+        transliteration: word.toUpperCase(),
+        syllables: [word]
+      }))
+    };
+    
+    console.log('📊 Mock phonetic breakdown data:', mockData);
+    
+    setPhoneticBreakdowns(prev => ({
+      ...prev,
+      [messageId]: mockData.words
+    }));
+    
+    console.log('✅ Mock phonetic breakdown set for message:', messageId);
+    
+    // TODO: Uncomment this when Supabase function is working
+    /*
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/phonetic-breakdown`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text })
+      });
 
+      console.log('📡 Phonetic breakdown response status:', response.status);
+      console.log('📡 Response headers:', Object.fromEntries(response.headers.entries()));
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Phonetic breakdown error:', errorText);
+        throw new Error(`Failed to get phonetic breakdown: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('📊 Phonetic breakdown data:', data);
+      
+      if (data.success) {
+        setPhoneticBreakdowns(prev => ({
+          ...prev,
+          [messageId]: data.words
+        }));
+        console.log('✅ Phonetic breakdown set for message:', messageId);
+        console.log('📊 Updated phoneticBreakdowns:', { ...phoneticBreakdowns, [messageId]: data.words });
+      } else {
+        console.error('❌ Phonetic breakdown failed:', data.error);
+      }
+    } catch (error) {
+      console.error('❌ Error getting phonetic breakdown:', error);
+      console.error('❌ Error details:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
+    }
+    */
+  };
+
+  const playWordAudio = async (word: string, speed?: number) => {
+    const actualSpeed = speed || getWordSpeed(word);
+    
+    // Add gamification points for playing word audio
+    addExperience(2, 'word_audio_play');
+    
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/german-tts`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: word, speed })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate audio');
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        const audio = new Audio(data.audioUrl);
+        await audio.play();
+      }
+    } catch (error) {
+      console.error('Error playing word audio:', error);
+    }
+  };
+
+  const togglePronunciationBreakdown = (messageId: string) => {
+    setShowPronunciationBreakdown(prev => ({
+      ...prev,
+      [messageId]: !prev[messageId]
+    }));
+  };
 
   const toggleTranslation = (messageId: string) => {
     const isCurrentlyShowing = showTranslation[messageId];
@@ -4107,6 +4240,9 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     // Reset comprehensive analysis
     setComprehensiveAnalysis({});
     
+    // Reset pronunciation-related states
+    setPhoneticBreakdowns({});
+    setShowPronunciationBreakdown({});
     
     // Reset recording states
     setShowLanguageMenu(false);
@@ -4800,6 +4936,130 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                         </div>
                       )}
 
+                      {/* Pronunciation Breakdown for Assistant Messages */}
+                      {message.role === 'assistant' && (
+                        <div className="mt-3">
+                          {(() => {
+                            const wordCount = message.content.split(' ').length;
+                            const shouldAutoShow = wordCount <= 5;
+                            const isShowing = showPronunciationBreakdown[message.id];
+                            const phoneticData = phoneticBreakdowns[message.id];
+                            
+                            return (
+                              <div>
+                                {!phoneticData && (
+                                  <button
+                                    onClick={async (e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      console.log('🖱️ Pronunciation guide button clicked!');
+                                      console.log('📝 Message content:', message.content);
+                                      console.log('🆔 Message ID:', message.id);
+                                      console.log('🎭 Message role:', message.role);
+                                      console.log('🔧 Toolbar states before:', {
+                                        activeTab: toolbarActiveTab,
+                                        showToolbar,
+                                        collapsed: toolbarCollapsed
+                                      });
+                                      
+                                      // Force toolbar to show
+                                      setShowToolbar(true);
+                                      setToolbarCollapsed(false);
+                                      setToolbarActiveTab('pronunciation');
+                                      
+                                      // Set the active help button for proper message tracking
+                                      setActiveHelpButton(message.id);
+                                      
+                                      // Get phonetic breakdown and wait for it to complete
+                                      await getPhoneticBreakdown(message.content, message.id);
+                                      
+                                      // Auto-show the pronunciation breakdown in the chat area
+                                      setShowPronunciationBreakdown(prev => ({
+                                        ...prev,
+                                        [message.id]: true
+                                      }));
+                                      
+                                      console.log('🔧 Toolbar states after:', {
+                                        activeTab: 'pronunciation',
+                                        showToolbar: true,
+                                        collapsed: false
+                                      });
+                                      console.log('✅ Pronunciation guide fully loaded and displayed');
+                                    }}
+                                    className="text-xs text-blue-600 hover:text-blue-800 underline cursor-pointer"
+                                    style={{ pointerEvents: 'auto' }}
+                                  >
+                                    Get pronunciation guide
+                                  </button>
+                                )}
+                                
+                                {phoneticData && (
+                                  <div className="space-y-2">
+                                    {!shouldAutoShow && !isShowing && (
+                                      <button
+                                        onClick={() => togglePronunciationBreakdown(message.id)}
+                                        className="text-xs text-blue-600 hover:text-blue-800 underline"
+                                      >
+                                        Show pronunciation breakdown
+                                      </button>
+                                    )}
+                                    
+                                    {(shouldAutoShow || isShowing) && (
+                                      <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs font-medium text-gray-700">Pronunciation Guide</span>
+                                          {!shouldAutoShow && (
+                                            <button
+                                              onClick={() => togglePronunciationBreakdown(message.id)}
+                                              className="text-xs text-gray-500 hover:text-gray-700"
+                                            >
+                                              Hide
+                                            </button>
+                                          )}
+                                        </div>
+                                        <div className="space-y-1">
+                                          {phoneticData.map((word: {original: string, phonetic: string, transliteration: string, syllables: string[]}, index: number) => (
+                                            <div key={index} className="flex items-center space-x-2 text-xs">
+                                              <span className="font-medium text-gray-800">{word.original}</span>
+                                              <span className="text-gray-600">[{word.phonetic}]</span>
+                                              <span className="text-blue-600 italic">{word.transliteration}</span>
+                                              <div className="flex items-center space-x-1">
+                                                <button
+                                                  onClick={() => playWordAudio(word.original)}
+                                                  className="p-1 hover:bg-gray-200 rounded"
+                                                  title="Play pronunciation"
+                                                >
+                                                  <Volume2 className="h-3 w-3 text-gray-500" />
+                                                </button>
+                                                <div className="flex items-center space-x-1">
+                                                  <span className="text-xs text-gray-500">Speed:</span>
+                                                  <input
+                                                    type="range"
+                                                    min="0.5"
+                                                    max="2.0"
+                                                    step="0.1"
+                                                    value={getWordSpeed(word.original)}
+                                                    onChange={(e) => {
+                                                      const speed = parseFloat(e.target.value);
+                                                      setWordSpeed(word.original, speed);
+                                                    }}
+                                                    className="w-16 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                                                  />
+                                                  <span className="text-xs text-gray-500 w-8">{getWordSpeed(word.original).toFixed(1)}x</span>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
                   </div>
                 </div>
 
@@ -5077,6 +5337,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     newVocabItems={newVocabItems}
                     persistentVocab={persistentVocab}
                     lastGermanVoiceMessage={lastGermanVoiceMessage}
+                    phoneticBreakdowns={phoneticBreakdowns}
+                    onPlayWordAudio={playWordAudio}
+                    globalPlaybackSpeed={globalPlaybackSpeed}
+                    onSpeedChange={setGlobalPlaybackSpeed}
                     onAddExperience={addExperience}
                     onUpdatePersistentVocab={(newVocab) => {
                       console.log('📚 === DASHBOARD ONUPDATE PERSISTENT VOCAB CALLED ===');
