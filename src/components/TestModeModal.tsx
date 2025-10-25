@@ -11,6 +11,12 @@ interface TestModeModalProps {
   words: WordDetails[];
   onClose: () => void;
   onReturnToFlashcards: (incorrectWords?: WordDetails[]) => void;
+  onTestComplete?: (results: {
+    total: number;
+    correct: number;
+    incorrectWords: string[];
+    percentage: number;
+  }) => void;
 }
 
 interface Question {
@@ -22,7 +28,8 @@ interface Question {
 const TestModeModal: React.FC<TestModeModalProps> = ({
   words,
   onClose,
-  onReturnToFlashcards
+  onReturnToFlashcards,
+  onTestComplete
 }) => {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -42,19 +49,25 @@ const TestModeModal: React.FC<TestModeModalProps> = ({
 
   const generateQuestions = () => {
     const newQuestions: Question[] = words.map(word => {
-      // Get incorrect options from other words
+      // Get incorrect options from other words (ensure unique meanings)
       const otherMeanings = words
-        .filter(w => w.word !== word.word)
+        .filter(w => w.word !== word.word && w.meaning !== word.meaning)
         .map(w => w.meaning);
       
+      // Remove duplicates from other meanings
+      const uniqueOtherMeanings = Array.from(new Set(otherMeanings));
+      
       // Shuffle and take 3 incorrect options
-      const shuffledIncorrect = otherMeanings.sort(() => Math.random() - 0.5).slice(0, 3);
+      const shuffledIncorrect = uniqueOtherMeanings.sort(() => Math.random() - 0.5).slice(0, 3);
       
       // Combine correct answer with incorrect options
       const allOptions = [word.meaning, ...shuffledIncorrect];
       
+      // Ensure all options are unique (in case of any duplicates)
+      const uniqueOptions = Array.from(new Set(allOptions));
+      
       // Shuffle all options
-      const shuffledOptions = allOptions.sort(() => Math.random() - 0.5);
+      const shuffledOptions = uniqueOptions.sort(() => Math.random() - 0.5);
 
       return {
         word: word.word,
@@ -119,15 +132,28 @@ const TestModeModal: React.FC<TestModeModalProps> = ({
         
         // Calculate incorrect words for review
         const wrongWords: WordDetails[] = [];
+        const incorrectWordNames: string[] = [];
         newCorrect.forEach((isCorrect, index) => {
           if (!isCorrect && questions[index]) {
             const word = words.find(w => w.word === questions[index].word);
             if (word) {
               wrongWords.push(word);
+              incorrectWordNames.push(word.word);
             }
           }
         });
         setIncorrectWords(wrongWords);
+        
+        // Call onTestComplete callback to track test results
+        if (onTestComplete) {
+          onTestComplete({
+            total,
+            correct,
+            incorrectWords: incorrectWordNames,
+            percentage
+          });
+          console.log('📊 Test results sent to Dashboard');
+        }
         console.log('❌ Incorrect words for review:', wrongWords);
         
         // Save score to localStorage with timestamp

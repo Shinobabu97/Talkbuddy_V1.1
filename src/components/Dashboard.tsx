@@ -28,6 +28,9 @@ import OnboardingFlow from './OnboardingFlow';
 import ProfilePictureModal from './ProfilePictureModal';
 import Toolbar from './Toolbar';
 import VocabularyBuilderModal from './VocabularyBuilderModal';
+import ConversationSummaryModal from './ConversationSummaryModal';
+import { SessionData } from '../types/sessionData';
+import { generateConversationSummary, ConversationSummary } from '../utils/summaryGenerator';
 
 interface DashboardProps {
   user: AuthUser;
@@ -130,6 +133,22 @@ export default function Dashboard({ user }: DashboardProps) {
   const [showLevelUp, setShowLevelUp] = React.useState(false);
   const [showAchievement, setShowAchievement] = React.useState<string | null>(null);
   const [recentAchievements, setRecentAchievements] = React.useState<string[]>([]);
+
+  // 📊 SESSION TRACKING STATE
+  const [sessionData, setSessionData] = useState<SessionData>({
+    sessionId: `session-${Date.now()}`,
+    startTime: new Date().toISOString(),
+    wordsLearned: [],
+    wordsDeleted: [],
+    vocabularyTests: [],
+    pronunciationAttempts: [],
+    grammarMistakes: [],
+    correctResponses: 0,
+    totalMessages: 0
+  });
+
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [conversationSummary, setConversationSummary] = useState<ConversationSummary | null>(null);
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [contextLevel, setContextLevel] = useState('Professional');
   const [difficultyLevel, setDifficultyLevel] = useState('Intermediate');
@@ -2173,6 +2192,13 @@ export default function Dashboard({ user }: DashboardProps) {
       return updated;
     });
     
+    // Track vocabulary addition in session data
+    setSessionData(prev => ({
+      ...prev,
+      wordsLearned: [...prev.wordsLearned, word]
+    }));
+    console.log('📊 Session data updated: word added to wordsLearned');
+    
     // Also add to new vocab items for Toolbar processing (when toolbar is open) - check for duplicates
     console.log('📚 === ADDING TO NEW VOCAB ITEMS FOR TOOLBAR ===');
     setNewVocabItems(prev => {
@@ -2208,6 +2234,19 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('📚 === DASHBOARD HANDLE ADD TO VOCAB COMPLETED ===');
   };
 
+  // Handle pronunciation completion - track sentence pronunciation scores
+  const handlePronunciationComplete = (score: number, word: string) => {
+    setSessionData(prev => ({
+      ...prev,
+      pronunciationAttempts: [...prev.pronunciationAttempts, {
+        word: word,
+        score: score,
+        timestamp: new Date().toISOString(),
+        isSuccess: score >= 70
+      }]
+    }));
+    console.log('📊 Session data updated: pronunciation attempt added', { word, score });
+  };
 
   // Handle word selection in sentence - no API calls in modal
   const toggleWordSelection = (word: string) => {
@@ -4220,15 +4259,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     setSidebarCollapsed(false);
   };
 
-  // Reset all states when ending conversation
-  const resetConversationState = () => {
-    // Increment conversations completed
-    setPlayerStats(prev => ({
-      ...prev,
-      conversationsCompleted: prev.conversationsCompleted + 1
-    }));
-    console.log('🎯 Conversations completed incremented');
-    
+  // Helper function to reset all conversation states (used by both end and new conversation)
+  const resetAllConversationStates = () => {
     // Reset conversation states
     setSelectedConversation(null);
     setChatMessages([]);
@@ -4297,6 +4329,47 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     // Reset UI states
     setSidebarCollapsed(false);
     setCurrentView('dashboard');
+    
+    // Reset session data for new conversation
+    setSessionData({
+      sessionId: `session-${Date.now()}`,
+      startTime: new Date().toISOString(),
+      wordsLearned: [],
+      wordsDeleted: [],
+      vocabularyTests: [],
+      pronunciationAttempts: [],
+      grammarMistakes: [],
+      correctResponses: 0,
+      totalMessages: 0
+    });
+    console.log('📊 Session data reset for new conversation');
+  };
+
+  // End conversation - shows summary modal
+  const endConversation = () => {
+    // Generate and show summary before resetting
+    const summary = generateConversationSummary(sessionData);
+    setConversationSummary(summary);
+    setShowSummaryModal(true);
+    console.log('📊 Conversation summary generated and modal shown');
+    
+    // Increment conversations completed
+    setPlayerStats(prev => ({
+      ...prev,
+      conversationsCompleted: prev.conversationsCompleted + 1
+    }));
+    console.log('🎯 Conversations completed incremented');
+    
+    // Reset all states
+    resetAllConversationStates();
+  };
+
+  // Start new conversation - does NOT show summary modal
+  const resetConversationState = () => {
+    console.log('🆕 Starting new conversation without summary');
+    
+    // Just reset all states without showing summary
+    resetAllConversationStates();
   };
 
   const handleLogout = async () => {
@@ -4768,6 +4841,13 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           onUpdatePersistentVocab={(newVocab) => {
             setPersistentVocab(newVocab);
           }}
+          onTestComplete={(results) => {
+            setSessionData(prev => ({
+              ...prev,
+              vocabularyTests: [...prev.vocabularyTests, results]
+            }));
+            console.log('📊 Session data updated: test results added');
+          }}
         />
       )}
 
@@ -4844,7 +4924,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     <p className="text-xs text-gray-400">Native Speaker</p>
                   </div>
                   <button 
-                    onClick={resetConversationState}
+                    onClick={endConversation}
                     className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors"
                   >
                     End Conversation
@@ -5398,13 +5478,23 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     globalPlaybackSpeed={globalPlaybackSpeed}
                     onSpeedChange={setGlobalPlaybackSpeed}
                     onAddExperience={addExperience}
-                    onWordLearned={() => {
+                    onWordLearned={(word?: string) => {
                       setPlayerStats(prev => ({
                         ...prev,
                         wordsLearned: prev.wordsLearned + 1
                       }));
                       console.log('🎯 Words learned incremented from Dashboard');
+                      
+                      // Track deleted word as learned in session data
+                      if (word) {
+                        setSessionData(prev => ({
+                          ...prev,
+                          wordsDeleted: [...prev.wordsDeleted, word]
+                        }));
+                        console.log('📊 Session data updated: word added to wordsDeleted');
+                      }
                     }}
+                    onPronunciationComplete={handlePronunciationComplete}
                     onUpdatePersistentVocab={(newVocab) => {
                       console.log('📚 === DASHBOARD ONUPDATE PERSISTENT VOCAB CALLED ===');
                       console.log('New vocab received:', newVocab);
@@ -6081,6 +6171,18 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             </button>
           </div>
         </div>
+      )}
+
+      {/* Conversation Summary Modal */}
+      {showSummaryModal && conversationSummary && (
+        <ConversationSummaryModal
+          isOpen={showSummaryModal}
+          onClose={() => {
+            setShowSummaryModal(false);
+            setConversationSummary(null);
+          }}
+          summary={conversationSummary}
+        />
       )}
     </div>
   );

@@ -351,8 +351,9 @@ interface ToolbarProps {
   globalPlaybackSpeed?: number;
   onSpeedChange?: (speed: number) => void;
   onAddExperience?: (amount: number, source: string) => void;
-  onWordLearned?: () => void;
+  onWordLearned?: (word?: string) => void;
   lastGermanVoiceMessage?: any;
+  onPronunciationComplete?: (score: number, word: string) => void;
 }
 
 interface VocabItem {
@@ -425,7 +426,8 @@ export default function Toolbar({
   onSpeedChange,
   onAddExperience,
   onWordLearned,
-  lastGermanVoiceMessage
+  lastGermanVoiceMessage,
+  onPronunciationComplete
 }: ToolbarProps) {
   const [internalActiveTab, setInternalActiveTab] = useState<'vocab' | 'explain' | 'pronunciation'>('explain');
   
@@ -544,7 +546,7 @@ export default function Toolbar({
     
     // Increment words learned counter
     if (onWordLearned) {
-      onWordLearned();
+      onWordLearned(word);
       console.log('🎯 Words learned incremented');
     }
   };
@@ -1552,6 +1554,12 @@ export default function Toolbar({
           timestamp: Date.now()
         });
         console.log('🔄 Forced re-render with new overall score:', analysisData.overallScore);
+        
+        // Track pronunciation score in session data
+        if (onPronunciationComplete && analysisData.overallScore) {
+          onPronunciationComplete(analysisData.overallScore, currentMessage || 'sentence');
+          console.log('📊 Pronunciation score sent to Dashboard:', analysisData.overallScore);
+        }
       }, 100);
       
     } catch (error) {
@@ -2230,6 +2238,12 @@ export default function Toolbar({
         const pointsEarned = calculatePoints(sentenceAnalysis.overallScore, true);
       addPoints(pointsEarned);
         console.log(`⭐ Earned ${pointsEarned} points for sentence analysis (score: ${sentenceAnalysis.overallScore})`);
+      
+      // Track pronunciation in session data
+      if (onPronunciationComplete) {
+        onPronunciationComplete(sentenceAnalysis.overallScore, currentMessage || 'sentence');
+        console.log('📊 Pronunciation score sent to Dashboard:', sentenceAnalysis.overallScore);
+      }
       
       // Record progress
         recordProgress(sentenceAnalysis.overallScore, (currentMessage || '').split(' ').length, true);

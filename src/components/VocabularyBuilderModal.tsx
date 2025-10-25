@@ -10,6 +10,14 @@ interface VocabularyBuilderModalProps {
   persistentVocab: Array<{word: string, meaning: string, context: string}>;
   onPlayAudio: (word: string) => void;
   onUpdatePersistentVocab?: (newVocab: Array<{word: string, meaning: string, context: string}>) => void;
+  onTestComplete?: (results: {
+    testId: string;
+    timestamp: string;
+    totalWords: number;
+    correctWords: number;
+    incorrectWords: string[];
+    score: number;
+  }) => void;
 }
 
 interface TopicWord {
@@ -200,7 +208,8 @@ const VocabularyBuilderModal: React.FC<VocabularyBuilderModalProps> = ({
   myVocabWords,
   persistentVocab,
   onPlayAudio,
-  onUpdatePersistentVocab
+  onUpdatePersistentVocab,
+  onTestComplete
 }) => {
   const [activeTab, setActiveTab] = useState<'my-vocab' | 'by-topic'>('my-vocab');
   const [showFlashcard, setShowFlashcard] = useState(false);
@@ -801,6 +810,19 @@ const VocabularyBuilderModal: React.FC<VocabularyBuilderModalProps> = ({
             words={myVocabDetails}
             onClose={() => setShowTestMode(false)}
             onReturnToFlashcards={handleReturnToFlashcards}
+            onTestComplete={(results) => {
+              // Pass results back to Dashboard
+              if (onTestComplete) {
+                onTestComplete({
+                  testId: `test-${Date.now()}`,
+                  timestamp: new Date().toISOString(),
+                  totalWords: results.total,
+                  correctWords: results.correct,
+                  incorrectWords: results.incorrectWords,
+                  score: results.percentage
+                });
+              }
+            }}
           />
         </div>
       )}
