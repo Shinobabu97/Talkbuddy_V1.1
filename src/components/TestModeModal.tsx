@@ -303,7 +303,7 @@ const TestModeModal: React.FC<TestModeModalProps> = ({
                 onClick={onClose}
                 className="flex-1 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg hover:from-green-600 hover:to-emerald-700 font-semibold transition-all shadow-md hover:shadow-lg"
               >
-                Return to Chat
+                Return to Vocabulary Builder
               </button>
             </div>
           ) : (
@@ -311,7 +311,7 @@ const TestModeModal: React.FC<TestModeModalProps> = ({
               onClick={onClose}
               className="w-full px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-indigo-700 transition-all duration-200 shadow-md hover:shadow-lg"
             >
-              Return to Chat
+              Return to Vocabulary Builder
             </button>
           )}
         </div>

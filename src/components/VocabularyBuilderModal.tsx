@@ -542,6 +542,34 @@ const VocabularyBuilderModal: React.FC<VocabularyBuilderModalProps> = ({
           </button>
         </div>
 
+        {/* Test Vocabulary Button - Only show on My Vocab tab */}
+        {activeTab === 'my-vocab' && (
+          <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex flex-col items-center">
+            <button
+              onClick={() => {
+                if (myVocabWords.length === 0) {
+                  alert('Please add some words to My Vocabulary first!');
+                  return;
+                }
+                setShowTestMode(true);
+              }}
+              disabled={myVocabWords.length === 0}
+              className={`px-8 py-2.5 rounded-lg font-semibold transition-all duration-200 shadow-sm ${
+                myVocabWords.length === 0
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-green-500 text-white hover:bg-green-600 hover:shadow-md'
+              }`}
+            >
+              Test My Vocabulary ({myVocabWords.length} words)
+            </button>
+            
+            {/* Instructional text */}
+            <p className="text-xs text-gray-600 mt-3 text-center">
+              Practice vocabulary using flashcards by clicking on any word below
+            </p>
+          </div>
+        )}
+
         {/* Tab Content */}
         <div className="flex-1 overflow-y-auto p-6">
           {activeTab === 'my-vocab' ? (
