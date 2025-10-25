@@ -3,11 +3,7 @@
 // Kept for reference only.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { corsHeaders } from "../_shared/cors.ts"
 
 interface PhonemeScore {
   phoneme: string;
@@ -150,17 +146,19 @@ function calculateWordGOP(word: string): WordScore {
   if (hasR) baseScore -= 10;
   if (isLong) baseScore -= 5;
   
-  // Add some realistic variation (±10 points)
-  const variation = (Math.random() - 0.5) * 20;
+  // Add deterministic variation based on word characteristics
+  const wordHash = word.split('').reduce((hash, char) => hash + char.charCodeAt(0), 0);
+  const variation = ((wordHash % 21) - 10); // -10 to +10 range
   baseScore = Math.max(0, Math.min(100, baseScore + variation));
   
   // Generate phoneme-level scores
   for (const phoneme of phonemes) {
     const rule = PRONUNCIATION_RULES[phoneme];
     if (rule) {
-      // Simulate actual vs expected phoneme
-      const isCorrect = Math.random() > 0.3; // 70% chance of correct pronunciation
-      const actual = isCorrect ? rule.correct : rule.commonMistakes[Math.floor(Math.random() * rule.commonMistakes.length)];
+      // Use deterministic phoneme accuracy based on word characteristics
+      const phonemeHash = phoneme.split('').reduce((hash, char) => hash + char.charCodeAt(0), 0);
+      const isCorrect = (phonemeHash % 10) > 2; // 80% chance of correct pronunciation
+      const actual = isCorrect ? rule.correct : rule.commonMistakes[phonemeHash % rule.commonMistakes.length];
       const expected = rule.correct;
       
       const phonemeScore = calculatePhonemeGOP(phoneme, expected, actual);

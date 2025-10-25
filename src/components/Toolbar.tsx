@@ -181,7 +181,9 @@ const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                // Stop recording functionality removed
+                if (onStopRecording) {
+                  onStopRecording();
+                }
               }}
               className="flex items-center space-x-2 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 cursor-pointer"
               style={{ pointerEvents: 'auto' }}
@@ -351,7 +353,8 @@ interface ToolbarProps {
   globalPlaybackSpeed?: number;
   onSpeedChange?: (speed: number) => void;
   onAddExperience?: (amount: number, source: string) => void;
-  lastGermanVoiceMessage?: any;
+  germanVoiceMessages?: Map<string, any>;
+  selectedMessageForPronunciation?: string | null;
 }
 
 interface VocabItem {
@@ -423,13 +426,19 @@ export default function Toolbar({
   globalPlaybackSpeed = 1.0,
   onSpeedChange,
   onAddExperience,
-  lastGermanVoiceMessage
+  germanVoiceMessages = new Map(),
+  selectedMessageForPronunciation = null
 }: ToolbarProps) {
   const [internalActiveTab, setInternalActiveTab] = useState<'vocab' | 'explain' | 'pronunciation'>('explain');
   
   // Use external activeTab if provided, otherwise use internal state
   const activeTab = externalActiveTab || internalActiveTab;
   const setActiveTab = onTabChange || setInternalActiveTab;
+
+  // Get the currently selected German voice message for pronunciation analysis
+  const currentGermanVoiceMessage = selectedMessageForPronunciation 
+    ? germanVoiceMessages.get(selectedMessageForPronunciation) 
+    : null;
   // Use persistent vocabulary from props instead of local state
   const vocabItems = persistentVocab.map(item => ({
     word: item.word,
@@ -585,6 +594,14 @@ export default function Toolbar({
       loadGrammarExplanation(currentMessage);
     }
   }, [activeTab, currentMessage, grammarExplanation]);
+
+  // Auto-load speaking tips when explain tab is active
+  useEffect(() => {
+    if (activeTab === 'explain' && currentMessage && !speakingTips) {
+      console.log('Auto-loading speaking tips for explain tab');
+      loadSpeakingTips(currentMessage);
+    }
+  }, [activeTab, currentMessage, speakingTips]);
 
   // Auto-update analysis results when they become available
   useEffect(() => {
@@ -771,9 +788,9 @@ export default function Toolbar({
   };
 
   const analyzePronunciation = async () => {
-    if (!lastGermanVoiceMessage) {
-      console.log('No German voice message available for pronunciation analysis');
-      alert('No German voice message available. Please record a German voice message first.');
+    if (!currentGermanVoiceMessage) {
+      console.log('No German voice message selected for pronunciation analysis');
+      alert('No German voice message selected. Please click "Analyze" on a German voice message first.');
       return;
     }
 
@@ -795,9 +812,9 @@ export default function Toolbar({
     setIsAnalyzingPronunciation(true);
     try {
       console.log('🎤 === ANALYZING PRONUNCIATION WITH REAL GOP API ===');
-      console.log('Message:', lastGermanVoiceMessage);
+      console.log('Message:', currentGermanVoiceMessage);
 
-      const transcription = lastGermanVoiceMessage.transcription;
+      const transcription = currentGermanVoiceMessage.transcription;
       const words = transcription.split(' ').filter((word: string) => word.length > 0);
       
       console.log('🎤 === CALLING REAL GOP API ===');
@@ -806,8 +823,8 @@ export default function Toolbar({
       // Debug API call info
       console.log('API Call Debug Info:', {
         url: `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pronunciation-analysis`,
-        hasAudioData: !!lastGermanVoiceMessage.audioData,
-        audioDataLength: lastGermanVoiceMessage.audioData?.length,
+        hasAudioData: !!currentGermanVoiceMessage.audioData,
+        audioDataLength: currentGermanVoiceMessage.audioData?.length,
         transcription: transcription,
         transcriptionLength: transcription?.length
       });
@@ -820,7 +837,7 @@ export default function Toolbar({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          audioData: lastGermanVoiceMessage.audioData,
+          audioData: currentGermanVoiceMessage.audioData,
           transcription: transcription
         })
       });
@@ -926,21 +943,136 @@ export default function Toolbar({
 
   const analyzeIndividualWordPronunciation = async (word: string, audioBlob: Blob) => {
     try {
-      console.log('🎤 === ANALYZING INDIVIDUAL WORD PRONUNCIATION LOCALLY ===');
+      console.log('🎤 === ANALYZING INDIVIDUAL WORD PRONUNCIATION WITH AUDIO ===');
       console.log('Word:', word);
+      console.log('Audio blob size:', audioBlob.size, 'bytes');
       
-      // Use local GOP algorithm for individual word
+      // Check for very small audio files (likely silence or no audio)
+      if (audioBlob.size < 1000) {
+        console.log('❌ Audio blob too small, likely no audio recorded:', audioBlob.size, 'bytes');
+        
+        // Update with 0 score for no audio
+        if (pronunciationAnalysis) {
+          const updatedWords = pronunciationAnalysis.words.map((w: any) => 
+            w.word === word ? { 
+              ...w, 
+              score: 0,
+              feedback: 'No audio recorded. Please speak clearly and try again.',
+              needsPractice: true,
+              difficulty: 'hard',
+              syllableAnalysis: []
+            } : w
+          );
+          
+          const newOverallScore = Math.round(updatedWords.reduce((sum: number, w: any) => sum + w.score, 0) / updatedWords.length);
+          
+          setPronunciationAnalysis({
+            ...pronunciationAnalysis,
+            words: updatedWords,
+            overallScore: newOverallScore,
+            hasPronunciationErrors: newOverallScore < 70
+          });
+        }
+        return;
+      }
+      
+      // Convert audio to base64 for analysis
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      let binaryString = '';
+      const chunkSize = 8192;
+      
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.slice(i, i + chunkSize);
+        binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      
+      const base64Audio = btoa(binaryString);
+      
+      // First transcribe the audio
+      const transcriptionResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whisper`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audioData: base64Audio,
+          language: 'de'
+        })
+      });
+      
+      if (!transcriptionResponse.ok) {
+        throw new Error(`Transcription failed: ${transcriptionResponse.statusText}`);
+      }
+      
+      const transcriptionData = await transcriptionResponse.json();
+      console.log('📝 Word transcription:', transcriptionData.transcription);
+      
+      // Check if transcription matches the expected word
+      const transcribedWord = transcriptionData.transcription.trim().toLowerCase();
+      const expectedWord = word.toLowerCase();
+      
+      // If transcription doesn't match the word, give low score
+      if (!transcribedWord.includes(expectedWord) && !expectedWord.includes(transcribedWord)) {
+        console.log('❌ Transcription does not match expected word:', transcribedWord, 'vs', expectedWord);
+        
+        if (pronunciationAnalysis) {
+          const updatedWords = pronunciationAnalysis.words.map((w: any) => 
+            w.word === word ? { 
+              ...w, 
+              score: 0,
+              feedback: 'Please speak the correct word clearly.',
+              needsPractice: true,
+              difficulty: 'hard',
+              syllableAnalysis: []
+            } : w
+          );
+          
+          const newOverallScore = Math.round(updatedWords.reduce((sum: number, w: any) => sum + w.score, 0) / updatedWords.length);
+          
+          setPronunciationAnalysis({
+            ...pronunciationAnalysis,
+            words: updatedWords,
+            overallScore: newOverallScore,
+            hasPronunciationErrors: newOverallScore < 70
+          });
+        }
+        return;
+      }
+      
+      // Use local GOP algorithm but with audio-based scoring
       const wordScore = calculateWordGOP(word);
-      console.log('✅ Individual word analysis completed locally:', wordScore);
+      
+      // Adjust score based on audio quality (file size indicates audio quality)
+      let audioQualityMultiplier = 1.0;
+      if (audioBlob.size < 5000) {
+        audioQualityMultiplier = 0.3; // Very small audio
+      } else if (audioBlob.size < 10000) {
+        audioQualityMultiplier = 0.6; // Small audio
+      } else if (audioBlob.size > 50000) {
+        audioQualityMultiplier = 1.2; // Good quality audio
+      }
+      
+      // Apply audio quality adjustment
+      const adjustedScore = Math.round(wordScore.score * audioQualityMultiplier);
+      const finalScore = Math.max(0, Math.min(100, adjustedScore));
+      
+      console.log('✅ Individual word analysis completed with audio adjustment:', {
+        originalScore: wordScore.score,
+        audioQualityMultiplier,
+        finalScore
+      });
       
       // Update the pronunciation analysis with new word score
       if (pronunciationAnalysis) {
         const updatedWords = pronunciationAnalysis.words.map((w: any) => 
           w.word === word ? { 
             ...w, 
-            score: wordScore.score,
-            feedback: wordScore.feedback,
-            needsPractice: wordScore.score < 70,
+            score: finalScore,
+            feedback: finalScore < 70 ? 'Practice this word more clearly.' : wordScore.feedback,
+            needsPractice: finalScore < 70,
             difficulty: wordScore.difficulty,
             syllableAnalysis: wordScore.phonemeScores.map((phoneme: any) => ({
               syllable: phoneme.phoneme,
@@ -953,7 +1085,7 @@ export default function Toolbar({
         );
         
         // Recalculate overall score
-        const newOverallScore = Math.round(updatedWords.reduce((sum: number, w: any) => sum + w.score, 0) / updatedWords.length);
+        const newOverallScore = updatedWords.every((w: any) => w.score === 0) ? 0 : Math.round(updatedWords.reduce((sum: number, w: any) => sum + w.score, 0) / updatedWords.length);
         
         setPronunciationAnalysis({
           ...pronunciationAnalysis,
@@ -962,7 +1094,7 @@ export default function Toolbar({
           hasPronunciationErrors: newOverallScore < 70
         });
         
-        console.log('✅ Updated pronunciation analysis with new score:', wordScore.score);
+        console.log('✅ Updated pronunciation analysis with new score:', finalScore);
       }
     } catch (error) {
       console.error('❌ Error in word pronunciation analysis:', error);
@@ -1388,7 +1520,7 @@ export default function Toolbar({
         body: JSON.stringify({
           audioData: base64Audio,
           transcription: transcriptionData.transcription,
-          expectedTranscription: lastGermanVoiceMessage.transcription
+          expectedTranscription: currentGermanVoiceMessage?.transcription
         })
       });
       
@@ -2767,7 +2899,7 @@ export default function Toolbar({
                             return (
                               <div key={index} className="flex items-start space-x-2 mb-3">
                                 <Volume2 className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
-                                <span className="font-semibold text-purple-900">{line.replace('🇩🇪', '').trim()}</span>
+                                <span className="font-semibold text-purple-900">{line.replace('🇩🇪', '').replace(/^\d+\.\s*Title:\s*/, '').trim()}</span>
                               </div>
                             );
                           }
@@ -2796,6 +2928,28 @@ export default function Toolbar({
                                 <Target className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
                                 <span className="text-gray-700">{line.replace('🎯', '').trim()}</span>
                               </div>
+                            );
+                          }
+                          
+                          // Handle numbered lines (2. Tip:, 3. Examples:, 4. Context:, etc.)
+                          const numberMatch = line.match(/^(\d+\.\s*)(.*)/);
+                          if (numberMatch) {
+                            const cleanLine = numberMatch[2].trim();
+                            return (
+                              <p key={index} className="mb-2">
+                                {cleanLine}
+                              </p>
+                            );
+                          }
+                          
+                          // Handle **bold** emphasis markers
+                          if (line.includes('**')) {
+                            const processedLine = line.replace(/\*\*(.*?)\*\*/g, '<span class="bg-purple-100 text-purple-800 px-1 py-0.5 rounded font-medium">$1</span>');
+                            return (
+                              <p key={index} 
+                                 className="mb-2"
+                                 dangerouslySetInnerHTML={{ __html: processedLine }}
+                              />
                             );
                           }
                           
@@ -2833,22 +2987,36 @@ export default function Toolbar({
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <h4 className="font-semibold text-blue-900 mb-3">Analyze Your Pronunciation</h4>
               <p className="text-sm text-blue-700 mb-4">
-                Analyze the pronunciation of your most recent German voice message
+                Analyze the pronunciation of your selected German voice message
               </p>
               
-              {!lastGermanVoiceMessage ? (
+              {!currentGermanVoiceMessage ? (
                 <div className="text-center py-4">
                   <Volume2 className="h-8 w-8 text-gray-400 mx-auto mb-2" />
                   <p className="text-sm text-gray-600">
-                    Send a German voice message to analyze pronunciation
+                    Click "Analyze" on a German voice message to analyze pronunciation
                   </p>
                 </div>
               ) : (
                 <div className="space-y-3">
+                  {/* DEBUG: Add debugging before transcription display */}
+                  {(() => {
+                    console.log('🔍 === DEBUG: PRONUNCIATION ANALYSIS TRANSCRIPTION ===');
+                    console.log('selectedMessageForPronunciation:', selectedMessageForPronunciation);
+                    console.log('currentGermanVoiceMessage:', currentGermanVoiceMessage);
+                    console.log('germanVoiceMessages entries:', Array.from(germanVoiceMessages.entries()));
+                    console.log('germanVoiceMessages size:', germanVoiceMessages.size);
+                    console.log('germanVoiceMessages has selectedMessageForPronunciation:', germanVoiceMessages.has(selectedMessageForPronunciation || ''));
+                    if (selectedMessageForPronunciation) {
+                      console.log('germanVoiceMessages.get(selectedMessageForPronunciation):', germanVoiceMessages.get(selectedMessageForPronunciation));
+                    }
+                    return null;
+                  })()}
+                  
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-gray-700">Last German Message:</p>
-                      <p className="text-sm text-gray-600">"{lastGermanVoiceMessage.transcription}"</p>
+                      <p className="text-sm font-medium text-gray-700">Selected German Message:</p>
+                      <p className="text-sm text-gray-600">"{currentGermanVoiceMessage?.transcription || 'No transcription available'}"</p>
                     </div>
                     <div className="flex space-x-2">
                     <button
@@ -2876,7 +3044,7 @@ export default function Toolbar({
                     <div className="mt-4">
                       <PronunciationSentenceView
                         pronunciationData={pronunciationAnalysis}
-                        sentence={lastGermanVoiceMessage.transcription}
+                        sentence={currentGermanVoiceMessage?.transcription || ''}
                         onRepracticeWord={(word) => {
                           console.log('Repractice word:', word);
                           startWordRecording(word);
@@ -2891,7 +3059,7 @@ export default function Toolbar({
                         }}
                         onPlayCorrectPronunciation={() => {
                           console.log('Play correct pronunciation');
-                          germanTTS.speak(lastGermanVoiceMessage.transcription);
+                          germanTTS.speak(currentGermanVoiceMessage?.transcription || '');
                         }}
                         isRecordingWord={isRecordingWord}
                         practicingWord={practicingWord}
@@ -3204,7 +3372,7 @@ export default function Toolbar({
                             onPractice={practiceWord}
                             isRecording={isWordRecording && practicingWord === word.original}
                             onStartRecording={startRecording}
-                            onStopRecording={stopRecording}
+                            onStopRecording={stopWordRecording}
                             pronunciationScore={individualWordAnalysis[word.original]?.score || 0}
                             onAnalyzeWord={analyzeIndividualWord}
                             isAnalyzing={analyzingWord === word.original}

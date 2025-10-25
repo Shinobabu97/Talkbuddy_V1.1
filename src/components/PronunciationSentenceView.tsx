@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Play, Mic, Volume2, Target, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
 import { PronunciationData, PronunciationWord } from '../lib/analysisStorage';
 import { germanTTS } from '../lib/tts';
@@ -253,7 +253,7 @@ const PronunciationSentenceView: React.FC<PronunciationSentenceViewProps> = ({
     if (selectedWord && onRepracticeWord) {
       onRepracticeWord(selectedWord.word);
     }
-    setSelectedWord(null);
+    // Keep modal open during recording - don't set selectedWord to null
   };
 
   const handleRepracticeSentence = () => {
@@ -288,6 +288,18 @@ const PronunciationSentenceView: React.FC<PronunciationSentenceViewProps> = ({
 
   // Split sentence into words for display
   const words = sentence.split(' ').filter(word => word.length > 0);
+
+  // Update selectedWord when pronunciationData changes (for modal refresh)
+  useEffect(() => {
+    if (selectedWord) {
+      const updatedWordData = pronunciationData.words.find(w => w.word === selectedWord.word);
+      if (updatedWordData) {
+        // Update with all latest data to ensure complete synchronization
+        // This ensures score, feedback, syllableAnalysis, and other properties are all current
+        setSelectedWord(updatedWordData);
+      }
+    }
+  }, [pronunciationData.words, selectedWord?.word]);
 
   return (
     <div className="bg-white border border-purple-200 rounded-lg p-4">
@@ -385,7 +397,7 @@ const PronunciationSentenceView: React.FC<PronunciationSentenceViewProps> = ({
               onRepractice={handleRepracticeWord}
               onClose={() => setSelectedWord(null)}
               isRecording={isRecordingWord && practicingWord === selectedWord.word}
-              onStopRecording={onStopWordRecording}
+              onStopWordRecording={onStopWordRecording}
             />
           </div>
         )}

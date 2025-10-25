@@ -1,10 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS'
-}
+import { corsHeaders } from "../_shared/cors.ts"
 
 interface WhisperWord {
   word: string;
@@ -38,15 +33,117 @@ serve(async (req) => {
     console.log('Transcription:', transcription)
 
     // Extract words from transcription
-    const words = transcription.split(' ').filter(word => word.length > 0);
+    const transcriptionWords = transcription.split(' ').filter(word => word.length > 0);
+    
+    // Check for empty or gibberish input - return 0 score
+    if (!transcription || transcription.trim().length === 0 || transcriptionWords.length === 0) {
+      console.log('❌ Empty or invalid transcription - returning 0 score');
+      return new Response(
+        JSON.stringify({
+          hasPronunciationErrors: true,
+          words: [],
+          suggestions: ['Please speak clearly and try again.'],
+          overallScore: 0,
+          scoringBreakdown: {
+            vowelAccuracy: 0,
+            consonantAccuracy: 0,
+            rhythm: 0,
+            stress: 0
+          }
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        }
+      )
+    }
+    
+    // Check for gibberish patterns
+    const trimmedTranscription = transcription.trim();
+    const isGibberish = 
+      trimmedTranscription.length < 3 || // Too short
+      /^[aeiou]+$/i.test(trimmedTranscription) || // Only vowels
+      /^[bcdfghjklmnpqrstvwxyz]+$/i.test(trimmedTranscription) || // Only consonants
+      /^[^a-zA-ZäöüßÄÖÜ\s]+$/.test(trimmedTranscription) || // Only non-letters
+      /^(.)\1{3,}$/.test(trimmedTranscription) || // Repeated character 4+ times
+      (transcriptionWords.length > 2 && transcriptionWords.every(w => w.length <= 2)); // All words very short
+    
+    if (isGibberish) {
+      console.log('❌ Gibberish detected - returning 0 score:', trimmedTranscription);
+      return new Response(
+        JSON.stringify({
+          hasPronunciationErrors: true,
+          words: [],
+          suggestions: ['Please speak clearly and try again.'],
+          overallScore: 0,
+          scoringBreakdown: {
+            vowelAccuracy: 0,
+            consonantAccuracy: 0,
+            rhythm: 0,
+            stress: 0
+          }
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        }
+      )
+    }
     
     console.log('🎤 === IMPLEMENTING REAL GOP ALGORITHM ===');
-    console.log('Words to analyze:', words);
+    console.log('Words to analyze:', transcriptionWords);
 
     // Step 1: Re-transcribe with timing data using Whisper
     const audioBlob = new Blob([Uint8Array.from(atob(audioData), c => c.charCodeAt(0))], {
       type: 'audio/webm'
     });
+
+    // Check for very small audio files (likely silence or no audio)
+    if (audioBlob.size < 5000) { // Less than 5KB is likely silence/no audio
+      console.log('❌ Audio file too small - likely silence or no audio:', audioBlob.size, 'bytes');
+      return new Response(
+        JSON.stringify({
+          hasPronunciationErrors: true,
+          words: [],
+          suggestions: ['Please speak clearly and try again.'],
+          overallScore: 0,
+          scoringBreakdown: {
+            vowelAccuracy: 0,
+            consonantAccuracy: 0,
+            rhythm: 0,
+            stress: 0
+          }
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        }
+      )
+    }
+
+    // Additional check: if audio is suspiciously small for the expected transcription length
+    const expectedMinSize = transcriptionWords.length * 2000; // 2KB per word minimum
+    if (audioBlob.size < expectedMinSize) {
+      console.log('❌ Audio file too small for transcription length:', audioBlob.size, 'bytes, expected:', expectedMinSize);
+      return new Response(
+        JSON.stringify({
+          hasPronunciationErrors: true,
+          words: [],
+          suggestions: ['Please speak clearly and try again.'],
+          overallScore: 0,
+          scoringBreakdown: {
+            vowelAccuracy: 0,
+            consonantAccuracy: 0,
+            rhythm: 0,
+            stress: 0
+          }
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        }
+      )
+    }
 
     const formData = new FormData();
     formData.append('file', audioBlob, 'recording.webm');
@@ -79,6 +176,63 @@ serve(async (req) => {
 
     console.log('📊 Word timing data:', wordsWithTiming);
 
+    // Check if Whisper transcribed silence as valid words (suspicious transcription)
+    if (wordsWithTiming.length > 0) {
+      const whisperTranscription = whisperData.text || '';
+      const totalDuration = wordsWithTiming[wordsWithTiming.length - 1].end - wordsWithTiming[0].start;
+      const wordsPerSecond = wordsWithTiming.length / totalDuration;
+      
+      // If transcription has many words but very short duration, it's likely silence transcribed as words
+      if (wordsWithTiming.length > 3 && totalDuration < 1.0 && wordsPerSecond > 10) {
+        console.log('❌ Suspicious transcription detected - likely silence transcribed as words');
+        console.log('Words:', wordsWithTiming.length, 'Duration:', totalDuration, 'Words/sec:', wordsPerSecond);
+        console.log('Transcription:', whisperTranscription);
+        
+        return new Response(
+          JSON.stringify({
+            hasPronunciationErrors: true,
+            words: [],
+            suggestions: ['Please speak clearly and try again.'],
+            overallScore: 0,
+            scoringBreakdown: {
+              vowelAccuracy: 0,
+              consonantAccuracy: 0,
+              rhythm: 0,
+              stress: 0
+            }
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
+          }
+        )
+      }
+
+      // Additional check: if all words have very short durations (likely silence)
+      const avgWordDuration = totalDuration / wordsWithTiming.length;
+      if (avgWordDuration < 0.05) { // Less than 50ms per word average
+        console.log('❌ All words have very short durations - likely silence:', avgWordDuration, 'seconds per word');
+        return new Response(
+          JSON.stringify({
+            hasPronunciationErrors: true,
+            words: [],
+            suggestions: ['Please speak clearly and try again.'],
+            overallScore: 0,
+            scoringBreakdown: {
+              vowelAccuracy: 0,
+              consonantAccuracy: 0,
+              rhythm: 0,
+              stress: 0
+            }
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
+          }
+        )
+      }
+    }
+
     // German pronunciation rules for English speakers
     const PRONUNCIATION_RULES = {
       'ch': { difficulty: 'hard', commonMistakes: ['k', 'sh'], correct: 'ç' },
@@ -91,8 +245,44 @@ serve(async (req) => {
 
     // Step 2: Analyze each word using timing patterns and phoneme rules
     function analyzeWordPronunciation(wordData: WhisperWord, wordText: string) {
+      // Check for gibberish patterns - return 0 score if detected
+      const isGibberish = 
+        wordText.length < 2 || // Too short
+        /^[aeiou]+$/i.test(wordText) || // Only vowels
+        /^[bcdfghjklmnpqrstvwxyz]+$/i.test(wordText) || // Only consonants
+        /^[^a-zA-ZäöüßÄÖÜ]+$/.test(wordText) || // No German letters
+        /^(.)\1{2,}$/.test(wordText) || // Repeated character 3+ times
+        /^(ah|eh|oh|uh|mm|hmm|um|er|uhm)+$/i.test(wordText); // Hesitation sounds
+      
+      if (isGibberish) {
+        console.log('❌ Gibberish word detected:', wordText);
+        return {
+          word: wordText,
+          score: 0,
+          phonemeScores: [],
+          feedback: 'Please speak clearly and try again.',
+          difficulty: 'hard',
+          duration: wordData.end - wordData.start,
+          expectedDuration: wordText.length * 0.15
+        };
+      }
+      
       const duration = wordData.end - wordData.start;
       const expectedDuration = wordText.length * 0.15; // ~150ms per character baseline
+      
+      // Check for very short duration (likely silence or brief sound)
+      if (duration < 0.1) { // Less than 100ms
+        console.log('❌ Very short duration detected (likely silence):', wordText, duration);
+        return {
+          word: wordText,
+          score: 0,
+          phonemeScores: [],
+          feedback: 'Please speak clearly and try again.',
+          difficulty: 'hard',
+          duration: duration,
+          expectedDuration: expectedDuration
+        };
+      }
       
       // Detect pronunciation issues based on timing
       const hasUmlauts = /[äöü]/.test(wordText);
@@ -156,9 +346,10 @@ serve(async (req) => {
         });
       }
       
-      // Add variation based on audio characteristics (±5 points)
-      const audioVariation = (Math.random() - 0.5) * 10;
-      baseScore = Math.max(30, Math.min(100, baseScore + audioVariation));
+      // Add deterministic variation based on word characteristics (±5 points)
+      const wordHash = wordText.split('').reduce((hash, char) => hash + char.charCodeAt(0), 0);
+      const audioVariation = ((wordHash % 11) - 5); // -5 to +5 range (deterministic)
+      baseScore = Math.max(0, Math.min(100, baseScore + audioVariation));
       
       // Determine difficulty
       let difficulty: 'easy' | 'medium' | 'hard' = 'easy';
@@ -184,7 +375,7 @@ serve(async (req) => {
     }
 
     // Step 3: Process all words
-    const wordScores = words.map((word, index) => {
+    const wordScores = transcriptionWords.map((word, index) => {
       const timingData = wordsWithTiming[index];
       if (timingData) {
         return analyzeWordPronunciation(timingData, word);
@@ -194,7 +385,7 @@ serve(async (req) => {
       }
     });
 
-    const overallScore = Math.round(wordScores.reduce((sum, w) => sum + w.score, 0) / wordScores.length);
+    const overallScore = wordScores.every(w => w.score === 0) ? 0 : Math.round(wordScores.reduce((sum, w) => sum + w.score, 0) / wordScores.length);
     const hasErrors = overallScore < 70;
 
     // Generate suggestions

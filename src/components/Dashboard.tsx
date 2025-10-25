@@ -134,7 +134,8 @@ export default function Dashboard({ user }: DashboardProps) {
   const [difficultyLevel, setDifficultyLevel] = useState('Intermediate');
   const [currentConversationContextLocked, setCurrentConversationContextLocked] = useState(false);
   const [currentConversationDifficultyLocked, setCurrentConversationDifficultyLocked] = useState(false);
-  const [lastGermanVoiceMessage, setLastGermanVoiceMessage] = useState<any>(null);
+  const [germanVoiceMessages, setGermanVoiceMessages] = useState<Map<string, any>>(new Map());
+  const [selectedMessageForPronunciation, setSelectedMessageForPronunciation] = useState<string | null>(null);
   const [showContextDropdown, setShowContextDropdown] = useState(false);
   const [showDifficultyDropdown, setShowDifficultyDropdown] = useState(false);
   const [conversationInput, setConversationInput] = useState('');
@@ -149,6 +150,13 @@ export default function Dashboard({ user }: DashboardProps) {
   const [isModalRecording, setIsModalRecording] = useState(false);
   const [modalRecorder, setModalRecorder] = useState<MediaRecorder | null>(null);
   const [modalTriggerType, setModalTriggerType] = useState<'voice' | 'text' | null>(null);
+  
+  // Practice audio tracking for pronunciation analysis
+  const [practiceAudioMap, setPracticeAudioMap] = useState<Map<string, {
+    audioData: string;
+    transcription: string;
+    pendingMessageCreation: boolean;
+  }>>(new Map());
   
   // Debug component mount/unmount
   React.useEffect(() => {
@@ -2959,34 +2967,26 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             console.log('Modal detected language:', detectedLanguage);
             
             if (detectedLanguage === 'german') {
-              // User said it correctly in German - close modal and replace message
+              // User said it correctly in German - store practice audio temporarily
               console.log('✅ === MODAL PRACTICE SUCCESSFUL ===');
               
-              // Replace the original English message with the German transcription
-              if (mismatchMessageId) {
-                setChatMessages(prev => prev.map(msg =>
-                  msg.id === mismatchMessageId
-                    ? { ...msg, content: transcription, isAudio: true }
-                    : msg
-                ));
-                
-                // Store the German voice message for pronunciation analysis
-                setLastGermanVoiceMessage({
-                  transcription: transcription,
+              // Store practice audio temporarily for later linking to message
+              const practiceKey = `practice_${Date.now()}`;
+              setPracticeAudioMap(prev => {
+                const newMap = new Map(prev);
+                newMap.set(practiceKey, {
                   audioData: base64Data,
-                  messageId: mismatchMessageId
+                  transcription: transcription,
+                  pendingMessageCreation: true
                 });
-                
-                console.log('🎤 === STORED GERMAN VOICE MESSAGE FOR PRONUNCIATION ANALYSIS ===');
+                console.log('🔍 === STORED PRACTICE AUDIO TEMPORARILY ===');
+                console.log('Practice key:', practiceKey);
                 console.log('Transcription:', transcription);
-                console.log('Message ID:', mismatchMessageId);
                 console.log('Audio data length:', base64Data.length);
-                
-                // Process the German message normally
-                await processTextMessage(transcription, mismatchMessageId, false);
-              }
+                return newMap;
+              });
               
-              // Close modal
+              // Close modal - user will now type/submit the German text
               setShowLanguageMismatchModal(false);
               setDetectedLanguage(null);
               setMismatchTranscription('');
@@ -3031,16 +3031,56 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       
       // Create a new message with the German text
       const newMessageId = Date.now().toString();
+      
+      // Check if there's practice audio available for this message
+      const hasPracticeAudio = practiceAudioMap.size > 0;
+      let practiceAudioData = null;
+      
+      if (hasPracticeAudio) {
+        // Get the most recent practice audio (assuming single practice session)
+        const practiceEntries = Array.from(practiceAudioMap.entries());
+        if (practiceEntries.length > 0) {
+          const [tempId, audioData] = practiceEntries[practiceEntries.length - 1];
+          practiceAudioData = audioData;
+          console.log('🎤 === FOUND PRACTICE AUDIO FOR TEXT MESSAGE ===');
+          console.log('Practice audio transcription:', audioData.transcription);
+          console.log('Audio data length:', audioData.audioData.length);
+        }
+      }
+      
       const newMessage = {
         id: newMessageId,
-        content: modalInput,
+        content: hasPracticeAudio && practiceAudioData ? practiceAudioData.transcription : modalInput,
         role: 'user' as const,
         timestamp: new Date().toISOString(),
-        isTranscribing: false
+        isTranscribing: false,
+        isAudio: hasPracticeAudio // Mark as audio if practice recording exists
       };
       
       // Add the new message to chat
       setChatMessages(prev => [...prev, newMessage]);
+      
+      // Store practice audio in germanVoiceMessages Map if available
+      if (hasPracticeAudio && practiceAudioData) {
+        setGermanVoiceMessages(prev => {
+          const newMap = new Map(prev);
+          newMap.set(newMessageId, {
+            transcription: practiceAudioData.transcription, // Use actual practice transcription
+            audioData: practiceAudioData.audioData,
+            messageId: newMessageId
+          });
+          return newMap;
+        });
+        
+        console.log('🎤 === STORED PRACTICE AUDIO FOR PRONUNCIATION ANALYSIS ===');
+        console.log('Message ID:', newMessageId);
+        console.log('Transcription:', practiceAudioData.transcription);
+        console.log('Audio data length:', practiceAudioData.audioData.length);
+        
+        // Clean up temporary practice audio
+        setPracticeAudioMap(new Map());
+        console.log('🧹 === CLEANED UP TEMPORARY PRACTICE AUDIO ===');
+      }
       
       // Close modal and clear input immediately
       setShowLanguageMismatchModal(false);
@@ -3054,7 +3094,83 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       
       // Process the German message asynchronously (after modal closes)
       setTimeout(async () => {
-        await processTextMessage(modalInput, newMessageId, false);
+        if (hasPracticeAudio && practiceAudioData) {
+          // For modal messages with practice audio, process like voice messages
+          // Don't call processTextMessage() as it will overwrite the transcription
+          console.log('🎤 === PROCESSING MODAL MESSAGE WITH PRACTICE AUDIO ===');
+          console.log('Message ID:', newMessageId);
+          console.log('Transcription:', practiceAudioData.transcription);
+          
+          updateMessageStatus(newMessageId, 'checking');
+          
+          // Run comprehensive analysis directly (same as voice messages)
+          const analysis = await runComprehensiveAnalysis(practiceAudioData.transcription, newMessageId, true);
+          
+          console.log('🔍 === CHECKING FOR ERRORS AFTER ANALYSIS ===');
+          console.log('Analysis result:', analysis);
+          console.log('Has errors:', analysis && analysis.hasErrors);
+          console.log('Error messages for this message:', errorMessages[newMessageId]);
+          console.log('Waiting for correction:', waitingForCorrection);
+          
+          if (analysis && analysis.hasErrors) {
+            // Don't send to AI if there are errors - focus on correction
+            console.log('🚫 === MODAL MESSAGE HAS ERRORS - NOT SENDING TO AI ===');
+            console.log('Focusing on error correction instead of AI response');
+            updateMessageStatus(newMessageId, 'needs_correction');
+            return;
+          } else if (!analysis || analysis === null) {
+            console.log('❌ === ANALYSIS FAILED FOR MODAL MESSAGE ===');
+            updateMessageStatus(newMessageId, 'error');
+            return;
+          }
+          
+          // Analysis successful - continue with AI response
+          console.log('✅ === ANALYSIS SUCCESSFUL FOR MODAL MESSAGE ===');
+          updateMessageStatus(newMessageId, 'processing');
+          
+          // Send to AI for response (same as voice messages)
+          try {
+            const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                message: practiceAudioData.transcription,
+                chatHistory: chatMessages.slice(-10), // Last 10 messages for context
+                userId: user?.id
+              })
+            });
+
+            if (!response.ok) {
+              throw new Error(`Chat API failed: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            
+            // Add AI response to chat
+            const aiMessage = {
+              id: Date.now().toString(),
+              content: data.response,
+              role: 'assistant' as const,
+              timestamp: new Date().toISOString(),
+              isTranscribing: false,
+              isAudio: false
+            };
+            
+            setChatMessages(prev => [...prev, aiMessage]);
+            updateMessageStatus(newMessageId, 'completed');
+            
+          } catch (error) {
+            console.error('❌ Error getting AI response for modal message:', error);
+            updateMessageStatus(newMessageId, 'error');
+          }
+        } else {
+          // For typed messages (no practice audio), use normal text processing
+          const messageContent = modalInput;
+          await processTextMessage(messageContent, newMessageId, false);
+        }
       }, 100);
     } else {
       // User still typed it in English - show error
@@ -3064,6 +3180,15 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
   };
 
   const processAudioMessage = async (audioBlob: Blob) => {
+    // CRITICAL FIX: Skip processing if this is a modal message with practice audio
+    // Modal messages should not go through this function at all
+    if (practiceAudioMap.size > 0) {
+      console.log('🚫 === SKIPPING PROCESS AUDIO MESSAGE FOR MODAL MESSAGE ===');
+      console.log('practiceAudioMap size:', practiceAudioMap.size);
+      console.log('practiceAudioMap entries:', Array.from(practiceAudioMap.entries()));
+      return; // Exit early - modal messages handle their own processing
+    }
+    
     // Store audio blob for practice modal use
     setPracticeAudioBlob(audioBlob);
     
@@ -3147,6 +3272,13 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           isTranscribing: true
         };
         
+        // DEBUG: Log audio message creation
+        console.log('🔍 === DEBUG: AUDIO MESSAGE CREATED ===');
+        console.log('Message ID:', audioMessage.id);
+        console.log('Recording language:', recordingLanguage);
+        console.log('Show language mismatch modal:', showLanguageMismatchModal);
+        console.log('Audio message:', audioMessage);
+        
         messageId = audioMessage.id;
 
         updateMessageStatus(messageId, 'checking');
@@ -3160,6 +3292,54 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           console.log('New messages count:', newMessages.length);
           return newMessages;
         });
+        
+        // CRITICAL FIX: Force store audio data for ALL audio messages
+        // This ensures German recordings get audio data stored regardless of code path
+        try {
+          const audioArrayBuffer = await audioBlob.arrayBuffer();
+          const uint8Array = new Uint8Array(audioArrayBuffer);
+          let binaryString = '';
+          const chunkSize = 8192;
+          
+          for (let i = 0; i < uint8Array.length; i += chunkSize) {
+            const chunk = uint8Array.slice(i, i + chunkSize);
+            binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+          }
+          
+          const audioBase64 = btoa(binaryString);
+          
+          // Store audio data with placeholder transcription (will be updated in transcribeAudio)
+          // BUT don't overwrite existing entries that already have correct transcription
+          setGermanVoiceMessages(prev => {
+            const newMap = new Map(prev);
+            const existingEntry = newMap.get(messageId);
+            
+            // Only store if no existing entry, or if existing entry has placeholder transcription
+            if (!existingEntry || existingEntry.transcription === '🎤 Voice message') {
+              newMap.set(messageId, {
+                transcription: '🎤 Voice message', // Placeholder, will be updated in transcribeAudio
+                audioData: audioBase64,
+                messageId: messageId
+              });
+              
+              console.log('🔍 === FORCE STORED AUDIO DATA FOR ALL MESSAGES ===');
+              console.log('Message ID:', messageId);
+              console.log('Recording language:', recordingLanguage);
+              console.log('Audio data length:', audioBase64.length);
+              console.log('germanVoiceMessages after force storage:', Array.from(newMap.entries()));
+            } else {
+              console.log('🔍 === SKIPPING FORCE STORAGE - EXISTING ENTRY HAS CORRECT TRANSCRIPTION ===');
+              console.log('Message ID:', messageId);
+              console.log('Existing transcription:', existingEntry.transcription);
+              console.log('Not overwriting with placeholder');
+            }
+            
+            return newMap;
+          });
+        } catch (error) {
+          console.error('❌ Error storing audio data:', error);
+          // Don't fail the entire process if audio storage fails
+        }
       }
     }
     
@@ -3571,6 +3751,28 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   }));
                 }
                 
+                // CRITICAL FIX: Update audio data transcription when message content is updated
+                // This ensures the audio data in germanVoiceMessages has the correct transcription
+                if (msg.isAudio && germanVoiceMessages.has(msg.id)) {
+                  console.log('🔍 === UPDATING AUDIO DATA TRANSCRIPTION ===');
+                  console.log('Message ID:', msg.id);
+                  console.log('Old transcription:', germanVoiceMessages.get(msg.id)?.transcription);
+                  console.log('New transcription:', transcription);
+                  
+                  setGermanVoiceMessages(prev => {
+                    const newMap = new Map(prev);
+                    const existingAudioData = newMap.get(msg.id);
+                    if (existingAudioData) {
+                      newMap.set(msg.id, {
+                        ...existingAudioData,
+                        transcription: transcription
+                      });
+                      console.log('✅ Updated audio data transcription');
+                    }
+                    return newMap;
+                  });
+                }
+                
                 return { ...msg, content: transcription, isTranscribing: false };
               }
               return msg;
@@ -3603,6 +3805,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             console.log('🇩🇪 === PROCESSING GERMAN VOICE INPUT ===');
             console.log('Transcription:', transcription);
             console.log('Message ID:', messageId);
+            console.log('Recording language:', recordingLanguage);
+            console.log('Detected language:', detectedLanguage);
             
             // For German recordings, run comprehensive analysis and get result immediately
             const analysis = await runComprehensiveAnalysis(transcription, messageId, true);
@@ -3619,10 +3823,22 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             }
             
             const audioBase64 = btoa(binaryString);
-            setLastGermanVoiceMessage({
-              transcription: transcription,
-              audioData: audioBase64,
-              messageId: messageId
+            setGermanVoiceMessages(prev => {
+              const newMap = new Map(prev);
+              newMap.set(messageId, {
+                transcription: transcription,
+                audioData: audioBase64,
+                messageId: messageId
+              });
+              
+              console.log('🔍 === STORING GERMAN AUDIO DATA ===');
+              console.log('Message ID:', messageId);
+              console.log('Transcription:', transcription);
+              console.log('Audio data length:', audioBase64.length);
+              console.log('germanVoiceMessages before update:', Array.from(prev.entries()));
+              console.log('germanVoiceMessages after update:', Array.from(newMap.entries()));
+              
+              return newMap;
             });
             
             console.log('🔍 === CHECKING FOR ERRORS AFTER ANALYSIS ===');
@@ -3722,6 +3938,11 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             clearCheckingStatus(messageId);
           } else {
             // For English recordings, translate to German and provide suggestions
+            console.log('❌ === NOT PROCESSING AS GERMAN - PROCESSING AS ENGLISH ===');
+            console.log('Recording language:', recordingLanguage);
+            console.log('Detected language:', detectedLanguage);
+            console.log('Message ID:', messageId);
+            console.log('Transcription:', transcription);
             await translateEnglishToGerman(transcription, messageId);
           }
         } else if (data.response) {
@@ -4026,8 +4247,9 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
   };
 
   const startNewConversation = (conversationId: string) => {
-    // Clear the last German voice message when starting new conversation
-    setLastGermanVoiceMessage(null);
+    // Clear the German voice messages when starting new conversation
+    setGermanVoiceMessages(new Map());
+    setSelectedMessageForPronunciation(null);
     
     // Reset all states first
     resetConversationState();
@@ -4116,7 +4338,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     setMismatchMessageId('');
     setGermanSuggestion('');
     setPracticeAudioBlob(null);
-    setLastGermanVoiceMessage(null);
+    setGermanVoiceMessages(new Map());
+    setSelectedMessageForPronunciation(null);
     setRecordingLanguage('german');
     setRecordingDuration(0);
     
@@ -4783,10 +5006,27 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       </div>
 
                       {/* Pronunciation Badge for German Voice Messages */}
-                      {message.role === 'user' && message.isAudio && lastGermanVoiceMessage && lastGermanVoiceMessage.messageId === message.id && (
+                      {(() => {
+                        const shouldShowAnalyze = message.role === 'user' && message.isAudio && germanVoiceMessages.has(message.id);
+                        
+                        // DEBUG: Log the condition check for German messages
+                        if (message.role === 'user' && message.content && message.content.includes('Ich möchte')) {
+                          console.log('🔍 === DEBUG: ANALYZE BUTTON CONDITION FOR GERMAN MESSAGE ===');
+                          console.log('message.id:', message.id);
+                          console.log('message.role:', message.role);
+                          console.log('message.isAudio:', message.isAudio);
+                          console.log('message.content:', message.content);
+                          console.log('germanVoiceMessages.has(message.id):', germanVoiceMessages.has(message.id));
+                          console.log('shouldShowAnalyze:', shouldShowAnalyze);
+                          console.log('germanVoiceMessages entries:', Array.from(germanVoiceMessages.entries()));
+                        }
+                        
+                        return shouldShowAnalyze;
+                      })() && (
                         <div className="mt-2 flex justify-end">
                           <button
                             onClick={() => {
+                              setSelectedMessageForPronunciation(message.id);
                               setToolbarActiveTab('pronunciation');
                               setToolbarCollapsed(false);
                               setShowToolbar(true);
@@ -5076,7 +5316,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     onTabChange={setToolbarActiveTab}
                     newVocabItems={newVocabItems}
                     persistentVocab={persistentVocab}
-                    lastGermanVoiceMessage={lastGermanVoiceMessage}
+                    germanVoiceMessages={germanVoiceMessages}
+                    selectedMessageForPronunciation={selectedMessageForPronunciation}
                     onAddExperience={addExperience}
                     onUpdatePersistentVocab={(newVocab) => {
                       console.log('📚 === DASHBOARD ONUPDATE PERSISTENT VOCAB CALLED ===');
