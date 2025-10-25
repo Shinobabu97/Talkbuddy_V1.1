@@ -3923,10 +3923,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             });
 
             clearCheckingStatus(messageId);
-          } else {
-            // For English recordings, translate to German and provide suggestions
-            await translateEnglishToGerman(transcription, messageId);
           }
+        } else if (recordingLanguage === 'english') {
+          // For English recordings, translate to German and provide suggestions
+          await translateEnglishToGerman(transcription, messageId);
         } else if (data.response) {
           // Chat function fallback response
           const fallbackMessage = "🎤 Audio recorded (transcription not available)";
@@ -4021,8 +4021,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         body: JSON.stringify({
           text: englishText,
           sourceLanguage: 'en',
-          targetLanguage: 'de',
-          context: 'conversation'
+          targetLanguage: 'de'
         })
       });
 

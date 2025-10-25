@@ -9,6 +9,7 @@ const corsHeaders = {
 interface TranslateRequest {
   text: string
   targetLanguage: string
+  sourceLanguage?: string
 }
 
 serve(async (req) => {
@@ -18,12 +19,28 @@ serve(async (req) => {
   }
 
   try {
-    const { text, targetLanguage }: TranslateRequest = await req.json()
+    const { text, targetLanguage, sourceLanguage }: TranslateRequest = await req.json()
 
     // Get OpenAI API key from environment
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
     if (!openaiApiKey) {
       throw new Error('OpenAI API key not configured')
+    }
+
+    // If source and target languages are the same, return the original text
+    if (sourceLanguage && sourceLanguage.toLowerCase() === targetLanguage.toLowerCase()) {
+      return new Response(
+        JSON.stringify({
+          translation: text,
+          originalText: text,
+          targetLanguage: targetLanguage,
+          sourceLanguage: sourceLanguage
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        },
+      )
     }
 
     // Create translation prompt
