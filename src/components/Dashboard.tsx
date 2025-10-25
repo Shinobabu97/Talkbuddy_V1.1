@@ -1996,11 +1996,12 @@ export default function Dashboard({ user }: DashboardProps) {
       return; // Don't proceed with normal processing
     }
 
-    // Collapse toolbar when conversation starts (first user message)
-    if (chatMessages.length <= 1) { // Only AI greeting message exists
-      setToolbarCollapsed(true);
-      console.log('Collapsing toolbar - first user message');
-    }
+    // Don't collapse toolbar automatically - let vocabulary additions control it
+    // The toolbar will auto-expand when words are added to vocabulary
+    // if (chatMessages.length <= 1) { // Only AI greeting message exists
+    //   setToolbarCollapsed(true);
+    //   console.log('Collapsing toolbar - first user message');
+    // }
 
     // Check if this is a retry attempt - be more robust in detection
     const isRetry = Boolean(activeMessageId);
@@ -2192,11 +2193,17 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('📚 === AUTO-OPENING TOOLBAR AND SWITCHING TO VOCAB TAB ===');
     console.log('Before - toolbarCollapsed:', toolbarCollapsed);
     console.log('Before - toolbarActiveTab:', toolbarActiveTab);
-    setShowToolbar(true);
-    setToolbarCollapsed(false);
-    setToolbarActiveTab('vocab');
-    console.log('After setting - toolbarCollapsed should be false');
-    console.log('After setting - toolbarActiveTab should be vocab');
+    console.log('Before - showToolbar:', showToolbar);
+    
+    // Use setTimeout to ensure state updates happen after any other pending updates
+    setTimeout(() => {
+      setShowToolbar(true);
+      setToolbarCollapsed(false);
+      setToolbarActiveTab('vocab');
+      console.log('📚 === TOOLBAR STATE UPDATED (AFTER TIMEOUT) ===');
+      console.log('After setting - toolbarCollapsed should be false');
+      console.log('After setting - toolbarActiveTab should be vocab');
+    }, 100);
     
     console.log('📚 === DASHBOARD HANDLE ADD TO VOCAB COMPLETED ===');
   };

@@ -2661,6 +2661,32 @@ export default function Toolbar({
               </button>
                 </div>
 
+            {/* Instructions Section */}
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
+              <h4 className="text-sm font-semibold text-blue-900 mb-2 flex items-center">
+                <BookOpen className="h-4 w-4 mr-2" />
+                How to Use the Vocabulary Tab
+              </h4>
+              <ul className="text-xs text-blue-800 space-y-1.5 leading-relaxed">
+                <li className="flex items-start">
+                  <Volume2 className="h-3 w-3 mr-2 mt-0.5 flex-shrink-0" />
+                  <span><strong>Listen:</strong> Click the audio icon to hear the German pronunciation</span>
+                </li>
+                <li className="flex items-start">
+                  <X className="h-3 w-3 mr-2 mt-0.5 flex-shrink-0" />
+                  <span><strong>Delete:</strong> Mastered a word? Click the X to remove it from your list</span>
+                </li>
+                <li className="flex items-start">
+                  <Star className="h-3 w-3 mr-2 mt-0.5 flex-shrink-0" />
+                  <span><strong>Star:</strong> Add words to My Vocabulary for practice in the Vocab List on the Left Panel</span>
+                </li>
+                <li className="flex items-start">
+                  <BookOpen className="h-3 w-3 mr-2 mt-0.5 flex-shrink-0" />
+                  <span><strong>Vocab List:</strong> Access the full vocabulary builder with topic-based words, flashcards, and test mode from the left panel</span>
+                </li>
+              </ul>
+            </div>
+
             {/* Vocabulary List */}
             <div className="space-y-3">
                 {vocabItems
