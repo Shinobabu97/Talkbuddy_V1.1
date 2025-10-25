@@ -18,7 +18,6 @@ import {
   BarChart3,
   MessageCircle,
   Volume2,
-  Target,
   Bot,
   Trash2,
   X,
@@ -232,8 +231,9 @@ export default function Dashboard({ user }: DashboardProps) {
   const [isSending, setIsSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [translatedMessages, setTranslatedMessages] = useState<{[key: string]: string}>({});
-  const [suggestedResponses, setSuggestedResponses] = useState<{[key: string]: string[]}>({});
+  const [suggestedResponses, setSuggestedResponses] = useState<{[key: string]: (string | {german: string, english: string})[]}>({});
   const [showTranslation, setShowTranslation] = useState<{[key: string]: boolean}>({});
+  const [showSuggestionTranslation, setShowSuggestionTranslation] = useState<{[key: string]: boolean}>({});
   const [showSuggestions, setShowSuggestions] = useState<{[key: string]: boolean}>({});
   const [hoveredConversation, setHoveredConversation] = useState<string | null>(null);
   const [showToolbar, setShowToolbar] = useState(false);
@@ -337,13 +337,13 @@ export default function Dashboard({ user }: DashboardProps) {
     return wordSpeeds[word] || globalPlaybackSpeed;
   };
 
-  // Helper function to set speed for a specific word
-  const setWordSpeed = (word: string, speed: number): void => {
-    setWordSpeeds(prev => ({
-      ...prev,
-      [word]: speed
-    }));
-  };
+  // Helper function to set speed for a specific word - UNUSED
+  // const setWordSpeed = (word: string, speed: number): void => {
+  //   setWordSpeeds(prev => ({
+  //     ...prev,
+  //     [word]: speed
+  //   }));
+  // };
   const [phoneticBreakdowns, setPhoneticBreakdowns] = useState<{[key: string]: Array<{original: string, phonetic: string, transliteration: string, syllables: string[]}>}>({});
   const [showPronunciationBreakdown, setShowPronunciationBreakdown] = useState<{[key: string]: boolean}>({});
   
@@ -693,7 +693,7 @@ export default function Dashboard({ user }: DashboardProps) {
         body: JSON.stringify({
           messages: [{
             role: 'user',
-            content: `${contextLevel === 'Professional' ? 'Ich möchte dieses Szenario üben' : 'Ich möchte dieses Szenario üben'}: ${userMessage}. ${contextLevel === 'Professional' ? 'Beginnen Sie das Gespräch sofort mit der ersten Frage auf Deutsch. Verwenden Sie keine einleitenden Phrasen wie "Natürlich, gerne!" oder "Gerne!" - stellen Sie einfach die erste Frage direkt. WICHTIG: Antworten Sie NUR auf Deutsch. Verwenden Sie "Sie" statt "Du" für eine professionelle Atmosphäre.' : 'Beginn das Gespräch sofort mit der ersten Frage auf Deutsch. Verwende keine einleitenden Phrasen wie "Natürlich, gerne!" oder "Gerne!" - stell einfach die erste Frage direkt. WICHTIG: Antworte NUR auf Deutsch. Verwende "Du" statt "Sie" für eine lockere Atmosphäre.'}`
+            content: `${contextLevel === 'Professional' ? 'Ich möchte dieses Szenario üben' : 'Ich möchte dieses Szenario üben'}: ${userMessage}. ${contextLevel === 'Professional' ? 'Verstehen Sie den Kontext und beginnen Sie das Gespräch auf natürliche Weise auf Deutsch. Zeigen Sie zunächst, dass Sie den Kontext verstanden haben, und führen Sie dann das Gespräch entsprechend der realen Situation. Sie können eine Aussage machen, eine Beobachtung teilen oder eine Frage stellen - was auch immer in diesem Kontext am natürlichsten wäre. Verwenden Sie keine übermäßig enthusiastischen Phrasen wie "Natürlich, gerne!". WICHTIG: Antworten Sie NUR auf Deutsch. Verwenden Sie "Sie" statt "Du" für eine professionelle Atmosphäre.' : 'Verstehe den Kontext und beginne das Gespräch auf natürliche Weise auf Deutsch. Zeige zunächst, dass du den Kontext verstanden hast, und führe dann das Gespräch entsprechend der realen Situation. Du kannst eine Aussage machen, eine Beobachtung teilen oder eine Frage stellen - was auch immer in diesem Kontext am natürlichsten wäre. Verwende keine übermäßig enthusiastischen Phrasen wie "Natürlich, gerne!". WICHTIG: Antworte NUR auf Deutsch. Verwende "Du" statt "Sie" für eine lockere Atmosphäre.'}`
           }],
           conversationId,
           contextLevel,
@@ -739,6 +739,16 @@ export default function Dashboard({ user }: DashboardProps) {
       
       // Update current message but don't show toolbar automatically
       setCurrentAIMessage(data.message);
+      
+      // Automatically generate contextual suggestions for the AI's response
+      console.log('🤖 === ABOUT TO AUTO-GENERATE INITIAL SUGGESTIONS ===');
+      console.log('🤖 Initial message ID: 2');
+      console.log('🤖 Initial AI message content:', data.message);
+      console.log('🤖 Calling generateTranslationAndSuggestions for initial message...');
+      
+      await generateTranslationAndSuggestions('2', data.message);
+      
+      console.log('🤖 === INITIAL AUTO-GENERATION CALL COMPLETED ===');
 
     } catch (error) {
       console.error('Error sending initial message:', error);
@@ -755,7 +765,96 @@ export default function Dashboard({ user }: DashboardProps) {
     }
   };
 
+  // Generate contextual fallback suggestions based on AI message content
+  const generateContextualFallbacks = (germanText: string) => {
+    const text = germanText.toLowerCase();
+    
+    // Specific question patterns and their direct answers
+    if (text.includes('welche details') || text.includes('which details') || text.includes('am wichtigsten')) {
+      return [
+        { german: 'Die Budgetplanung ist am wichtigsten für uns.', english: 'Budget planning is most important for us.' },
+        { german: 'Die technischen Spezifikationen sind entscheidend.', english: 'Technical specifications are crucial.' },
+        { german: 'Die Sicherheitsanforderungen haben Priorität.', english: 'Security requirements have priority.' }
+      ];
+    }
+    
+    if (text.includes('anforderungen') || text.includes('requirements')) {
+      return [
+        { german: 'Wir brauchen eine Cloud-basierte Lösung.', english: 'We need a cloud-based solution.' },
+        { german: 'Die Sicherheit ist unsere Hauptpriorität.', english: 'Security is our main priority.' },
+        { german: 'Wir benötigen 24/7 Support.', english: 'We need 24/7 support.' }
+      ];
+    }
+    
+    if (text.includes('erfahrung') || text.includes('experience')) {
+      return [
+        { german: 'Ja, ich habe Erfahrung mit Microsoft-Produkten.', english: 'Yes, I have experience with Microsoft products.' },
+        { german: 'Ich arbeite seit 5 Jahren in der IT-Branche.', english: 'I have been working in IT for 5 years.' },
+        { german: 'Nein, aber ich lerne sehr schnell.', english: 'No, but I learn very quickly.' }
+      ];
+    }
+    
+    if (text.includes('finanz') || text.includes('budget') || text.includes('kosten')) {
+      return [
+        { german: 'Unser Budget liegt bei 50.000 Euro.', english: 'Our budget is 50,000 euros.' },
+        { german: 'Die Kosten sind ein wichtiger Faktor.', english: 'Costs are an important factor.' },
+        { german: 'Wir suchen nach einer kosteneffizienten Lösung.', english: 'We are looking for a cost-effective solution.' }
+      ];
+    }
+    
+    // Business/Professional context
+    if (text.includes('vertrag') || text.includes('software') || text.includes('geschäft') || text.includes('meeting') || text.includes('projekt')) {
+      return [
+        { german: 'Das Projekt sollte bis Ende des Jahres abgeschlossen sein.', english: 'The project should be completed by the end of the year.' },
+        { german: 'Wir haben bereits einen ähnlichen Vertrag abgeschlossen.', english: 'We have already signed a similar contract.' },
+        { german: 'Können wir die nächsten Schritte besprechen?', english: 'Can we discuss the next steps?' }
+      ];
+    }
+    
+    // Travel context
+    if (text.includes('reise') || text.includes('hotel') || text.includes('flug') || text.includes('stadt') || text.includes('urlaub')) {
+      return [
+        { german: 'Ich möchte gerne die Altstadt besichtigen.', english: 'I would like to visit the old town.' },
+        { german: 'Welche Sehenswürdigkeiten empfehlen Sie?', english: 'What sights do you recommend?' },
+        { german: 'Ich interessiere mich für die lokale Küche.', english: 'I am interested in the local cuisine.' }
+      ];
+    }
+    
+    // Food/Restaurant context
+    if (text.includes('essen') || text.includes('restaurant') || text.includes('küche') || text.includes('speise') || text.includes('menü')) {
+      return [
+        { german: 'Ich bin Vegetarier, haben Sie vegetarische Optionen?', english: 'I am vegetarian, do you have vegetarian options?' },
+        { german: 'Das hört sich sehr lecker an!', english: 'That sounds very delicious!' },
+        { german: 'Können Sie das Gericht empfehlen?', english: 'Can you recommend this dish?' }
+      ];
+    }
+    
+    // General conversation context
+    if (text.includes('frage') || text.includes('denken') || text.includes('meinung') || text.includes('glauben')) {
+      return [
+        { german: 'Das ist eine sehr gute Frage.', english: 'That is a very good question.' },
+        { german: 'Ich denke, dass...', english: 'I think that...' },
+        { german: 'Meine Meinung dazu ist...', english: 'My opinion on this is...' }
+      ];
+    }
+    
+    // Default contextual responses
+    return [
+      { german: 'Das ist sehr interessant!', english: 'That is very interesting!' },
+      { german: 'Können Sie das genauer erklären?', english: 'Can you explain that in more detail?' },
+      { german: 'Ich verstehe, danke für die Erklärung.', english: 'I understand, thank you for the explanation.' }
+    ];
+  };
+
   const generateTranslationAndSuggestions = async (messageId: string, germanText: string) => {
+    console.log('🎯 === AUTO-GENERATING SUGGESTIONS ===');
+    console.log('Message ID:', messageId);
+    console.log('German text:', germanText);
+    console.log('🚨 FUNCTION CALLED - Starting suggestion generation...');
+    
+    // Generate contextual suggestions based on the AI's message
+    console.log('🎯 Generating contextual suggestions for:', germanText);
+    
     try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
@@ -766,24 +865,50 @@ export default function Dashboard({ user }: DashboardProps) {
         body: JSON.stringify({
           messages: [{
             role: 'user',
-            content: `Please provide: 1) English translation of: "${germanText}" 2) Three suggested German responses that a language learner could use to reply. IMPORTANT: The suggestions must be ONLY in German - no English translations in parentheses or brackets. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [suggestion1] | [suggestion2] | [suggestion3]`
+            content: `The AI assistant just asked: "${germanText}"
+
+CRITICAL: Generate responses that DIRECTLY ANSWER the specific question asked. Do NOT use generic responses.
+
+Examples:
+- If AI asks "Which details are most important to you?" → Answer with specific details like "Die Budgetplanung ist am wichtigsten" or "Die technischen Spezifikationen sind entscheidend"
+- If AI asks "What are your requirements?" → Answer with specific requirements like "Wir brauchen eine Cloud-Lösung" or "Die Sicherheit ist unsere Priorität"
+- If AI asks "Do you have experience?" → Answer specifically like "Ja, mit Microsoft-Produkten" or "Nein, aber ich lerne schnell"
+
+Please provide:
+1) English translation of the AI's message
+2) Three SPECIFIC German responses that directly answer the AI's exact question with concrete details
+
+Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [Specific German answer 1] | [Specific German answer 2] | [Specific German answer 3] ENGLISH: [English translation 1] | [English translation 2] | [English translation 3]`
           }],
           conversationId: 'helper',
           contextLevel,
           difficultyLevel,
-          systemInstruction: "When providing German suggestions, respond ONLY in German. Do not include any English translations in parentheses or brackets in the suggestions."
+          systemInstruction: "You are a German language learning assistant. Generate suggestions that DIRECTLY ANSWER the specific question asked by the AI. Do NOT provide generic responses. Each suggestion must be a concrete, specific answer to the exact question. For example: if asked 'Which details are most important?' respond with specific details like 'Die Budgetplanung ist am wichtigsten' or 'Die technischen Spezifikationen sind entscheidend'. Always provide German suggestions with English translations in the exact format requested."
         })
       });
 
+      console.log('📡 API Response status:', response.status);
+      console.log('📡 API Response ok:', response.ok);
+      
       if (response.ok) {
         const data = await response.json();
         const content = data.message;
         
-        console.log('Translation and suggestions response:', content);
+        console.log('📡 API Response received for contextual suggestions:', content.substring(0, 300) + '...');
+        console.log('📡 Full API response:', content);
+        console.log('📡 Response data structure:', data);
         
-        // Parse translation and suggestions
+        // Parse translation and suggestions - handle both old and new formats
         const translationMatch = content.match(/TRANSLATION:\s*(.+?)(?=SUGGESTIONS:|$)/);
-        const suggestionsMatch = content.match(/SUGGESTIONS:\s*(.+)/);
+        const suggestionsMatch = content.match(/SUGGESTIONS:\s*(.+?)(?=ENGLISH:|$)/);
+        const englishMatch = content.match(/ENGLISH:\s*(.+)/);
+        
+        console.log('🔍 Parsing debug:', {
+          translationMatch: translationMatch ? translationMatch[1] : null,
+          suggestionsMatch: suggestionsMatch ? suggestionsMatch[1] : null,
+          englishMatch: englishMatch ? englishMatch[1] : null,
+          content: content.substring(0, 200) + '...'
+        });
         
         if (translationMatch) {
           setTranslatedMessages(prev => ({
@@ -792,11 +917,31 @@ export default function Dashboard({ user }: DashboardProps) {
           }));
         }
         
-        if (suggestionsMatch) {
-          const suggestions = suggestionsMatch[1].split('|').map(s => s.trim()).filter(s => s.length > 0);
+        // Try new format first (with English translations)
+        if (suggestionsMatch && englishMatch) {
+          const germanSuggestions = suggestionsMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+          const englishTranslations = englishMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+          
+          // Pair German suggestions with their English translations
+          const pairedSuggestions = germanSuggestions.map((german: string, index: number) => ({
+            german: german.trim(),
+            english: englishTranslations[index] ? englishTranslations[index].trim() : ''
+          }));
+          
+          console.log('New format - German suggestions:', germanSuggestions);
+          console.log('New format - English translations:', englishTranslations);
+          console.log('New format - Paired suggestions:', pairedSuggestions);
+          
+          setSuggestedResponses(prev => ({
+            ...prev,
+            [messageId]: pairedSuggestions
+          }));
+        } else if (suggestionsMatch) {
+          // Fallback: old format (German suggestions only)
+          const suggestions = suggestionsMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
           
           // Clean up any English translations that might be in parentheses or brackets
-          const cleanedSuggestions = suggestions.map(suggestion => {
+          const cleanedSuggestions = suggestions.map((suggestion: string) => {
             // Remove English text in parentheses like (English translation)
             let cleaned = suggestion.replace(/\([^)]*[A-Za-z][^)]*\)/g, '');
             // Remove English text in brackets like [English translation]
@@ -806,10 +951,10 @@ export default function Dashboard({ user }: DashboardProps) {
             cleaned = cleaned.replace(/\[[^\]]*\]/g, '');
             // Trim whitespace
             return cleaned.trim();
-          }).filter(s => s.length > 0);
+          }).filter((s: string) => s.length > 0);
           
-          console.log('Original suggestions:', suggestions);
-          console.log('Cleaned suggestions:', cleanedSuggestions);
+          console.log('Old format - Original suggestions:', suggestions);
+          console.log('Old format - Cleaned suggestions:', cleanedSuggestions);
           
           setSuggestedResponses(prev => ({
             ...prev,
@@ -817,12 +962,46 @@ export default function Dashboard({ user }: DashboardProps) {
           }));
         } else {
           console.log('No suggestions match found in:', content);
+          // Set contextual fallback suggestions based on the AI's message
+          const contextualFallbacks = generateContextualFallbacks(germanText);
+          console.log('Setting contextual fallback suggestions:', contextualFallbacks);
+          
+          setSuggestedResponses(prev => ({
+            ...prev,
+            [messageId]: contextualFallbacks
+          }));
         }
       } else {
-        console.error('Failed to get translation and suggestions:', response.status, response.statusText);
+        console.error('❌ API call failed with status:', response.status);
+        console.error('❌ Response status text:', response.statusText);
+        const errorText = await response.text();
+        console.error('❌ Error response body:', errorText);
+        
+        // Try to get more specific error information
+        try {
+          const errorData = JSON.parse(errorText);
+          console.error('❌ Parsed error data:', errorData);
+        } catch (e) {
+          console.error('❌ Could not parse error response as JSON');
+        }
       }
     } catch (error) {
-      console.error('Error generating translation and suggestions:', error);
+      console.error('❌ Error generating translation and suggestions:', error);
+      console.error('❌ Error details:', {
+        messageId,
+        germanText,
+        error: (error as Error).message,
+        stack: (error as Error).stack
+      });
+      
+      // Set contextual fallback suggestions based on the AI's message
+      const contextualFallbacks = generateContextualFallbacks(germanText);
+      console.log('Setting contextual error fallback suggestions:', contextualFallbacks);
+      
+      setSuggestedResponses(prev => ({
+        ...prev,
+        [messageId]: contextualFallbacks
+      }));
     }
   };
 
@@ -950,7 +1129,8 @@ export default function Dashboard({ user }: DashboardProps) {
     await germanTTS.speak(text);
   };
 
-  // Pronunciation feature functions
+  // Pronunciation feature functions - UNUSED
+  /*
   const getPhoneticBreakdown = async (text: string, messageId: string) => {
     console.log('🎯 Getting phonetic breakdown for:', text, 'Message ID:', messageId);
     console.log('🔗 Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
@@ -978,7 +1158,6 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('✅ Mock phonetic breakdown set for message:', messageId);
     
     // TODO: Uncomment this when Supabase function is working
-    /*
     try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/phonetic-breakdown`, {
         method: 'POST',
@@ -1019,11 +1198,11 @@ export default function Dashboard({ user }: DashboardProps) {
         stack: error.stack
       });
     }
-    */
   };
+  */
 
   const playWordAudio = async (word: string, speed?: number) => {
-    const actualSpeed = speed || getWordSpeed(word);
+    // const actualSpeed = speed || getWordSpeed(word); // Unused
     
     // Add gamification points for playing word audio
     addExperience(2, 'word_audio_play');
@@ -1123,7 +1302,10 @@ export default function Dashboard({ user }: DashboardProps) {
   };
 
   const toggleSuggestions = async (messageId: string) => {
+    console.log('🔄 toggleSuggestions called for messageId:', messageId);
     const isCurrentlyShowing = showSuggestions[messageId];
+    console.log('Current showSuggestions state:', showSuggestions);
+    console.log('Is currently showing:', isCurrentlyShowing);
     
     if (isCurrentlyShowing) {
       // Hide suggestions
@@ -1140,32 +1322,55 @@ export default function Dashboard({ user }: DashboardProps) {
       
       // Check if we already have suggestions for this message
       const currentSuggestions = suggestedResponses[messageId];
+      console.log('🔍 toggleSuggestions: Current suggestions for messageId:', currentSuggestions);
+      console.log('🔍 toggleSuggestions: Suggestions type:', typeof currentSuggestions);
+      console.log('🔍 toggleSuggestions: Suggestions length:', currentSuggestions?.length);
+      
       if (!currentSuggestions || currentSuggestions.length === 0) {
-        // Generate suggestions on demand
+        // Generate suggestions on demand only if not already generated
+        console.log('🔍 toggleSuggestions: No suggestions found, generating new ones...');
         const message = chatMessages.find(msg => msg.id === messageId);
         if (message) {
-          await generateSuggestionsOnDemand(messageId, message.content);
+          console.log('🔍 toggleSuggestions: Found message, generating suggestions for:', message.content);
+          await generateTranslationAndSuggestions(messageId, message.content);
+        } else {
+          console.log('🔍 toggleSuggestions: No message found for messageId:', messageId);
         }
       } else {
+        console.log('🔍 toggleSuggestions: Suggestions already exist, checking format...');
         // If we have suggestions but they're not translated yet, translate them
         const firstSuggestion = currentSuggestions[0];
+        console.log('🔍 toggleSuggestions: First suggestion:', firstSuggestion);
+        console.log('🔍 toggleSuggestions: First suggestion type:', typeof firstSuggestion);
+        
         if (typeof firstSuggestion === 'string') {
           // They're still strings, need translation
-          translateSuggestions(messageId, currentSuggestions);
+          console.log('🔍 toggleSuggestions: Converting string suggestions to translated format...');
+          translateSuggestions(messageId, currentSuggestions as string[]);
+        } else {
+          console.log('🔍 toggleSuggestions: Suggestions already in object format, no action needed');
         }
       }
     }
+  };
+
+  const toggleSuggestionTranslation = (messageId: string, suggestionIndex: number) => {
+    const key = `${messageId}-${suggestionIndex}`;
+    setShowSuggestionTranslation(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
   };
 
   const useSuggestedResponse = (suggestion: string) => {
     setMessageInput(suggestion);
   };
 
-  // Generate suggestions on demand when user clicks on suggested responses
+  // Generate suggestions on demand when user clicks on suggested responses - UNUSED
+  /*
   const generateSuggestionsOnDemand = async (messageId: string, germanText: string) => {
-    if (suggestedResponses[messageId]) {
-      return; // Already generated
-    }
+    // Always try to get contextual suggestions, even if fallback exists
+    console.log('🎯 Generating contextual suggestions for:', germanText);
     
     try {
       // Extract conversation context (last 2-3 messages including current message)
@@ -1179,10 +1384,14 @@ export default function Dashboard({ user }: DashboardProps) {
         conversationContext = contextStrings.join(' -> ');
       }
       
+      console.log('📝 Conversation context:', conversationContext);
+      
       // Build enhanced prompt with conversation context
       const promptContent = conversationContext 
-        ? `Based on this conversation context: ${conversationContext}. Please provide: 1) English translation of: "${germanText}" 2) Three suggested German responses that are relevant to the conversation topic and that a language learner could use to reply. IMPORTANT: The suggestions must be ONLY in German - no English translations in parentheses or brackets. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [suggestion1] | [suggestion2] | [suggestion3]`
-        : `Please provide: 1) English translation of: "${germanText}" 2) Three suggested German responses that a language learner could use to reply. IMPORTANT: The suggestions must be ONLY in German - no English translations in parentheses or brackets. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [suggestion1] | [suggestion2] | [suggestion3]`;
+        ? `Based on this conversation context: ${conversationContext}. The AI just asked: "${germanText}". Please provide: 1) English translation of the AI's question: "${germanText}" 2) Three specific German responses that directly answer or respond to this question, appropriate for a language learner. Each response should be contextually relevant to the question asked. WITH their English translations. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [German suggestion 1] | [German suggestion 2] | [German suggestion 3] ENGLISH: [English translation 1] | [English translation 2] | [English translation 3]`
+        : `The AI just asked: "${germanText}". Please provide: 1) English translation of the AI's question: "${germanText}" 2) Three specific German responses that directly answer or respond to this question, appropriate for a language learner. Each response should be contextually relevant to the question asked. WITH their English translations. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [German suggestion 1] | [German suggestion 2] | [German suggestion 3] ENGLISH: [English translation 1] | [English translation 2] | [English translation 3]`;
+      
+      console.log('🚀 Making API call for contextual suggestions...');
       
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
@@ -1198,7 +1407,7 @@ export default function Dashboard({ user }: DashboardProps) {
           conversationId: 'helper',
           contextLevel,
           difficultyLevel,
-          systemInstruction: "When providing German suggestions, respond ONLY in German. Do not include any English translations in parentheses or brackets in the suggestions."
+          systemInstruction: "You are a German language learning assistant. Generate suggestions that DIRECTLY ANSWER the specific question asked by the AI. Do NOT provide generic responses. Each suggestion must be a concrete, specific answer to the exact question. For example: if asked 'Which details are most important?' respond with specific details like 'Die Budgetplanung ist am wichtigsten' or 'Die technischen Spezifikationen sind entscheidend'. Always provide German suggestions with English translations in the exact format requested."
         })
       });
 
@@ -1206,9 +1415,17 @@ export default function Dashboard({ user }: DashboardProps) {
         const data = await response.json();
         const content = data.message;
         
-        // Parse translation and suggestions
+        // Parse translation and suggestions - handle both old and new formats
         const translationMatch = content.match(/TRANSLATION:\s*(.+?)(?=SUGGESTIONS:|$)/);
-        const suggestionsMatch = content.match(/SUGGESTIONS:\s*(.+)/);
+        const suggestionsMatch = content.match(/SUGGESTIONS:\s*(.+?)(?=ENGLISH:|$)/);
+        const englishMatch = content.match(/ENGLISH:\s*(.+)/);
+        
+        console.log('On-demand parsing debug:', {
+          translationMatch: translationMatch ? translationMatch[1] : null,
+          suggestionsMatch: suggestionsMatch ? suggestionsMatch[1] : null,
+          englishMatch: englishMatch ? englishMatch[1] : null,
+          content: content.substring(0, 200) + '...'
+        });
         
         if (translationMatch) {
           setTranslatedMessages(prev => ({
@@ -1217,11 +1434,31 @@ export default function Dashboard({ user }: DashboardProps) {
           }));
         }
         
-        if (suggestionsMatch) {
-          const suggestions = suggestionsMatch[1].split('|').map(s => s.trim()).filter(s => s.length > 0);
+        // Try new format first (with English translations)
+        if (suggestionsMatch && englishMatch) {
+          const germanSuggestions = suggestionsMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+          const englishTranslations = englishMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+          
+          // Pair German suggestions with their English translations
+          const pairedSuggestions = germanSuggestions.map((german: string, index: number) => ({
+            german: german.trim(),
+            english: englishTranslations[index] ? englishTranslations[index].trim() : ''
+          }));
+          
+          console.log('New format - German suggestions:', germanSuggestions);
+          console.log('New format - English translations:', englishTranslations);
+          console.log('New format - Paired suggestions:', pairedSuggestions);
+          
+          setSuggestedResponses(prev => ({
+            ...prev,
+            [messageId]: pairedSuggestions
+          }));
+        } else if (suggestionsMatch) {
+          // Fallback: old format (German suggestions only)
+          const suggestions = suggestionsMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
           
           // Clean up any English translations that might be in parentheses or brackets
-          const cleanedSuggestions = suggestions.map(suggestion => {
+          const cleanedSuggestions = suggestions.map((suggestion: string) => {
             // Remove English text in parentheses like (English translation)
             let cleaned = suggestion.replace(/\([^)]*[A-Za-z][^)]*\)/g, '');
             // Remove English text in brackets like [English translation]
@@ -1231,18 +1468,47 @@ export default function Dashboard({ user }: DashboardProps) {
             cleaned = cleaned.replace(/\[[^\]]*\]/g, '');
             // Trim whitespace
             return cleaned.trim();
-          }).filter(s => s.length > 0);
+          }).filter((s: string) => s.length > 0);
+          
+          console.log('Old format - Original suggestions:', suggestions);
+          console.log('Old format - Cleaned suggestions:', cleanedSuggestions);
           
           setSuggestedResponses(prev => ({
             ...prev,
             [messageId]: cleanedSuggestions
           }));
+        } else {
+          console.log('No suggestions match found in:', content);
+          // Set fallback suggestions if parsing fails
+          const fallbackSuggestions = [
+            { german: 'Das ist interessant.', english: 'That is interesting.' },
+            { german: 'Können Sie das erklären?', english: 'Can you explain that?' },
+            { german: 'Ich verstehe.', english: 'I understand.' }
+          ];
+          
+          setSuggestedResponses(prev => ({
+            ...prev,
+            [messageId]: fallbackSuggestions
+          }));
         }
       }
     } catch (error) {
       console.error('Error generating suggestions on demand:', error);
+      
+      // Set fallback suggestions to prevent infinite loading
+      const fallbackSuggestions = [
+        'Das ist interessant.',
+        'Können Sie das erklären?',
+        'Ich verstehe.'
+      ];
+      
+      setSuggestedResponses(prev => ({
+        ...prev,
+        [messageId]: fallbackSuggestions
+      }));
     }
   };
+  */
 
   const handleHelpClick = async (messageContent: string, messageId: string) => {
     console.log('AI Grammar help button clicked for message:', messageId);
@@ -1367,8 +1633,12 @@ export default function Dashboard({ user }: DashboardProps) {
         console.log('📝 === AI RESPONSE DATA ===');
         console.log('AI message:', data.message);
         
+        // Generate message ID first
+        const messageId = (Date.now() + 1).toString();
+        console.log('🤖 Generated message ID:', messageId);
+        
         const assistantMessage: ChatMessage = {
-          id: (Date.now() + 1).toString(),
+          id: messageId,
           role: 'assistant',
           content: data.message,
           timestamp: new Date().toISOString()
@@ -1385,6 +1655,17 @@ export default function Dashboard({ user }: DashboardProps) {
         });
         
         setCurrentAIMessage(data.message);
+        
+        // Automatically generate contextual suggestions for the AI's response
+        console.log('🤖 === ABOUT TO AUTO-GENERATE SUGGESTIONS ===');
+        console.log('🤖 Message ID for suggestions:', messageId);
+        console.log('🤖 AI message content:', data.message);
+        console.log('🤖 Calling generateTranslationAndSuggestions...');
+        
+        await generateTranslationAndSuggestions(messageId, data.message);
+        
+        console.log('🤖 === AUTO-GENERATION CALL COMPLETED ===');
+        
         console.log('✅ === AI RESPONSE COMPLETED SUCCESSFULLY ===');
       } else {
         console.error('❌ === AI API ERROR ===');
@@ -1757,6 +2038,18 @@ export default function Dashboard({ user }: DashboardProps) {
 
 
   const translateSuggestions = async (messageId: string, suggestions: string[]) => {
+    console.log('🔄 translateSuggestions called for messageId:', messageId);
+    console.log('🔄 translateSuggestions input suggestions:', suggestions);
+    
+    // Check if we already have test suggestions (object format)
+    const currentSuggestions = suggestedResponses[messageId];
+    if (currentSuggestions && currentSuggestions.length > 0 && typeof currentSuggestions[0] === 'object') {
+      console.log('🔄 translateSuggestions: Test suggestions already exist, skipping translation');
+      return;
+    }
+    
+    console.log('🔄 translateSuggestions: Proceeding with translation...');
+    
     try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/translate`, {
         method: 'POST',
@@ -1862,7 +2155,7 @@ export default function Dashboard({ user }: DashboardProps) {
           pronunciation: null
         },
         wordsForPractice: [],
-        message: userMessage,
+        message: textContent,
         timestamp: new Date().toISOString()
       };
       
@@ -2527,12 +2820,12 @@ Keep it simple and conversational. Just respond with the German translation, not
         console.error('API call failed with status:', response.status);
         console.error('Error response:', errorText);
         console.error('Response headers:', response.headers);
-        setGermanSuggestion(simpleFallback);
+        setGermanSuggestion('Das ist interessant.');
       }
     } catch (error) {
       console.error('Network error generating German suggestion:', error);
-      console.error('Error details:', error.message);
-      setGermanSuggestion(simpleFallback);
+      console.error('Error details:', (error as Error).message);
+      setGermanSuggestion('Das ist interessant.');
     }
   };
 
@@ -3091,7 +3384,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
             },
-            body: JSON.stringify({ audioData: base64Data })
+            body: JSON.stringify({ 
+              audioData: base64Data,
+              language: recordingLanguage === 'german' ? 'de' : 'en'
+            })
           });
 
           if (response.ok) {
@@ -3147,7 +3443,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
           },
-          body: JSON.stringify({ audioData: base64Data })
+          body: JSON.stringify({ 
+            audioData: base64Data,
+            language: recordingLanguage === 'german' ? 'de' : 'en'
+          })
         });
 
         if (response.ok) {
@@ -3420,7 +3719,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           },
           body: JSON.stringify({
             audioData: base64Audio,
-            // Don't specify language - let Whisper auto-detect
+            language: recordingLanguage === 'german' ? 'de' : 'en',
             storeForAnalysis: true
           }),
           signal: controller.signal
@@ -3431,7 +3730,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         console.log('Whisper function error:', whisperError);
         
         // Check if it's a timeout or size issue
-        if (whisperError.name === 'AbortError') {
+        if ((whisperError as Error).name === 'AbortError') {
           console.log('Transcription timeout - audio might be too long');
           setChatMessages(prev => prev.map(msg => 
             msg.id === messageId 
@@ -3976,17 +4275,17 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       let errorMessage = '❌ Transcription failed';
       
       // Check if it's a CORS or function not found error
-      if (error.message.includes('Failed to fetch') || error.message.includes('CORS')) {
+      if ((error as Error).message.includes('Failed to fetch') || (error as Error).message.includes('CORS')) {
         errorMessage = '⚠️ Whisper function not deployed. Audio recorded but transcription unavailable.';
-      } else if (error.message.includes('OpenAI API key not configured')) {
+      } else if ((error as Error).message.includes('OpenAI API key not configured')) {
         errorMessage = '⚠️ OpenAI API key not configured. Please check server settings.';
-      } else if (error.message.includes('No audio data provided')) {
+      } else if ((error as Error).message.includes('No audio data provided')) {
         errorMessage = '⚠️ No audio data received. Please try recording again.';
-      } else if (error.message.includes('Invalid audio data format')) {
+      } else if ((error as Error).message.includes('Invalid audio data format')) {
         errorMessage = '⚠️ Invalid audio format. Please try recording again.';
-      } else if (error.message.includes('OpenAI Whisper API error')) {
-        errorMessage = `⚠️ ${error.message}`;
-      } else if (error.message.includes('No transcription received')) {
+      } else if ((error as Error).message.includes('OpenAI Whisper API error')) {
+        errorMessage = `⚠️ ${(error as Error).message}`;
+      } else if ((error as Error).message.includes('No transcription received')) {
         errorMessage = '⚠️ No transcription received. Please try speaking more clearly.';
       }
       
@@ -4295,6 +4594,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     setShowSuggestions({});
     setTranslatedMessages({});
     setSuggestedResponses({});
+    setShowSuggestionTranslation({});
     
     // Reset vocabulary states (conversation-specific)
     setPersistentVocab([]);
@@ -4393,7 +4693,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     if (onboardingData) {
       const updatedData = {
         ...onboardingData,
-        profilePictureUrl: newUrl
+        profilePictureUrl: newUrl || undefined
       };
       setOnboardingData(updatedData);
       localStorage.setItem(`onboarding_${user.id}`, JSON.stringify(updatedData));
@@ -5072,130 +5372,6 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                         </div>
                       )}
 
-                      {/* Pronunciation Breakdown for Assistant Messages */}
-                      {message.role === 'assistant' && (
-                        <div className="mt-3">
-                          {(() => {
-                            const wordCount = message.content.split(' ').length;
-                            const shouldAutoShow = wordCount <= 5;
-                            const isShowing = showPronunciationBreakdown[message.id];
-                            const phoneticData = phoneticBreakdowns[message.id];
-                            
-                            return (
-                              <div>
-                                {!phoneticData && (
-                                  <button
-                                    onClick={async (e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      console.log('🖱️ Pronunciation guide button clicked!');
-                                      console.log('📝 Message content:', message.content);
-                                      console.log('🆔 Message ID:', message.id);
-                                      console.log('🎭 Message role:', message.role);
-                                      console.log('🔧 Toolbar states before:', {
-                                        activeTab: toolbarActiveTab,
-                                        showToolbar,
-                                        collapsed: toolbarCollapsed
-                                      });
-                                      
-                                      // Force toolbar to show
-                                      setShowToolbar(true);
-                                      setToolbarCollapsed(false);
-                                      setToolbarActiveTab('pronunciation');
-                                      
-                                      // Set the active help button for proper message tracking
-                                      setActiveHelpButton(message.id);
-                                      
-                                      // Get phonetic breakdown and wait for it to complete
-                                      await getPhoneticBreakdown(message.content, message.id);
-                                      
-                                      // Auto-show the pronunciation breakdown in the chat area
-                                      setShowPronunciationBreakdown(prev => ({
-                                        ...prev,
-                                        [message.id]: true
-                                      }));
-                                      
-                                      console.log('🔧 Toolbar states after:', {
-                                        activeTab: 'pronunciation',
-                                        showToolbar: true,
-                                        collapsed: false
-                                      });
-                                      console.log('✅ Pronunciation guide fully loaded and displayed');
-                                    }}
-                                    className="text-xs text-blue-600 hover:text-blue-800 underline cursor-pointer"
-                                    style={{ pointerEvents: 'auto' }}
-                                  >
-                                    Get pronunciation guide
-                                  </button>
-                                )}
-                                
-                                {phoneticData && (
-                                  <div className="space-y-2">
-                                    {!shouldAutoShow && !isShowing && (
-                                      <button
-                                        onClick={() => togglePronunciationBreakdown(message.id)}
-                                        className="text-xs text-blue-600 hover:text-blue-800 underline"
-                                      >
-                                        Show pronunciation breakdown
-                                      </button>
-                                    )}
-                                    
-                                    {(shouldAutoShow || isShowing) && (
-                                      <div className="bg-gray-50 rounded-lg p-3 space-y-2">
-                                        <div className="flex items-center justify-between">
-                                          <span className="text-xs font-medium text-gray-700">Pronunciation Guide</span>
-                                          {!shouldAutoShow && (
-                                            <button
-                                              onClick={() => togglePronunciationBreakdown(message.id)}
-                                              className="text-xs text-gray-500 hover:text-gray-700"
-                                            >
-                                              Hide
-                                            </button>
-                                          )}
-                                        </div>
-                                        <div className="space-y-1">
-                                          {phoneticData.map((word: {original: string, phonetic: string, transliteration: string, syllables: string[]}, index: number) => (
-                                            <div key={index} className="flex items-center space-x-2 text-xs">
-                                              <span className="font-medium text-gray-800">{word.original}</span>
-                                              <span className="text-gray-600">[{word.phonetic}]</span>
-                                              <span className="text-blue-600 italic">{word.transliteration}</span>
-                                              <div className="flex items-center space-x-1">
-                                                <button
-                                                  onClick={() => playWordAudio(word.original)}
-                                                  className="p-1 hover:bg-gray-200 rounded"
-                                                  title="Play pronunciation"
-                                                >
-                                                  <Volume2 className="h-3 w-3 text-gray-500" />
-                                                </button>
-                                                <div className="flex items-center space-x-1">
-                                                  <span className="text-xs text-gray-500">Speed:</span>
-                                                  <input
-                                                    type="range"
-                                                    min="0.5"
-                                                    max="2.0"
-                                                    step="0.1"
-                                                    value={getWordSpeed(word.original)}
-                                                    onChange={(e) => {
-                                                      const speed = parseFloat(e.target.value);
-                                                      setWordSpeed(word.original, speed);
-                                                    }}
-                                                    className="w-16 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                                                  />
-                                                  <span className="text-xs text-gray-500 w-8">{getWordSpeed(word.original).toFixed(1)}x</span>
-                                                </div>
-                                              </div>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      )}
                   </div>
                 </div>
 
@@ -5302,18 +5478,43 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                         suggestedResponses[message.id].map((suggestion, index) => {
                           const suggestionText = typeof suggestion === 'string' ? suggestion : suggestion.german;
                           const suggestionTranslation = typeof suggestion === 'object' ? suggestion.english : null;
+                          const translationKey = `${message.id}-${index}`;
+                          const isShowingTranslation = showSuggestionTranslation[translationKey];
                           
                           return (
-                            <button
-                              key={index}
-                              onClick={() => useSuggestedResponse(suggestionText)}
-                              className="block w-full text-left bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors"
-                            >
-                              <div className="font-medium">{suggestionText}</div>
-                              {showTranslation[message.id] && suggestionTranslation && (
-                                <div className="text-gray-500 text-xs mt-1">{suggestionTranslation}</div>
-                              )}
-                            </button>
+                            <div key={index} className="bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors">
+                              <div className="flex items-center justify-between">
+                                <button
+                                  onClick={() => useSuggestedResponse(suggestionText)}
+                                  className="flex-1 text-left"
+                                >
+                                  <div className="font-medium">{suggestionText}</div>
+                                  {isShowingTranslation && suggestionTranslation && (
+                                    <div className="text-gray-500 text-xs mt-1">{suggestionTranslation}</div>
+                                  )}
+                                </button>
+                                <div className="flex items-center space-x-1">
+                                  <button
+                                    onClick={() => speakText(suggestionText)}
+                                    className="p-1 hover:bg-gray-100 rounded transition-colors"
+                                    title="Listen"
+                                  >
+                                    <svg className="h-3 w-3 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+                                      <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM15.657 6.343a1 1 0 011.414 0A9.972 9.972 0 0119 12a9.972 9.972 0 01-1.929 5.657 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 12a7.971 7.971 0 00-1.343-4.243 1 1 0 010-1.414z" clipRule="evenodd" />
+                                    </svg>
+                                  </button>
+                                  {suggestionTranslation && (
+                                    <button
+                                      onClick={() => toggleSuggestionTranslation(message.id, index)}
+                                      className="px-2 py-1 text-xs bg-white hover:bg-gray-50 border border-gray-300 rounded transition-colors"
+                                      title={isShowingTranslation ? "Hide translation" : "Show translation"}
+                                    >
+                                      {isShowingTranslation ? "DE" : "EN"}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
                           );
                         })
                       ) : (
@@ -5464,7 +5665,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   <Toolbar
                     isVisible={true}
                     currentMessage={currentAIMessage}
-                    currentMessageId={activeHelpButton}
+                    currentMessageId={activeHelpButton || undefined}
                     onAddToVocab={handleAddToVocab}
                     autoLoadExplanations={toolbarOpenedViaHelp}
                     comprehensiveAnalysis={activeHelpButton ? comprehensiveAnalysis[activeHelpButton] : null}
