@@ -2609,6 +2609,7 @@ export default function Toolbar({
                               .replace(/^\d+\.\s*/, '') // Remove "1. ", "2. ", etc.
                               .replace(/^(Title|Rule|Example|Correct|Try similar patterns|Remember|German tip):\s*/i, '') // Remove labels
                               .replace(/^(Correct|Example|Rule|Remember|German tip):\s*/i, '') // Remove additional label variations
+                              .replace(/^(Rule|Example|Remember|German tip):\s*/i, '') // Remove more label variations
                               .trim();
                             
                             // Highlight German text in quotes
@@ -2637,16 +2638,6 @@ export default function Toolbar({
                               );
                             }
                             
-                            // Handle Rule without emoji - add 📖 icon
-                            if (cleanLine.toLowerCase().includes('rule:') || cleanLine.toLowerCase().includes('the preposition')) {
-                              return (
-                                <div key={index} className="flex items-start space-x-2 mb-3">
-                                  <BookOpen className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                                  <span className="text-gray-700">{cleanLine.replace(/^(rule:|correct:)/i, '').trim()}</span>
-                                </div>
-                              );
-                            }
-                            
                             if (cleanLine.includes('📖')) {
                               return (
                                 <div key={index} className="flex items-start space-x-2 mb-3">
@@ -2661,16 +2652,6 @@ export default function Toolbar({
                                 <div key={index} className="flex items-start space-x-2 mb-3">
                                   <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
                                   <span className="text-gray-700">{cleanLine.replace('✅', '').trim()}</span>
-                                </div>
-                              );
-                            }
-                            
-                            // Handle Example without emoji - add ✅ icon
-                            if (cleanLine.includes('"') && !cleanLine.includes('✅') && !cleanLine.includes('👉')) {
-                              return (
-                                <div key={index} className="flex items-start space-x-2 mb-3">
-                                  <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                                  <span className="text-gray-700">{cleanLine}</span>
                                 </div>
                               );
                             }
@@ -2693,16 +2674,6 @@ export default function Toolbar({
                               );
                             }
                             
-                            // Handle Remember without emoji - add 🧠 icon
-                            if (cleanLine.toLowerCase().includes('remember:') || cleanLine.toLowerCase().includes('after')) {
-                              return (
-                                <div key={index} className="flex items-start space-x-2 mb-3">
-                                  <Target className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                                  <span className="text-gray-700">{cleanLine.replace(/^(remember:|after)/i, '').trim()}</span>
-                                </div>
-                              );
-                            }
-                            
                             if (cleanLine.includes('🎯')) {
                               return (
                                 <div key={index} className="flex items-start space-x-2 mb-3">
@@ -2712,8 +2683,52 @@ export default function Toolbar({
                               );
                             }
                             
-                            // Handle German tip without emoji - add 🎯 icon
-                            if (cleanLine.toLowerCase().includes('german tip:') || cleanLine.toLowerCase().includes('commonly used')) {
+                            // Fallback logic for content without emojis
+                            // Rule detection
+                            if (cleanLine.toLowerCase().includes('rule:') || 
+                                cleanLine.toLowerCase().includes('the preposition') ||
+                                cleanLine.toLowerCase().includes('always requires') ||
+                                cleanLine.toLowerCase().includes('grammar rule') ||
+                                cleanLine.toLowerCase().includes('compound words are common') ||
+                                cleanLine.toLowerCase().includes('modal verbs express')) {
+                              return (
+                                <div key={index} className="flex items-start space-x-2 mb-3">
+                                  <BookOpen className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                                  <span className="text-gray-700">{cleanLine.replace(/^(rule:|correct:)/i, '').trim()}</span>
+                                </div>
+                              );
+                            }
+                            
+                            // Example detection (quoted German text)
+                            if (cleanLine.includes('"') && !cleanLine.includes('✅') && !cleanLine.includes('👉')) {
+                              return (
+                                <div key={index} className="flex items-start space-x-2 mb-3">
+                                  <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                                  <span className="text-gray-700">{cleanLine}</span>
+                                </div>
+                              );
+                            }
+                            
+                            // Remember detection
+                            if (cleanLine.toLowerCase().includes('remember:') || 
+                                cleanLine.toLowerCase().includes('after') ||
+                                cleanLine.toLowerCase().includes('compound words =') ||
+                                cleanLine.toLowerCase().includes('modal verb') ||
+                                cleanLine.toLowerCase().includes('would like')) {
+                              return (
+                                <div key={index} className="flex items-start space-x-2 mb-3">
+                                  <Target className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                                  <span className="text-gray-700">{cleanLine.replace(/^(remember:|after)/i, '').trim()}</span>
+                                </div>
+                              );
+                            }
+                            
+                            // German tip detection
+                            if (cleanLine.toLowerCase().includes('german tip:') || 
+                                cleanLine.toLowerCase().includes('commonly used') ||
+                                cleanLine.toLowerCase().includes('germans often') ||
+                                cleanLine.toLowerCase().includes('combine words') ||
+                                cleanLine.toLowerCase().includes('create new concepts')) {
                               return (
                                 <div key={index} className="flex items-start space-x-2 mb-3">
                                   <Target className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
@@ -2721,6 +2736,13 @@ export default function Toolbar({
                                 </div>
                               );
                             }
+                            
+                            // Default fallback
+                            return (
+                              <div key={index} className="flex items-start space-x-2 mb-3">
+                                <span className="text-gray-700">{cleanLine}</span>
+                              </div>
+                            );
                             
                             return (
                               <p key={index} className="mb-2">

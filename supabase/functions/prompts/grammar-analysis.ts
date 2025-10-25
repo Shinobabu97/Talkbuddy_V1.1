@@ -11,11 +11,11 @@ CRITICAL REQUIREMENTS:
 
 FORMAT (exactly this structure - NO NUMBERS, NO LABELS, NO TEXT PREFIXES):
 💡 [Grammar Topic] - Brief explanation of the concept
-📖 Rule: [Grammar rule explanation]
-✅ Example: "[German example from the sentence]"
-👉 Try similar patterns: "[German example 1]" "[German example 2]"
-🧠 Remember: [Key pattern or rule to remember]
-🎯 German tip: [Cultural context or usage tip]
+📖 [Grammar rule explanation]
+✅ "[German example from the sentence]"
+👉 "[German example 1]" "[German example 2]"
+🧠 [Key pattern or rule to remember]
+🎯 [Cultural context or usage tip]
 
 GRAMMAR CONCEPTS TO ANALYZE:
 - Perfect Tense (haben/sein + past participle)
