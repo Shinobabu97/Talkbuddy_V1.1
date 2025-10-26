@@ -23,6 +23,7 @@ interface ChatRequest {
     personalityTraits: string[]
     conversationTopics: string[]
   }
+  conversationContext?: string
 }
 
 // Formality detection function
@@ -99,7 +100,7 @@ serve(async (req) => {
   }
 
   try {
-    const { messages, conversationId, contextLevel, difficultyLevel, systemInstruction, userProfile }: ChatRequest = await req.json()
+    const { messages, conversationId, contextLevel, difficultyLevel, systemInstruction, userProfile, conversationContext }: ChatRequest = await req.json()
 
     // Get OpenAI API key from environment
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
@@ -108,11 +109,14 @@ serve(async (req) => {
     }
 
     // Create system prompt based on user profile and settings
-    let systemPrompt = createSystemPrompt(contextLevel, difficultyLevel, userProfile)
+    let systemPrompt = createSystemPrompt(contextLevel, difficultyLevel, userProfile, conversationContext)
     
-    // Override system prompt with system instruction if provided (for stricter German-only responses)
+    // Override system prompt with system instruction if provided
     if (systemInstruction) {
-      systemPrompt = `${systemInstruction}\n\nContext Level: ${contextLevel}\nDifficulty Level: ${difficultyLevel}\n\n${contextLevel === 'Professional' ? 'Sie sind' : 'Du bist'} ein freundlicher, geduldiger deutscher Gesprächspartner. Ihre Aufgabe ist es, Nutzern beim Üben deutscher Gespräche in einer unterstützenden, ermutigenden Umgebung zu helfen.
+      // Use the systemInstruction as is for all cases (translation or suggestions)
+      systemPrompt = systemInstruction;
+    } else {
+      systemPrompt = `${contextLevel === 'Professional' ? 'Sie sind' : 'Du bist'} ein freundlicher, geduldiger deutscher Gesprächspartner. Ihre Aufgabe ist es, Nutzern beim Üben deutscher Gespräche in einer unterstützenden, ermutigenden Umgebung zu helfen.
 
 WICHTIGE REGELN:
 - Antworte NUR auf Deutsch
@@ -217,11 +221,20 @@ CASUAL KONTEXT:
   }
 })
 
-function createSystemPrompt(contextLevel: string, difficultyLevel: string, userProfile?: any): string {
+function createSystemPrompt(contextLevel: string, difficultyLevel: string, userProfile?: any, conversationContext?: string): string {
+  const contextSection = conversationContext 
+    ? `\n\nKONVERSATIONS-KONTEXT: "${conversationContext}"
+WICHTIG: 
+- Dies ist das Hauptthema dieser Unterhaltung
+- Alle Ihre Antworten müssen in diesem Kontext bleiben
+- Reagieren Sie DIREKT auf die vorherige Nachricht des Benutzers
+- Entwickeln Sie das Gespräch natürlich in Bezug auf diesen Kontext weiter`
+    : '';
+  
   const basePrompt = `${contextLevel === 'Professional' ? 'Sie sind' : 'Du bist'} ein freundlicher, natürlicher Gesprächspartner auf Deutsch. Sprich wie ein echter Mensch, nicht wie ein Lehrer oder Lehrbuch.
 
 Kontext: ${contextLevel}
-Schwierigkeit: ${difficultyLevel}
+Schwierigkeit: ${difficultyLevel}${contextSection}
 
 WICHTIGE REGELN:
 - Antworte NUR auf Deutsch

@@ -83,6 +83,7 @@ interface Conversation {
   difficulty_level: string;
   context_locked: boolean;
   difficulty_locked: boolean;
+  conversation_context?: string;
   created_at: string;
   updated_at: string;
   user_id: string;
@@ -235,6 +236,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [showTranslation, setShowTranslation] = useState<{[key: string]: boolean}>({});
   const [showSuggestionTranslation, setShowSuggestionTranslation] = useState<{[key: string]: boolean}>({});
   const [showSuggestions, setShowSuggestions] = useState<{[key: string]: boolean}>({});
+  const [showSuggestionsButtonClicked, setShowSuggestionsButtonClicked] = useState<{[key: string]: boolean}>({});
   const [hoveredConversation, setHoveredConversation] = useState<string | null>(null);
   const [showToolbar, setShowToolbar] = useState(false);
   const [currentAIMessage, setCurrentAIMessage] = useState<string>('');
@@ -253,6 +255,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const [messageStatus, setMessageStatus] = useState<{[key: string]: MessageStatus}>({});
   const [showVocabBuilder, setShowVocabBuilder] = useState(false);
+  const [lastSuggestionUsed, setLastSuggestionUsed] = useState<{[messageId: string]: string}>({});
 
   const updateMessageStatus = (messageId: string, status: MessageStatus | null) => {
     setMessageStatus(prev => {
@@ -617,10 +620,23 @@ export default function Dashboard({ user }: DashboardProps) {
   };
 
   const createNewConversation = async () => {
-    if (!conversationInput.trim()) return;
+    console.log('🚀 === START CHAT BUTTON CLICKED ===');
+    console.log('Conversation input:', conversationInput);
+    console.log('Input trim check:', conversationInput.trim());
+    console.log('Context level:', contextLevel);
+    console.log('Difficulty level:', difficultyLevel);
+    
+    if (!conversationInput.trim()) {
+      console.log('❌ === BLOCKING - Empty conversation input ===');
+      return;
+    }
 
     try {
+      console.log('👤 User ID:', user.id);
+      console.log('👤 User object:', user);
+      
       // Create the conversation in database
+      // NOTE: conversation_context column doesn't exist in database yet, so excluding it
       const { data, error } = await supabase
         .from('conversations')
         .insert({
@@ -631,11 +647,19 @@ export default function Dashboard({ user }: DashboardProps) {
           difficulty_level: difficultyLevel,
           context_locked: false,
           difficulty_locked: false
+          // conversation_context: conversationInput.trim() - removed until column exists
         })
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Supabase insert error:', error);
+        console.error('Error code:', error.code);
+        console.error('Error message:', error.message);
+        console.error('Error details:', error.details);
+        console.error('Error hint:', error.hint);
+        throw error;
+      }
 
       // Add to conversations list and start immediately
       setConversations(prev => [data, ...prev]);
@@ -645,8 +669,10 @@ export default function Dashboard({ user }: DashboardProps) {
       
       // Clear input
       setConversationInput('');
+      console.log('✅ === CONVERSATION CREATED SUCCESSFULLY ===');
     } catch (error) {
-      console.error('Error creating conversation:', error);
+      console.error('❌ === ERROR CREATING CONVERSATION ===', error);
+      alert('Failed to create conversation. Please check the console for details.');
     }
   };
 
@@ -655,6 +681,10 @@ export default function Dashboard({ user }: DashboardProps) {
     
     // Set initial messages
     setChatMessages([]);
+    
+    // Store the conversation context separately for future use
+    // Note: conversation_context column will be added to database later
+    console.log('📝 Conversation context stored:', userMessage);
     
     // Immediately send the user's message to get AI response
     sendInitialMessage(conversationId, userMessage);
@@ -693,7 +723,7 @@ export default function Dashboard({ user }: DashboardProps) {
         body: JSON.stringify({
           messages: [{
             role: 'user',
-            content: `${contextLevel === 'Professional' ? 'Ich möchte dieses Szenario üben' : 'Ich möchte dieses Szenario üben'}: ${userMessage}. ${contextLevel === 'Professional' ? 'Verstehen Sie den Kontext und beginnen Sie das Gespräch auf natürliche Weise auf Deutsch. Zeigen Sie zunächst, dass Sie den Kontext verstanden haben, und führen Sie dann das Gespräch entsprechend der realen Situation. Sie können eine Aussage machen, eine Beobachtung teilen oder eine Frage stellen - was auch immer in diesem Kontext am natürlichsten wäre. Verwenden Sie keine übermäßig enthusiastischen Phrasen wie "Natürlich, gerne!". WICHTIG: Antworten Sie NUR auf Deutsch. Verwenden Sie "Sie" statt "Du" für eine professionelle Atmosphäre.' : 'Verstehe den Kontext und beginne das Gespräch auf natürliche Weise auf Deutsch. Zeige zunächst, dass du den Kontext verstanden hast, und führe dann das Gespräch entsprechend der realen Situation. Du kannst eine Aussage machen, eine Beobachtung teilen oder eine Frage stellen - was auch immer in diesem Kontext am natürlichsten wäre. Verwende keine übermäßig enthusiastischen Phrasen wie "Natürlich, gerne!". WICHTIG: Antworte NUR auf Deutsch. Verwende "Du" statt "Sie" für eine lockere Atmosphäre.'}`
+            content: `Ich möchte dieses Szenario üben: ${userMessage}.\n\nWICHTIG:\n1. Bestätigen Sie zunächst, dass Sie den Kontext verstanden haben\n2. Fassen Sie kurz zusammen, was wir üben werden\n3. Fragen Sie, ob ich bereit bin, mit dem Rollenspiel zu beginnen\n4. Antworten Sie NUR auf Deutsch\n${contextLevel === 'Professional' ? 'Verwenden Sie "Sie" für formale Anrede.' : 'Verwenden Sie "Du" für lockere Anrede.'}`
           }],
           conversationId,
           contextLevel,
@@ -703,7 +733,8 @@ export default function Dashboard({ user }: DashboardProps) {
             goals: onboardingData.goals,
             personalityTraits: onboardingData.personalityTraits,
             conversationTopics: onboardingData.conversationTopics
-          } : undefined
+          } : undefined,
+          conversationContext: userMessage
         })
       });
 
@@ -740,15 +771,7 @@ export default function Dashboard({ user }: DashboardProps) {
       // Update current message but don't show toolbar automatically
       setCurrentAIMessage(data.message);
       
-      // Automatically generate contextual suggestions for the AI's response
-      console.log('🤖 === ABOUT TO AUTO-GENERATE INITIAL SUGGESTIONS ===');
-      console.log('🤖 Initial message ID: 2');
-      console.log('🤖 Initial AI message content:', data.message);
-      console.log('🤖 Calling generateTranslationAndSuggestions for initial message...');
-      
-      await generateTranslationAndSuggestions('2', data.message);
-      
-      console.log('🤖 === INITIAL AUTO-GENERATION CALL COMPLETED ===');
+      // Don't auto-generate suggestions - user must click button to show them
 
     } catch (error) {
       console.error('Error sending initial message:', error);
@@ -846,14 +869,49 @@ export default function Dashboard({ user }: DashboardProps) {
     ];
   };
 
+  // Context enhancement function - extracts key topics from user messages
+  const enhanceConversationContext = async (conversationId: string, userMessage: string) => {
+    if (!conversationId || !userMessage.trim()) return;
+
+    try {
+      // NOTE: conversation_context column doesn't exist in database yet
+      // This function is disabled until the migration is applied
+      console.log('📝 Context enhancement skipped - column not available yet');
+      return;
+    } catch (error) {
+      console.error('Error in enhanceConversationContext:', error);
+    }
+  };
+
   const generateTranslationAndSuggestions = async (messageId: string, germanText: string) => {
     console.log('🎯 === AUTO-GENERATING SUGGESTIONS ===');
     console.log('Message ID:', messageId);
     console.log('German text:', germanText);
     console.log('🚨 FUNCTION CALLED - Starting suggestion generation...');
     
-    // Generate contextual suggestions based on the AI's message
+    // Fetch conversation context from database
+    // For now, we'll get context from the first user message in chat
+    let conversationContext = '';
+    
+    // Find the first user message to use as context
+    const firstUserMessage = chatMessages.find(msg => msg.role === 'user');
+    if (firstUserMessage) {
+      conversationContext = firstUserMessage.content;
+      console.log('📝 Using first user message as context:', conversationContext);
+    }
+    
+    // CRITICAL FIX: Send the AI's question as if the USER is asking it
+    // This makes the LLM generate answers TO the question, not about the question
     console.log('🎯 Generating contextual suggestions for:', germanText);
+    console.log('📝 Transforming AI message into a user question format');
+    
+    // Frame the AI's message as a user question to generate direct answers
+    const messagesForSuggestion = [{
+      role: 'user' as const,
+      content: germanText
+    }];
+    
+    console.log('📤 Sending messages to API:', messagesForSuggestion.length, 'messages');
     
     try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
@@ -863,27 +921,20 @@ export default function Dashboard({ user }: DashboardProps) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: [{
-            role: 'user',
-            content: `The AI assistant just asked: "${germanText}"
-
-CRITICAL: Generate responses that DIRECTLY ANSWER the specific question asked. Do NOT use generic responses.
-
-Examples:
-- If AI asks "Which details are most important to you?" → Answer with specific details like "Die Budgetplanung ist am wichtigsten" or "Die technischen Spezifikationen sind entscheidend"
-- If AI asks "What are your requirements?" → Answer with specific requirements like "Wir brauchen eine Cloud-Lösung" or "Die Sicherheit ist unsere Priorität"
-- If AI asks "Do you have experience?" → Answer specifically like "Ja, mit Microsoft-Produkten" or "Nein, aber ich lerne schnell"
-
-Please provide:
-1) English translation of the AI's message
-2) Three SPECIFIC German responses that directly answer the AI's exact question with concrete details
-
-Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [Specific German answer 1] | [Specific German answer 2] | [Specific German answer 3] ENGLISH: [English translation 1] | [English translation 2] | [English translation 3]`
-          }],
-          conversationId: 'helper',
+          messages: messagesForSuggestion,
+          conversationId: selectedConversation || 'helper',
           contextLevel,
           difficultyLevel,
-          systemInstruction: "You are a German language learning assistant. Generate suggestions that DIRECTLY ANSWER the specific question asked by the AI. Do NOT provide generic responses. Each suggestion must be a concrete, specific answer to the exact question. For example: if asked 'Which details are most important?' respond with specific details like 'Die Budgetplanung ist am wichtigsten' or 'Die technischen Spezifikationen sind entscheidend'. Always provide German suggestions with English translations in the exact format requested."
+          conversationContext: conversationContext,
+          systemInstruction: `ANTWORTE DIREKT: Die Frage ist "${germanText}"
+
+Generiere NUR 3 kurze deutsche Antworten auf diese EXAKTE Frage:
+- Antworte STIMMT zur Frage
+- Maximal 8 Wörter pro Antwort
+- Deutsche Sprache
+- Beispiel: Frage "Bist du bereit?" → Antworten: "Ja, bin bereit" / "Nein, noch nicht" / "Ja, fangen wir an"
+
+Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Antwort 3] ENGLISH: [Answer 1] | [Answer 2] | [Answer 3]`
         })
       });
 
@@ -1264,6 +1315,10 @@ Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [Specific German answ
   };
 
   const translateMessage = async (messageId: string, germanText: string) => {
+    console.log('🔤 === TRANSLATION REQUEST ===');
+    console.log('Message ID:', messageId);
+    console.log('German Text:', germanText);
+    
     try {
       // Use chat function for translation since translate function might not exist
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
@@ -1278,9 +1333,13 @@ Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [Specific German answ
             content: `Translate this German text to English: "${germanText}". Provide only the English translation, nothing else.`
           }],
           conversationId: 'translation',
-          systemInstruction: "You are a German to English translator. Provide only the English translation of the German text. Be accurate and concise."
+          contextLevel: 'Casual',
+          difficultyLevel: 'Intermediate',
+          systemInstruction: "You are a German to English translator. Provide ONLY the English translation of the German text. Be accurate and concise. Do not add any explanations or additional text."
         })
       });
+
+      console.log('🔤 Translation response status:', response.status);
 
       if (response.ok) {
         const data = await response.json();
@@ -1362,8 +1421,21 @@ Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [Specific German answ
     }));
   };
 
-  const useSuggestedResponse = (suggestion: string) => {
+  const useSuggestedResponse = (suggestion: string, messageId?: string) => {
+    console.log('🔵 === USER SELECTED A SUGGESTION ===');
+    console.log('Selected suggestion:', suggestion);
+    console.log('Message ID:', messageId);
+    
     setMessageInput(suggestion);
+    
+    // Track that this suggestion was selected for this message
+    if (messageId) {
+      setLastSuggestionUsed(prev => ({
+        ...prev,
+        [messageId]: suggestion
+      }));
+      console.log('✅ Tracked suggestion selection for message:', messageId);
+    }
   };
 
   // Generate suggestions on demand when user clicks on suggested responses - UNUSED
@@ -1599,6 +1671,30 @@ Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [Specific German answ
     setIsSending(true);
     setIsTyping(true);
     
+    // Check if user selected a suggestion for this message
+    const selectedSuggestion = lastSuggestionUsed[messageId];
+    console.log('🔍 Checking if suggestion was used for this message:', messageId);
+    console.log('Selected suggestion:', selectedSuggestion);
+    
+    // Build enhanced system instruction if suggestion was selected
+    let enhancedSystemInstruction = `${contextLevel === 'Professional' ? 'Sie sind' : 'Du bist'} ein freundlicher Gesprächspartner. Antworte kurz und natürlich (1-2 Sätze). Stelle viele Fragen. Sei neugierig und interessiert. Lass den Nutzer viel sprechen. ${contextLevel === 'Professional' ? 'Verwende "Sie" und höfliche Ausdrücke.' : 'Verwende "Du" und umgangssprachliche Ausdrücke.'} KEINE englischen Übersetzungen oder Erklärungen.`;
+    
+    if (selectedSuggestion) {
+      console.log('✅ User selected a suggestion - enhancing AI context');
+      enhancedSystemInstruction += `\n\nWICHTIGER HINWEIS: Der Nutzer hat diese Antwort aus vorgeschlagenen Optionen ausgewählt: "${selectedSuggestion}". Das zeigt, dass der Nutzer mit dieser Perspektive einverstanden ist oder diese Antwort für passend hält. Baue deine Antwort darauf auf und entwickle das Gespräch weiter basierend auf dieser Auswahl.`;
+      console.log('Enhanced system instruction:', enhancedSystemInstruction.substring(0, 200) + '...');
+    }
+    
+    // Get conversation context from current conversation
+    let conversationContextToSend = userMessage;
+    if (selectedConversation) {
+      const currentConversation = conversations.find(conv => conv.id === selectedConversation);
+      if (currentConversation && currentConversation.conversation_context) {
+        conversationContextToSend = currentConversation.conversation_context;
+        console.log('📝 Using conversation context:', conversationContextToSend);
+      }
+    }
+    
     try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
@@ -1620,7 +1716,8 @@ Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [Specific German answ
             personalityTraits: onboardingData.personalityTraits,
             conversationTopics: onboardingData.conversationTopics
           } : undefined,
-          systemInstruction: `${contextLevel === 'Professional' ? 'Sie sind' : 'Du bist'} ein freundlicher Gesprächspartner. Antworte kurz und natürlich (1-2 Sätze). Stelle viele Fragen. Sei neugierig und interessiert. Lass den Nutzer viel sprechen. ${contextLevel === 'Professional' ? 'Verwende "Sie" und höfliche Ausdrücke.' : 'Verwende "Du" und umgangssprachliche Ausdrücke.'} KEINE englischen Übersetzungen oder Erklärungen.`
+          systemInstruction: enhancedSystemInstruction,
+          conversationContext: conversationContextToSend
         })
       });
 
@@ -1665,6 +1762,16 @@ Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [Specific German answ
         await generateTranslationAndSuggestions(messageId, data.message);
         
         console.log('🤖 === AUTO-GENERATION CALL COMPLETED ===');
+        
+        // Clear the suggestion tracking for this message after AI has responded
+        if (selectedSuggestion) {
+          console.log('🧹 Clearing suggestion tracking for message:', messageId);
+          setLastSuggestionUsed(prev => {
+            const newState = { ...prev };
+            delete newState[messageId];
+            return newState;
+          });
+        }
         
         console.log('✅ === AI RESPONSE COMPLETED SUCCESSFULLY ===');
       } else {
@@ -2395,6 +2502,16 @@ Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [Specific German answ
         ...prev,
         [messageId]: userMessage.content
       }));
+      
+      // Enhance conversation context with user message
+      if (selectedConversation && trimmedInput) {
+        await enhanceConversationContext(selectedConversation, trimmedInput);
+      }
+    }
+    
+    // Enhance context on retry if it's a correction
+    if (isRetry && selectedConversation && trimmedInput) {
+      await enhanceConversationContext(selectedConversation, trimmedInput);
     }
 
     // Process text message (EXACT SAME AS VOICE)
@@ -3365,19 +3482,34 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
   const processConversationInputRecording = async (audioBlob: Blob) => {
     console.log('🎤 === PROCESSING CONVERSATION INPUT RECORDING ===');
+    console.log('Audio blob size:', audioBlob.size, 'bytes');
+    console.log('Audio blob type:', audioBlob.type);
+    console.log('Recording language:', recordingLanguage);
     
     setIsTranscribing(true);
     
     try {
       // Convert blob to base64
       const reader = new FileReader();
+      reader.onerror = (error) => {
+        console.error('FileReader error:', error);
+        alert('Failed to read audio file. Please try again.');
+        setIsTranscribing(false);
+      };
+      
       reader.onload = async () => {
-        const base64Audio = reader.result as string;
-        const base64Data = base64Audio.split(',')[1];
-        
-        console.log('Base64 audio length:', base64Data.length);
-        
         try {
+          const base64Audio = reader.result as string;
+          if (!base64Audio || !base64Audio.includes(',')) {
+            console.error('Invalid base64 audio data');
+            alert('Failed to process recording. Please try again.');
+            setIsTranscribing(false);
+            return;
+          }
+          
+          const base64Data = base64Audio.split(',')[1];
+          console.log('Base64 audio length:', base64Data.length);
+          
           const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whisper`, {
             method: 'POST',
             headers: {
@@ -3390,23 +3522,31 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             })
           });
 
+          console.log('Whisper response status:', response.status);
+
           if (response.ok) {
             const data = await response.json();
+            console.log('Whisper response data:', data);
             
-            if (data.transcription) {
-              const transcription = data.transcription;
-              console.log('Conversation input transcription:', transcription);
+            if (data.transcription && data.transcription.trim()) {
+              const transcription = data.transcription.trim();
+              console.log('✅ Conversation input transcription received:', transcription);
+              console.log('🎯 Setting this transcription to conversationInput field');
               
               // Set the transcription as the conversation input
               setConversationInput(transcription);
               setIsTranscribing(false);
+              
+              console.log('✅ Transcription set in conversationInput');
             } else {
-              console.error('No transcription received');
+              console.error('No transcription or empty transcription received');
+              console.error('Response data:', data);
               alert('No speech detected. Please try again.');
               setIsTranscribing(false);
             }
           } else {
-            console.error('Transcription failed:', response.status);
+            const errorText = await response.text();
+            console.error('Transcription failed:', response.status, errorText);
             alert('Failed to process your recording. Please try again.');
             setIsTranscribing(false);
           }
@@ -4048,17 +4188,29 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             console.log('Detected language:', detectedLanguage, 'Recording language:', recordingLanguage);
           }
           
-          // Update the audio message with transcription
+          // Update the audio message with transcription - ensure message ID matches
           setChatMessages(prev => {
             console.log('🔄 === UPDATING MESSAGE WITH TRANSCRIPTION ===');
             console.log('Message ID:', messageId);
             console.log('Is Retry:', isRetry);
             console.log('Transcription:', transcription);
             console.log('Previous messages count:', prev.length);
+            console.log('All message IDs:', prev.map(msg => msg.id));
+            
+            // Verify the message exists
+            const targetMessage = prev.find(msg => msg.id === messageId);
+            if (!targetMessage) {
+              console.error('❌ === MESSAGE NOT FOUND FOR UPDATE ===');
+              console.error('Message ID:', messageId);
+              console.error('Available message IDs:', prev.map(msg => msg.id));
+              return prev; // Don't update if message not found
+            }
+            
+            console.log('✅ Message found, updating:', targetMessage.content);
             
             const updatedMessages = prev.map(msg => {
               if (msg.id === messageId) {
-                console.log('✅ FOUND MESSAGE TO UPDATE:', msg.id);
+                console.log('✅ UPDATING MESSAGE:', msg.id);
                 console.log('Original content:', msg.content);
                 console.log('New content:', transcription);
                 
@@ -4079,6 +4231,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             });
             
             console.log('Updated messages count:', updatedMessages.length);
+            console.log('Updated message content:', updatedMessages.find(msg => msg.id === messageId)?.content);
             return updatedMessages;
           });
           
@@ -4121,11 +4274,19 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             }
             
             const audioBase64 = btoa(binaryString);
+            
+            console.log('🎤 === STORING GERMAN VOICE MESSAGE FOR PRONUNCIATION ===');
+            console.log('Message ID:', messageId);
+            console.log('Transcription:', transcription);
+            
             setLastGermanVoiceMessage({
               transcription: transcription,
               audioData: audioBase64,
               messageId: messageId
             });
+            
+            console.log('✅ === GERMAN VOICE MESSAGE STORED ===');
+            console.log('lastGermanVoiceMessage should now have messageId:', messageId);
             
             console.log('🔍 === CHECKING FOR ERRORS AFTER ANALYSIS ===');
             console.log('Analysis result:', analysis);
@@ -4466,6 +4627,12 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
     console.log('✅ === PROCEEDING WITH AI RESPONSE ===');
     clearCheckingStatus(messageId);
+    
+    // Enhance conversation context with voice transcription
+    if (selectedConversation && transcription) {
+      await enhanceConversationContext(selectedConversation, transcription);
+    }
+    
     setIsSending(true);
     setIsTyping(true);
 
@@ -4495,7 +4662,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           contextLevel,
           difficultyLevel,
           systemInstruction: systemInstruction,
-          userProfile: onboardingData
+          userProfile: onboardingData,
+          conversationContext: transcription
         })
       });
 
@@ -5485,7 +5653,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                             <div key={index} className="bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors">
                               <div className="flex items-center justify-between">
                                 <button
-                                  onClick={() => useSuggestedResponse(suggestionText)}
+                                  onClick={() => useSuggestedResponse(suggestionText, message.id)}
                                   className="flex-1 text-left"
                                 >
                                   <div className="font-medium">{suggestionText}</div>
