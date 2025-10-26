@@ -2010,9 +2010,17 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('Waiting for correction state:', waitingForCorrection);
     console.log('Active message ID:', activeMessageId);
     
-    if (detectedLanguage === 'english' && recordingLanguage === 'german') {
+    // Additional safety check for English patterns
+    const hasEnglishPattern = /\b(i|a|an|the|want|need|can|could|should|would|prepared?|meeting|business|english)\b/i.test(trimmedInput);
+    const hasNoGermanChars = !/[äöüßÄÖÜ]/.test(trimmedInput);
+    
+    // If language is detected as English OR if suspicious English patterns are found
+    if ((detectedLanguage === 'english' || (hasEnglishPattern && hasNoGermanChars)) && recordingLanguage === 'german') {
       console.log('🔍 === TEXT LANGUAGE MISMATCH DETECTED ===');
       console.log('English text detected when German was expected');
+      console.log('Detected language:', detectedLanguage);
+      console.log('Has English pattern:', hasEnglishPattern);
+      console.log('Has no German chars:', hasNoGermanChars);
       
       // Clear any existing states that might interfere
       setWaitingForCorrection(false);
@@ -2021,7 +2029,7 @@ export default function Dashboard({ user }: DashboardProps) {
       setErrorMessages({});
       
       // Show mismatch modal for typed English text
-      setDetectedLanguage(detectedLanguage);
+      setDetectedLanguage('english');
       setMismatchTranscription(trimmedInput);
       setMismatchMessageId(Date.now().toString());
       setGermanSuggestion('');
@@ -2650,7 +2658,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     }
     
     // Check for common English words
-    const englishWords = ['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'this', 'that', 'these', 'those', 'what', 'where', 'when', 'why', 'how', 'hello', 'hi', 'how', 'are', 'you', 'i', 'am', 'is', 'was', 'were', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'can', 'could', 'should', 'would', 'may', 'might', 'must', 'shall'];
+    const englishWords = ['the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'this', 'that', 'these', 'those', 'what', 'where', 'when', 'why', 'how', 'hello', 'hi', 'how', 'are', 'you', 'i', 'am', 'is', 'was', 'were', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'can', 'could', 'should', 'would', 'may', 'might', 'must', 'shall', 'want', 'wants', 'wanted', 'prepare', 'prepared', 'meeting', 'business', 'need', 'needs', 'needed', 'get', 'gets', 'got', 'go', 'goes', 'went', 'make', 'makes', 'made', 'work', 'works', 'worked', 'talk', 'talks', 'talked', 'speak', 'speaks', 'spoke', 'about', 'your', 'my', 'me', 'him', 'her', 'them', 'us', 'we', 'they', 'from', 'into', 'onto', 'during', 'before', 'after', 'while', 'until', 'since', 'if', 'than', 'then', 'more', 'most', 'very', 'much', 'some', 'many', 'all', 'each', 'every', 'both', 'either', 'neither', 'other', 'another', 'time', 'times', 'way', 'ways', 'day', 'days', 'thing', 'things', 'person', 'people', 'place', 'places', 'here', 'there', 'now', 'now', 'today', 'tomorrow', 'yesterday', 'week', 'weeks', 'month', 'months', 'year', 'years'];
     const englishCount = words.filter(word => {
       const cleanWord = word.replace(/[.,!?;:]/g, '');
       return englishWords.includes(cleanWord);
@@ -2664,6 +2672,11 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     }).length;
     
     console.log('Language detection:', { text, germanCount, englishCount, hasGermanChars, detected: englishCount > germanCount ? 'english' : 'german' });
+    
+    // If English words found and no German characters, default to blocking English
+    if (englishCount > 0 && !hasGermanChars && germanCount === 0) {
+      return 'english';
+    }
     
     return englishCount > germanCount ? 'english' : 'german';
   };
@@ -6100,24 +6113,24 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               {modalTriggerType === 'voice' && (
                 <div className="text-center">
                   <button
-                    onClick={isRecording ? stopRecording : startRecording}
+                    onClick={isModalRecording ? stopModalRecording : () => startModalRecording(false)}
                     disabled={isTranscribing}
                     className={`p-4 rounded-full transition-colors ${
-                      isRecording 
+                      isModalRecording 
                         ? 'bg-red-500 hover:bg-red-600 text-white' 
                         : 'bg-green-500 hover:bg-green-600 text-white'
                     } ${isTranscribing ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     {isTranscribing ? (
                       <Loader2 className="h-6 w-6 animate-spin" />
-                    ) : isRecording ? (
+                    ) : isModalRecording ? (
                       <MicOff className="h-6 w-6" />
                     ) : (
                       <Mic className="h-6 w-6" />
                     )}
                   </button>
                   <div className="mt-2 text-sm text-gray-600">
-                    {isRecording ? 'Recording...' : isTranscribing ? 'Processing...' : 'Click to practice'}
+                    {isModalRecording ? 'Recording...' : isTranscribing ? 'Processing...' : 'Click to practice'}
                   </div>
                 </div>
               )}
