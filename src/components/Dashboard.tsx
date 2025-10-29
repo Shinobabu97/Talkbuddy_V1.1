@@ -900,11 +900,43 @@ export default function Dashboard({ user }: DashboardProps) {
       console.log('📝 Using first user message as context:', conversationContext);
     }
     
-    // CRITICAL FIX: Send the AI's question as if the USER is asking it
-    // This makes the LLM generate answers TO the question, not about the question
     console.log('🎯 Generating contextual suggestions for:', germanText);
-    console.log('📝 Transforming AI message into a user question format');
     
+    // Check if this is a readiness question - provide direct answers
+    const isReadinessQuestion = /sind.*bereit|bist.*bereit|ready|bereit.*beginnen/i.test(germanText);
+    
+    if (isReadinessQuestion) {
+      console.log('✅ Detected readiness question - using hardcoded responses');
+      // Provide direct yes/no/maybe answers to readiness questions
+      const directResponses = contextLevel === 'Professional' 
+        ? [
+            { german: "Ja, ich bin bereit.", english: "Yes, I am ready." },
+            { german: "Absolut, ich freue mich darauf.", english: "Absolutely, I'm looking forward to it." },
+            { german: "Nein, ich möchte noch Kontext geben.", english: "No, I want to provide more context." }
+          ]
+        : [
+            { german: "Ja, ich bin bereit.", english: "Yes, I'm ready." },
+            { german: "Absolut, fangen wir an!", english: "Absolutely, let's start!" },
+            { german: "Nein, ich möchte mehr Kontext geben.", english: "No, I want to provide more context." }
+          ];
+      
+      setSuggestedResponses(prev => ({
+        ...prev,
+        [messageId]: directResponses
+      }));
+      
+      setTranslatedMessages(prev => {
+        if (prev[messageId]) return prev;
+        return {
+          ...prev,
+          [messageId]: germanText
+        };
+      });
+      
+      return;
+    }
+    
+    // For other questions, use AI generation
     // Frame the AI's message as a user question to generate direct answers
     const messagesForSuggestion = [{
       role: 'user' as const,
@@ -926,13 +958,15 @@ export default function Dashboard({ user }: DashboardProps) {
           contextLevel,
           difficultyLevel,
           conversationContext: conversationContext,
-          systemInstruction: `ANTWORTE DIREKT: Die Frage ist "${germanText}"
+          systemInstruction: `Die Frage: "${germanText}"
 
-Generiere NUR 3 kurze deutsche Antworten auf diese EXAKTE Frage:
-- Antworte STIMMT zur Frage
-- Maximal 8 Wörter pro Antwort
-- Deutsche Sprache
-- Beispiel: Frage "Bist du bereit?" → Antworten: "Ja, bin bereit" / "Nein, noch nicht" / "Ja, fangen wir an"
+Aufgabe: 3 kurze Antworten auf DIESE Frage.
+
+Regeln:
+- Direkte Antworten zur Frage
+- Max 8 Wörter
+- Deutsch
+- Wenn Frage "Sind Sie bereit?" → Antworten: "Ja, ich bin bereit." / "Nein, nicht bereit." / "Ja, fangen wir an."
 
 Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Antwort 3] ENGLISH: [Answer 1] | [Answer 2] | [Answer 3]`
         })
@@ -962,10 +996,18 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Ant
         });
         
         if (translationMatch) {
-          setTranslatedMessages(prev => ({
-            ...prev,
-            [messageId]: translationMatch[1].trim()
-          }));
+          // Only set translation if one doesn't already exist
+          // This prevents overwriting user's manual translation when generating suggestions
+          setTranslatedMessages(prev => {
+            if (prev[messageId]) {
+              console.log('📝 Translation already exists, keeping user translation for message:', messageId);
+              return prev;
+            }
+            return {
+              ...prev,
+              [messageId]: translationMatch[1].trim()
+            };
+          });
         }
         
         // Try new format first (with English translations)
@@ -1340,14 +1382,25 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Ant
       });
 
       console.log('🔤 Translation response status:', response.status);
+      console.log('🔤 Translation response ok:', response.ok);
 
       if (response.ok) {
         const data = await response.json();
-        setTranslatedMessages(prev => ({
-          ...prev,
-          [messageId]: data.message
-        }));
+        console.log('🔤 Translation response data:', data);
+        console.log('🔤 Translation message:', data.message);
+        
+        if (data.message) {
+          setTranslatedMessages(prev => ({
+            ...prev,
+            [messageId]: data.message
+          }));
+          console.log('✅ Translation set for message ID:', messageId);
+        } else {
+          console.error('❌ No message in response data');
+        }
       } else {
+        const errorText = await response.text();
+        console.error('❌ Translation failed:', errorText);
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
     } catch (error) {
