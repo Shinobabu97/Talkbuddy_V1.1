@@ -93,13 +93,30 @@ serve(async (req) => {
     const transcription = data.text
     const words = data.words || [] // Word-level timestamps
     const segments = data.segments || [] // Segment-level timestamps
+    const detectedLanguage = data.language // Language code from Whisper (e.g., 'de', 'en', 'fr', etc.)
 
     if (!transcription || transcription.trim() === '') {
       console.error('Empty transcription received from Whisper')
       throw new Error('No transcription received from Whisper')
     }
 
+    // Validate that the detected language is German or English
+    if (detectedLanguage && detectedLanguage !== 'de' && detectedLanguage !== 'en') {
+      console.log('🚫 Unsupported language detected in audio:', detectedLanguage);
+      return new Response(
+        JSON.stringify({
+          error: "Hello! I'm your German and English learning assistant. I can only respond to messages in German or English. This helps ensure you get accurate language practice. Please try again in either language!",
+          errorType: "unsupported_language"
+        }),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        },
+      )
+    }
+
     console.log('Transcription successful:', transcription)
+    console.log('Detected language:', detectedLanguage || 'unknown')
     console.log('Word timing data:', words.length, 'words')
 
     // Store audio for pronunciation analysis if requested

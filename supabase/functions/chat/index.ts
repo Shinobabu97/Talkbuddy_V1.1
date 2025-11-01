@@ -26,6 +26,99 @@ interface ChatRequest {
   conversationContext?: string
 }
 
+// Language detection function
+function detectLanguage(text: string): 'german' | 'english' | 'other' {
+  if (!text || text.trim().length === 0) {
+    return 'other';
+  }
+
+  // Check for German-specific characters (strong indicator)
+  const hasGermanChars = /[äöüßÄÖÜ]/.test(text);
+  if (hasGermanChars) {
+    return 'german';
+  }
+
+  // Split text into words for analysis
+  const words = text.toLowerCase().split(/\s+/).filter(word => {
+    // Remove punctuation
+    const cleanWord = word.replace(/[.,!?;:()\[\]{}'"]/g, '');
+    return cleanWord.length > 0;
+  });
+
+  // Common English words
+  const englishWords = [
+    'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
+    'this', 'that', 'these', 'those', 'what', 'where', 'when', 'why', 'how',
+    'hello', 'hi', 'are', 'you', 'i', 'am', 'is', 'was', 'were', 'have', 'has', 'had',
+    'do', 'does', 'did', 'will', 'can', 'could', 'should', 'would', 'may', 'might', 'must', 'shall',
+    'not', 'no', 'yes', 'if', 'then', 'else', 'all', 'some', 'any', 'each', 'every', 'many', 'much',
+    'from', 'into', 'onto', 'up', 'down', 'out', 'off', 'over', 'under', 'above', 'below',
+    'here', 'there', 'now', 'then', 'today', 'tomorrow', 'yesterday', 'soon', 'later',
+    'very', 'too', 'so', 'as', 'than', 'more', 'most', 'less', 'least'
+  ];
+
+  // Common German words
+  const germanWords = [
+    'der', 'die', 'das', 'und', 'oder', 'aber', 'mit', 'von', 'zu', 'auf', 'in', 'an', 'für',
+    'ich', 'du', 'er', 'sie', 'es', 'wir', 'ihr', 'ist', 'sind', 'haben', 'werden',
+    'können', 'müssen', 'sollen', 'wollen', 'möchte', 'mögen', 'bin', 'bist', 'war', 'waren',
+    'wird', 'werde', 'wirst', 'werdet', 'hast', 'hat', 'hatte', 'hatten', 'kann', 'kannst',
+    'könnt', 'konnte', 'konnten', 'will', 'willst', 'wollt', 'wollte', 'wollten',
+    'soll', 'sollst', 'sollt', 'sollte', 'sollten', 'muss', 'musst', 'müsst', 'musste', 'mussten',
+    'mag', 'magst', 'mögt', 'mochte', 'mochten', 'dass', 'wenn', 'wie', 'wo', 'was', 'wer',
+    'sein', 'seine', 'seinem', 'seinen', 'ihr', 'ihre', 'ihrem', 'ihren', 'ihrer',
+    'ein', 'eine', 'einer', 'einem', 'einen', 'eines', 'kein', 'keine', 'keiner', 'keinem', 'keinen',
+    'auch', 'noch', 'nur', 'schon', 'noch', 'doch', 'nicht', 'nichts', 'nie', 'niemals',
+    'gut', 'sehr', 'viel', 'mehr', 'am', 'im', 'zum', 'zur', 'bei', 'nach', 'vor', 'über', 'unter',
+    'hallo', 'ja', 'nein', 'bitte', 'danke', 'gern', 'geschehen'
+  ];
+
+  // Count matches for each language
+  let englishCount = 0;
+  let germanCount = 0;
+
+  words.forEach(word => {
+    const cleanWord = word.replace(/[.,!?;:()\[\]{}'"]/g, '');
+    if (englishWords.includes(cleanWord)) {
+      englishCount++;
+    }
+    if (germanWords.includes(cleanWord)) {
+      germanCount++;
+    }
+  });
+
+  // If we have a clear winner based on word count
+  if (germanCount > englishCount && germanCount > 0) {
+    return 'german';
+  }
+  
+  if (englishCount > germanCount && englishCount > 0) {
+    return 'english';
+  }
+
+  // If both are zero or equal, check for common patterns
+  // English patterns: common endings, contractions, etc.
+  const englishPatterns = /(ing|ed|tion|ly|er|est|ness|ment)$/i;
+  const englishContractions = /\b(i'm|you're|he's|she's|it's|we're|they're|don't|doesn't|didn't|won't|can't|couldn't|shouldn't|wouldn't|isn't|aren't|wasn't|weren't|haven't|hasn't|hadn't)\b/i;
+  
+  // German patterns: common endings, compound words, etc.
+  const germanPatterns = /(ung|heit|keit|schaft|lich|ig|isch|end|end|bar|sam|los|voll)$/i;
+  
+  const hasEnglishPatterns = englishPatterns.test(text) || englishContractions.test(text);
+  const hasGermanPatterns = germanPatterns.test(text);
+
+  if (hasGermanPatterns && !hasEnglishPatterns) {
+    return 'german';
+  }
+  
+  if (hasEnglishPatterns && !hasGermanPatterns) {
+    return 'english';
+  }
+
+  // Default to 'other' if we can't determine
+  return 'other';
+}
+
 // Formality detection function
 function detectFormalityMismatch(userMessage: string, contextLevel: string): string | null {
   console.log('🔍 DEBUG: detectFormalityMismatch called');
@@ -101,6 +194,27 @@ serve(async (req) => {
 
   try {
     const { messages, conversationId, contextLevel, difficultyLevel, systemInstruction, userProfile, conversationContext }: ChatRequest = await req.json()
+
+    // Language validation - check the last user message
+    const lastUserMessage = messages[messages.length - 1];
+    if (lastUserMessage && lastUserMessage.role === 'user') {
+      const detectedLanguage = detectLanguage(lastUserMessage.content);
+      console.log('🌍 Language detection:', { text: lastUserMessage.content, detected: detectedLanguage });
+      
+      if (detectedLanguage !== 'german' && detectedLanguage !== 'english') {
+        console.log('🚫 Unsupported language detected:', detectedLanguage);
+        return new Response(
+          JSON.stringify({
+            error: "Hello! I'm your German and English learning assistant. I can only respond to messages in German or English. This helps ensure you get accurate language practice. Please try again in either language!",
+            errorType: "unsupported_language"
+          }),
+          {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400,
+          },
+        )
+      }
+    }
 
     // Get OpenAI API key from environment
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')

@@ -1831,6 +1831,30 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Ant
         console.error('❌ === AI API ERROR ===');
         console.error('Response status:', response.status);
         console.error('Response status text:', response.statusText);
+        
+        // Handle language validation error (400 status)
+        if (response.status === 400) {
+          try {
+            const errorData = await response.json();
+            if (errorData.errorType === 'unsupported_language' && errorData.error) {
+              console.log('🌍 Language validation error detected');
+              // Display the error message as an assistant message
+              const errorMessageId = (Date.now() + 1).toString();
+              const errorMessage: ChatMessage = {
+                id: errorMessageId,
+                role: 'assistant',
+                content: errorData.error,
+                timestamp: new Date().toISOString()
+              };
+              
+              setChatMessages(prev => [...prev, errorMessage]);
+              console.log('✅ Language validation message displayed');
+              return; // Don't proceed with further processing
+            }
+          } catch (parseError) {
+            console.error('Error parsing error response:', parseError);
+          }
+        }
       }
     } catch (error) {
       console.error('❌ === AI RESPONSE ERROR ===');
@@ -4461,8 +4485,39 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           setChatMessages(prev => [...prev, aiMessage]);
         }
       } else {
+        // Handle language validation error (400 status) or other errors
         const errorText = await response.text();
         console.error('Transcription failed:', response.status, errorText);
+        
+        if (response.status === 400) {
+          try {
+            const errorData = JSON.parse(errorText);
+            if (errorData.errorType === 'unsupported_language' && errorData.error) {
+              console.log('🌍 Language validation error detected in Whisper transcription');
+              // Display the error message as an assistant message
+              const errorMessageId = (Date.now() + 1).toString();
+              const errorMessage: ChatMessage = {
+                id: errorMessageId,
+                role: 'assistant',
+                content: errorData.error,
+                timestamp: new Date().toISOString()
+              };
+              
+              // Update the user's audio message to show it was transcribed but rejected
+              setChatMessages(prev => prev.map(msg => 
+                msg.id === messageId 
+                  ? { ...msg, isTranscribing: false }
+                  : msg
+              ).concat(errorMessage));
+              
+              setIsTranscribing(false);
+              console.log('✅ Language validation message displayed from Whisper');
+              return; // Don't proceed with further processing
+            }
+          } catch (parseError) {
+            console.error('Error parsing Whisper error response:', parseError);
+          }
+        }
         
         let errorMessage = '❌ Transcription failed';
         try {
@@ -4739,6 +4794,33 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           return updated;
         });
         setCurrentAIMessage(data.message);
+      } else {
+        // Handle language validation error (400 status)
+        if (response.status === 400) {
+          try {
+            const errorData = await response.json();
+            if (errorData.errorType === 'unsupported_language' && errorData.error) {
+              console.log('🌍 Language validation error detected in transcription');
+              // Display the error message as an assistant message
+              const errorMessageId = (Date.now() + 1).toString();
+              const errorMessage: ChatMessage = {
+                id: errorMessageId,
+                role: 'assistant',
+                content: errorData.error,
+                timestamp: new Date().toISOString()
+              };
+              
+              setChatMessages(prev => [...prev, errorMessage]);
+              console.log('✅ Language validation message displayed');
+              return; // Don't proceed with further processing
+            }
+          } catch (parseError) {
+            console.error('Error parsing error response:', parseError);
+          }
+        }
+        console.error('❌ === TRANSCRIPTION TO AI ERROR ===');
+        console.error('Response status:', response.status);
+        console.error('Response status text:', response.statusText);
       }
     } catch (error) {
       console.error('Error sending message:', error);
