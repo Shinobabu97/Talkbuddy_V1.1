@@ -21,6 +21,7 @@ import {
   Bot,
   Trash2,
   X,
+  Menu,
 } from 'lucide-react';
 import { supabase, AuthUser } from '../lib/supabase';
 import OnboardingFlow from './OnboardingFlow';
@@ -241,6 +242,8 @@ export default function Dashboard({ user }: DashboardProps) {
   const [showToolbar, setShowToolbar] = useState(false);
   const [currentAIMessage, setCurrentAIMessage] = useState<string>('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [statsExpanded, setStatsExpanded] = useState(true);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [germanPartnerName, setGermanPartnerName] = useState<string>('');
   const [lastSeenTime, setLastSeenTime] = useState<string>('');
   const [toolbarOpenedViaHelp, setToolbarOpenedViaHelp] = useState<boolean>(false);
@@ -4957,7 +4960,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="h-8 w-8 text-blue-500 mx-auto mb-4 animate-spin" />
+          <Loader2 className="h-8 w-8 text-text500 mx-auto mb-4 animate-spin" />
           <p className="text-gray-600 text-sm">Loading your dashboard...</p>
         </div>
       </div>
@@ -5005,27 +5008,42 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
   };
 
   return (
-    <div className="h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex overflow-hidden">
-      {/* Sidebar */}
-      <div className={`${sidebarCollapsed ? 'w-16' : 'w-80'} bg-gradient-to-b from-white to-slate-50 border-r border-slate-200 flex flex-col transition-all duration-300 ease-in-out shadow-lg overflow-hidden`}>
+    <div className="h-screen bg-background flex overflow-hidden">
+      {/* Mobile Sidebar Overlay */}
+      {(mobileSidebarOpen && !sidebarCollapsed) && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar - Elingo Purple Theme - Wider for Conversations */}
+      <div className={`
+        ${sidebarCollapsed ? 'w-16' : 'w-[380px]'} 
+        ${mobileSidebarOpen ? 'fixed left-0 z-50 lg:relative lg:z-auto' : 'hidden lg:flex'}
+        border-r border-gray-200 flex flex-col transition-all duration-300 ease-in-out overflow-hidden shadow-sm
+        h-screen
+      `} style={{ backgroundColor: '#faf9ff' }}>
         {/* Sidebar Header */}
-        <div className="p-4 border-b border-slate-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+        <div className="p-4 border-b border-gray-200" style={{ backgroundColor: '#faf9ff' }}>
           <div className="flex items-center justify-between mb-4">
             {!sidebarCollapsed && (
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-                  <Volume2 className="h-5 w-5 text-white" />
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-primary rounded-2xl flex items-center justify-center shadow-lg">
+                  <Volume2 className="h-6 w-6 text-white" />
                 </div>
-                <span className="text-lg font-display text-gradient-primary">TalkBuddy</span>
+                <span className="text-xl font-bold text-text font-display tracking-tight">TalkBuddy</span>
               </div>
             )}
             <div className="flex items-center space-x-2">
               {sidebarCollapsed && (
-                <Volume2 className="h-6 w-6 text-blue-500" />
+                <div className="w-10 h-10 bg-primary rounded-2xl flex items-center justify-center shadow-lg">
+                  <Volume2 className="h-6 w-6 text-white" />
+                </div>
               )}
               <button
                 onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                className="p-2 text-gray-400 hover:text-primary hover:bg-primary/10 rounded-xl transition-all duration-200"
                 title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
               >
                 <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${sidebarCollapsed ? 'rotate-90' : '-rotate-90'}`} />
@@ -5034,25 +5052,27 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 <>
                   <button
                     onClick={() => setShowProfileModal(true)}
-                    className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 hover:border-blue-300 transition-colors"
+                    className="w-9 h-9 rounded-full overflow-hidden border-2 border-gray-200 hover:border-primary transition-all duration-200 shadow-sm hover:shadow-md"
                   >
                     {currentProfilePicture ? (
                       <img src={currentProfilePicture} alt="Profile" className="w-full h-full object-cover" />
                     ) : (
-                      <div className="w-full h-full bg-gray-100 flex items-center justify-center">
-                        <User className="h-4 w-4 text-gray-400" />
+                      <div className="w-full h-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
+                        <User className="h-4 w-4 text-primary" />
                       </div>
                     )}
                   </button>
                   <button
                     onClick={handleRestartOnboarding}
-                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                    className="p-2 text-gray-400 hover:text-primary hover:bg-primary/10 rounded-xl transition-all duration-200"
+                    title="Settings"
                   >
                     <Settings className="h-4 w-4" />
                   </button>
                   <button
                     onClick={handleLogout}
-                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all duration-200"
+                    title="Logout"
                   >
                     <LogOut className="h-4 w-4" />
                   </button>
@@ -5061,137 +5081,142 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             </div>
           </div>
 
-          {/* New Conversation Button */}
+          {/* New Conversation Button - Elingo Purple */}
           {!sidebarCollapsed && (
             <button 
               onClick={resetConversationState}
-              className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-4 py-2.5 flex items-center justify-center space-x-2 font-semibold mb-3 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
+              className="w-full btn-glossy flex items-center justify-center space-x-2 mb-4"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-5 w-5" />
               <span>New Conversation</span>
             </button>
           )}
           {sidebarCollapsed && (
             <button 
               onClick={resetConversationState}
-              className="w-full apple-button p-2 flex items-center justify-center mb-3"
+              className="w-full btn-glossy p-3 flex items-center justify-center mb-4 rounded-full"
               title="New Conversation"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-5 w-5" />
             </button>
           )}
 
-          {/* 🎮 GAMIFICATION COMPONENTS */}
+          {/* 🎮 GAMIFICATION COMPONENTS - Collapsible for More Space */}
           {!sidebarCollapsed && (
-            <div className="mb-4">
-              {/* Player Stats Card */}
-              <div className="bg-gradient-to-br from-purple-500 via-pink-500 to-rose-500 rounded-xl p-4 text-white mb-3 shadow-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
-                      <span className="text-sm font-bold">🎮</span>
+            <div className="mb-3">
+              {/* Collapsible Header */}
+              <button
+                onClick={() => setStatsExpanded(!statsExpanded)}
+                className="w-full flex items-center justify-between p-2 hover:bg-primary/5 rounded-xl transition-all duration-200 mb-2"
+              >
+                <div className="flex items-center space-x-2">
+                  <div className="w-8 h-8 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center shadow-md">
+                    <span className="text-base">🎮</span>
+                  </div>
+                  <span className="text-xs font-bold text-text font-display">Level {playerStats.level}</span>
+                  <span className="text-xs text-primary font-semibold">{playerStats.totalPoints} XP</span>
+                  <span className="text-xs text-accent font-bold">🔥 {playerStats.currentStreak}</span>
+                </div>
+                <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${statsExpanded ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Collapsible Content */}
+              {statsExpanded && (
+                <div className="space-y-2 mb-3">
+                  {/* Compact Stats - Horizontal */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-white rounded-lg p-2.5 text-center border border-gray-200 shadow-sm">
+                      <div className="text-lg font-bold text-primary font-display">{playerStats.conversationsCompleted}</div>
+                      <div className="text-[10px] text-text-muted font-body">Conversations</div>
                     </div>
-                    <div>
-                      <div className="text-sm font-medium">Level {playerStats.level}</div>
-                      <div className="text-xs opacity-90">{playerStats.totalPoints} XP</div>
+                    <div className="bg-white rounded-lg p-2.5 text-center border border-gray-200 shadow-sm">
+                      <div className="text-lg font-bold text-primary font-display">{playerStats.wordsLearned}</div>
+                      <div className="text-[10px] text-text-muted font-body">Words Learned</div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-xs opacity-90">Streak</div>
-                    <div className="text-sm font-bold">{playerStats.currentStreak} 🔥</div>
+
+                  {/* Compact Experience Bar */}
+                  <div className="bg-white rounded-lg p-2.5 border border-gray-200 shadow-sm">
+                    <div className="w-full bg-gray-200 rounded-full h-1.5 mb-1 overflow-hidden">
+                      <div 
+                        className="bg-gradient-to-r from-primary to-accent rounded-full h-1.5 transition-all duration-500"
+                        style={{ width: `${(playerStats.experience % 100)}%` }}
+                      ></div>
+                    </div>
+                    <div className="text-[10px] text-text-muted font-body">
+                      {100 - (playerStats.experience % 100)} XP to next level
+                    </div>
                   </div>
-                </div>
-                
-                {/* Experience Bar */}
-                <div className="w-full bg-white/20 rounded-full h-2 mb-2">
-                  <div 
-                    className="bg-white rounded-full h-2 transition-all duration-500"
-                    style={{ width: `${(playerStats.experience % 100)}%` }}
-                  ></div>
-                </div>
-                <div className="text-xs opacity-90">
-                  {100 - (playerStats.experience % 100)} XP to next level
-                </div>
-              </div>
 
-              {/* Quick Stats */}
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-3 text-center border border-blue-200">
-                  <div className="text-lg font-display text-blue-700">{playerStats.conversationsCompleted}</div>
-                  <div className="text-xs text-blue-600 font-caption">Conversations</div>
-                </div>
-                <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-3 text-center border border-green-200">
-                  <div className="text-lg font-display text-green-700">{playerStats.wordsLearned}</div>
-                  <div className="text-xs text-green-600 font-caption">Words Learned</div>
-                </div>
-              </div>
-
-              {/* Recent Achievements */}
-              {recentAchievements.length > 0 && (
-                <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-lg p-3 mb-3 border border-yellow-200">
-                  <div className="text-xs font-semibold text-amber-700 mb-2">🏆 Recent Achievements</div>
-                  <div className="space-y-1">
-                    {recentAchievements.map((achievement, index) => (
-                      <div key={index} className="text-xs text-amber-600 animate-pulse font-medium">
-                        ✨ Achievement unlocked!
+                  {/* Compact Achievements */}
+                  {recentAchievements.length > 0 && (
+                    <div className="bg-white rounded-lg p-2.5 border border-gray-200 shadow-sm">
+                      <div className="text-[10px] font-bold text-text mb-1 font-display">🏆 Achievements</div>
+                      <div className="space-y-0.5">
+                        {recentAchievements.slice(0, 2).map((achievement, index) => (
+                          <div key={index} className="text-[10px] text-primary font-semibold font-body flex items-center space-x-1">
+                            <span className="text-accent">✨</span>
+                            <span className="truncate">Achievement!</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           )}
 
-          {/* Navigation Links */}
+          {/* Navigation Links - Elingo Purple Theme - Compact */}
           {!sidebarCollapsed && (
-            <div className="flex space-x-1">
+            <div className="flex space-x-1.5">
               <button
                 onClick={() => setCurrentView('progress')}
-                className={`flex-1 px-3 py-2 text-sm font-semibold rounded-lg transition-all duration-200 ${
+                className={`flex-1 px-3 py-2 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center space-x-1.5 ${
                   currentView === 'progress'
-                    ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md' 
-                    : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100'
+                    ? 'bg-primary text-white shadow-lg shadow-primary/30' 
+                    : 'text-text-muted hover:text-primary hover:bg-primary/10 border border-gray-200'
                 }`}
               >
-                <BarChart3 className="h-4 w-4 inline mr-1" />
-                Progress
+                <BarChart3 className="h-3.5 w-3.5" />
+                <span>Progress</span>
               </button>
               <button
                 onClick={() => setShowVocabBuilder(true)}
-                className="flex-1 px-3 py-2 text-sm font-semibold rounded-lg transition-all duration-200 text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100"
+                className={`flex-1 px-3 py-2 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center space-x-1.5 text-text-muted hover:text-primary hover:bg-primary/10 border border-gray-200`}
               >
-                <BookOpen className="h-4 w-4 inline mr-1" />
-                Vocab List
+                <BookOpen className="h-3.5 w-3.5" />
+                <span>Vocab</span>
               </button>
             </div>
           )}
           {sidebarCollapsed && (
-            <div className="flex flex-col space-y-1">
+            <div className="flex flex-col space-y-2">
               <button
                 onClick={() => setCurrentView('progress')}
-                className={`p-2 text-sm font-medium rounded-lg transition-colors ${
+                className={`p-3 rounded-xl transition-all duration-200 ${
                   currentView === 'progress'
-                    ? 'bg-blue-50 text-blue-600' 
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    ? 'bg-primary text-white shadow-lg shadow-primary/30' 
+                    : 'text-gray-600 hover:text-primary hover:bg-primary/10'
                 }`}
                 title="Progress"
               >
-                <BarChart3 className="h-4 w-4" />
+                <BarChart3 className="h-5 w-5" />
               </button>
               <button
                 onClick={() => setShowVocabBuilder(true)}
-                className="p-2 text-sm font-medium rounded-lg transition-colors text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                className="p-3 rounded-xl transition-all duration-200 text-gray-600 hover:text-primary hover:bg-primary/10"
                 title="Vocab List"
               >
-                <BookOpen className="h-4 w-4" />
+                <BookOpen className="h-5 w-5" />
               </button>
             </div>
           )}
         </div>
 
-        {/* Search */}
+        {/* Search - Elingo Purple Theme - Compact */}
         {!sidebarCollapsed && (
-          <div className="p-4 border-b border-gray-100">
+          <div className="px-4 py-3 border-b border-gray-200" style={{ backgroundColor: '#faf9ff' }}>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
@@ -5199,35 +5224,35 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 placeholder="Search conversations..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 apple-input text-sm"
+                className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all duration-200 font-body"
               />
             </div>
           </div>
         )}
 
-        {/* Recent Conversations */}
+        {/* Recent Conversations - Elingo Purple Theme - Maximized Space */}
         {!sidebarCollapsed && (
-          <div className="flex-1 overflow-hidden flex flex-col bg-gradient-to-b from-slate-50/50 to-white min-h-0">
-          <div className="p-4 pb-2 bg-gradient-to-r from-slate-50 to-white">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-slate-800 font-heading">Recent Conversations</h3>
+          <div className="flex-1 overflow-hidden flex flex-col min-h-0" style={{ backgroundColor: '#faf9ff' }}>
+          <div className="px-4 py-2.5 border-b border-gray-100" style={{ backgroundColor: '#faf9ff' }}>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-bold text-text font-display uppercase tracking-wide">Conversations</h3>
               <div className="relative">
                 <button
                   onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
-                  className="flex items-center space-x-1 text-xs text-gray-600 hover:text-gray-900 font-medium px-2 py-1 rounded-md hover:bg-gray-50 transition-colors"
+                  className="flex items-center space-x-1 text-[10px] text-gray-600 hover:text-primary font-semibold px-2 py-1 rounded-lg hover:bg-primary/10 border border-gray-200 transition-all duration-200"
                 >
-                  <span>{selectedCategory || 'All Categories'}</span>
-                  <ChevronDown className="h-3 w-3" />
+                  <span className="truncate max-w-[80px]">{selectedCategory || 'All'}</span>
+                  <ChevronDown className="h-3 w-3 flex-shrink-0" />
                 </button>
                 {showCategoryDropdown && (
-                  <div className="absolute top-full right-0 mt-1 w-40 apple-card rounded-lg shadow-lg z-10 py-1">
+                  <div className="absolute top-full right-0 mt-2 w-44 bg-white rounded-xl shadow-lg border border-gray-200 z-10 py-2">
                     <button
                       onClick={() => {
                         setSelectedCategory(null);
                         setShowCategoryDropdown(false);
                       }}
-                      className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 transition-colors ${
-                        selectedCategory === null ? 'text-blue-600 font-medium' : 'text-gray-700'
+                      className={`w-full text-left px-4 py-2 text-xs hover:bg-primary/10 transition-colors rounded-lg mx-1 ${
+                        selectedCategory === null ? 'text-primary font-bold bg-primary/10' : 'text-gray-700'
                       }`}
                     >
                       All Categories
@@ -5239,8 +5264,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                           setSelectedCategory(selectedCategory === category ? null : category);
                           setShowCategoryDropdown(false);
                         }}
-                        className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 transition-colors ${
-                          selectedCategory === category ? 'text-blue-600 font-medium' : 'text-gray-700'
+                        className={`w-full text-left px-4 py-2 text-xs hover:bg-primary/10 transition-colors rounded-lg mx-1 ${
+                          selectedCategory === category ? 'text-primary font-bold bg-primary/10' : 'text-gray-700'
                         }`}
                       >
                         {category}
@@ -5251,13 +5276,13 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               </div>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto px-4 pb-4 min-h-0">
+          <div className="flex-1 overflow-y-auto px-3 pb-3 min-h-0 scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-gray-100">
             {conversationsLoading ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 text-gray-400 animate-spin" />
+                <Loader2 className="h-5 w-5 text-primary animate-spin" />
               </div>
             ) : filteredConversations.length > 0 ? (
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 {filteredConversations.map((conversation) => (
                   <div
                     key={conversation.id}
@@ -5266,20 +5291,27 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     onMouseLeave={() => setHoveredConversation(null)}
                   >
                     <button
-                      onClick={() => startNewConversation(conversation.id)}
-                      className={`w-full text-left p-3 rounded-lg transition-all duration-200 ${
+                      onClick={() => {
+                        startNewConversation(conversation.id);
+                        setMobileSidebarOpen(false); // Close mobile sidebar when selecting
+                      }}
+                      className={`w-full text-left p-2.5 rounded-xl transition-all duration-200 ${
                         selectedConversation === conversation.id
-                          ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 shadow-sm'
-                          : 'hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 border border-transparent hover:shadow-sm'
+                          ? 'bg-primary/10 border-2 border-primary shadow-sm'
+                          : 'hover:bg-primary/5 border border-transparent hover:border-primary/20'
                       }`}
                     >
-                      <div className="flex items-start justify-between mb-1">
-                        <h4 className="text-sm font-semibold truncate text-slate-800 font-heading">
+                      <div className="flex items-start justify-between mb-0.5">
+                        <h4 className={`text-xs font-bold truncate font-display flex-1 ${
+                          selectedConversation === conversation.id ? 'text-primary' : 'text-text'
+                        }`}>
                           {conversation.title}
                         </h4>
                       </div>
-                      <p className="text-xs text-slate-600 truncate mb-1 font-body">{conversation.preview}</p>
-                      <p className="text-xs text-slate-500 font-caption">{formatTime(conversation.updated_at)}</p>
+                      <p className={`text-[10px] truncate mb-0.5 font-body leading-tight ${
+                        selectedConversation === conversation.id ? 'text-primary/70' : 'text-text-muted'
+                      }`}>{conversation.preview}</p>
+                      <p className="text-[10px] text-text-muted font-body">{formatTime(conversation.updated_at)}</p>
                     </button>
                     
                     {/* Delete button - appears on hover */}
@@ -5289,22 +5321,22 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                           e.stopPropagation();
                           deleteConversation(conversation.id);
                         }}
-                        className="absolute top-2 right-2 p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-md opacity-90 hover:opacity-100 transition-all duration-200 shadow-sm"
+                        className="absolute top-2 right-2 p-2 bg-red-500 hover:bg-red-600 text-white rounded-xl opacity-90 hover:opacity-100 transition-all duration-200 shadow-lg"
                         title="Delete conversation"
                       >
-                        <Trash2 className="h-3 w-3" />
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     )}
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8">
-                <div className="w-16 h-16 bg-gradient-to-br from-slate-100 to-slate-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <MessageCircle className="h-8 w-8 text-slate-400" />
+              <div className="text-center py-12">
+                <div className="w-20 h-20 bg-gradient-to-br from-primary/20 to-accent/20 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
+                  <MessageCircle className="h-10 w-10 text-primary" />
                 </div>
-                <h3 className="text-lg font-bold text-slate-800 mb-2 font-heading">No Conversations Yet</h3>
-                <p className="text-sm text-slate-600 font-body">
+                <h3 className="text-lg font-bold text-text mb-2 font-display">No Conversations Yet</h3>
+                <p className="text-sm text-text-muted font-body">
                   {selectedCategory 
                     ? `No ${selectedCategory.toLowerCase()} conversations yet`
                     : 'Start your first conversation to begin learning!'
@@ -5316,24 +5348,24 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           </div>
         )}
 
-        {/* Settings */}
+        {/* Settings - Elingo Purple Theme */}
         {!sidebarCollapsed && (
-          <div className="p-4 border-t border-slate-200 bg-gradient-to-r from-slate-50 to-white">
-            <h3 className="text-sm font-semibold text-slate-800 mb-3 font-heading">Settings</h3>
+          <div className="p-4 border-t border-gray-200 bg-white">
+            <h3 className="text-sm font-bold text-text mb-3 font-display">Settings</h3>
             <button
               onClick={() => setShowProfileModal(true)}
-              className="flex items-center space-x-3 w-full text-left p-2 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 rounded-md transition-all duration-200"
+              className="flex items-center space-x-3 w-full text-left p-3 hover:bg-primary/5 rounded-xl transition-all duration-200 border border-transparent hover:border-primary/20"
             >
               {currentProfilePicture ? (
-                <img src={currentProfilePicture} alt="Profile" className="w-8 h-8 rounded-full object-cover" />
+                <img src={currentProfilePicture} alt="Profile" className="w-10 h-10 rounded-full object-cover border-2 border-gray-200" />
               ) : (
-                <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-                  <User className="h-4 w-4 text-gray-400" />
+                <div className="w-10 h-10 bg-gradient-to-br from-primary/20 to-accent/20 rounded-full flex items-center justify-center border-2 border-gray-200">
+                  <User className="h-5 w-5 text-primary" />
                 </div>
               )}
-              <div>
-                <p className="text-sm font-semibold text-slate-800 font-heading">{firstName}</p>
-                <p className="text-xs text-slate-600 font-caption">Profile Settings</p>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-text font-display">{firstName}</p>
+                <p className="text-xs text-text-muted font-body">Profile Settings</p>
               </div>
             </button>
           </div>
@@ -5372,34 +5404,42 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         />
       )}
 
-      {/* Main Content - Hidden when vocab builder is open */}
+      {/* Main Content - Hidden when vocab builder is open - Elingo Purple Theme */}
       {!showVocabBuilder && (
-        <div className="flex-1 flex flex-col bg-gradient-to-br from-white to-slate-50 overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'linear-gradient(135deg, #faf9ff 0%, #f5f5f5 100%)' }}>
           {selectedConversation ? (
           // Conversation View
           <div className="flex-1 flex h-full overflow-hidden">
             {/* Main Chat Area */}
             <div className="flex-1 flex flex-col h-full overflow-hidden">
 
-            {/* German Partner Display */}
-            <div className="bg-gradient-to-r from-white to-slate-50 border-b border-slate-200 px-4 py-3 shadow-sm">
+            {/* German Partner Display - Elingo Purple Theme */}
+            <div className="border-b border-gray-200 px-4 py-4 lg:pl-4 pl-16 shadow-sm" style={{ backgroundColor: 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(10px)' }}>
+              {/* Mobile Menu Button */}
+              <button
+                onClick={() => setMobileSidebarOpen(true)}
+                className="lg:hidden fixed top-4 left-4 z-30 p-2.5 bg-primary text-white rounded-xl shadow-lg hover:bg-primary/90 transition-all duration-200"
+                title="Open sidebar"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   <div className="relative">
-                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                    <div className="w-12 h-12 bg-gradient-to-br from-primary to-accent rounded-2xl flex items-center justify-center text-white font-bold text-lg shadow-lg">
                       {germanPartnerName.charAt(0)}
                     </div>
-                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
+                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full shadow-sm"></div>
                   </div>
                   <div>
-                    <div className="flex items-center space-x-2">
-                      <h3 className="font-semibold text-gray-900">{germanPartnerName}</h3>
-                      {/* Context Indicator Badge */}
+                    <div className="flex items-center space-x-2 flex-wrap gap-1">
+                      <h3 className="font-bold text-text font-display text-lg">{germanPartnerName}</h3>
+                      {/* Context Indicator Badge - Elingo Purple */}
                       {selectedConversation && (
-                        <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                        <div className={`inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-bold ${
                           contextLevel === 'Professional' 
-                            ? 'bg-blue-100 text-blue-800' 
-                            : 'bg-green-100 text-green-800'
+                            ? 'bg-primary/20 text-primary border border-primary/30' 
+                            : 'bg-accent/20 text-accent border border-accent/30'
                         }`}>
                           <span className="mr-1">
                             {contextLevel === 'Professional' ? '💼' : '😊'}
@@ -5410,14 +5450,14 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                           )}
                         </div>
                       )}
-                      {/* Difficulty Level Badge - NEW ADDITION */}
+                      {/* Difficulty Level Badge - Elingo Purple */}
                       {selectedConversation && (
-                        <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                        <div className={`inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-bold ${
                           difficultyLevel === 'Beginner' 
-                            ? 'bg-yellow-100 text-yellow-800' 
+                            ? 'bg-accent/20 text-accent border border-accent/30' 
                             : difficultyLevel === 'Intermediate'
-                            ? 'bg-orange-100 text-orange-800'
-                            : 'bg-red-100 text-red-800'
+                            ? 'bg-primary/20 text-primary border border-primary/30'
+                            : 'bg-primary/30 text-primary border border-primary/40'
                         }`}>
                           <span className="mr-1">
                             {difficultyLevel === 'Beginner' ? '🌱' : difficultyLevel === 'Intermediate' ? '📚' : '🎯'}
@@ -5429,33 +5469,33 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                         </div>
                       )}
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <div className="flex items-center space-x-1">
-                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        <span className="text-xs text-green-600 font-medium">Online</span>
+                    <div className="flex items-center space-x-2 mt-1">
+                      <div className="flex items-center space-x-1.5">
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                        <span className="text-xs text-primary font-semibold">Online</span>
                       </div>
-                      <span className="text-xs text-gray-500">•</span>
-                      <span className="text-xs text-gray-500">Last seen {lastSeenTime}</span>
+                      <span className="text-xs text-text-muted">•</span>
+                      <span className="text-xs text-text-muted font-body">Last seen {lastSeenTime}</span>
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center space-x-3">
-                  <div className="text-right">
-                    <p className="text-xs text-gray-500">German Language Partner</p>
-                    <p className="text-xs text-gray-400">Native Speaker</p>
+                  <div className="text-right hidden sm:block">
+                    <p className="text-xs text-text-muted font-body">German Language Partner</p>
+                    <p className="text-xs text-primary font-semibold">Native Speaker</p>
                   </div>
                   <button 
                     onClick={endConversation}
-                    className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+                    className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl text-sm font-bold transition-all duration-200 shadow-sm hover:shadow-md"
                   >
-                    End Conversation
+                    End
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* Conversation Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0 bg-gradient-to-b from-slate-50/50 to-white scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100">
+            {/* Conversation Messages - Elingo Purple Theme */}
+            <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-4 min-h-0 scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-gray-100" style={{ backgroundColor: '#faf9ff' }}>
               {chatMessages.map((message) => {
                 // Debug logging for grammar help button
                 if (message.role === 'user') {
@@ -5471,9 +5511,9 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       <div className="flex items-center mr-2 z-10">
                         <button
                           onClick={() => handleErrorCorrection(message.id)}
-                          className={`group relative p-2 rounded-full shadow-lg transition-all duration-200 hover:scale-110 cursor-pointer ${
+                          className={`group relative p-2.5 rounded-xl shadow-lg transition-all duration-200 hover:scale-105 cursor-pointer ${
                             activeHelpButton === message.id 
-                              ? 'bg-blue-500 hover:bg-blue-600' 
+                              ? 'bg-primary hover:bg-primary/90' 
                               : 'bg-red-500 hover:bg-red-600'
                           } text-white`}
                           title="Click to understand the mistake and get grammar help"
@@ -5482,38 +5522,40 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                             <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                           </svg>
                           {/* Tooltip */}
-                          <div className="absolute right-full mr-2 top-1/2 transform -translate-y-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap">
+                          <div className="absolute right-full mr-2 top-1/2 transform -translate-y-1/2 bg-primary text-white text-xs px-3 py-1.5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap shadow-lg">
                             Click to understand the mistake
                           </div>
                         </button>
                       </div>
                     )}
                     
-                    <div className={`max-w-sm lg:max-w-lg px-4 py-3 rounded-2xl ${
+                    <div className={`max-w-sm lg:max-w-lg px-4 py-3 rounded-2xl shadow-sm ${
                       message.role === 'user'
-                        ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-tr-md shadow-md'
-                        : 'bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-tl-md shadow-sm'
+                        ? 'bg-primary text-white rounded-tr-md'
+                        : 'bg-white border border-gray-200 rounded-tl-md'
                     }`}>
                       {message.role === 'assistant' && (
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center space-x-2">
-                            <Bot className="h-4 w-4 text-blue-500" />
-                            <span className="text-xs font-medium text-blue-600">{germanPartnerName}</span>
+                            <div className="w-6 h-6 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center">
+                              <Bot className="h-3.5 w-3.5 text-white" />
+                            </div>
+                            <span className="text-xs font-bold text-primary font-display">{germanPartnerName}</span>
                           </div>
-                          <div className="flex items-center space-x-1">
+                          <div className="flex items-center space-x-1.5">
                             <button
                               onClick={async () => await speakText(message.content)}
-                              className="p-1 hover:bg-gray-100 rounded transition-colors"
+                              className="p-1.5 hover:bg-primary/10 rounded-lg transition-all duration-200"
                               title="Listen"
                             >
-                              <svg className="h-3 w-3 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+                              <svg className="h-4 w-4 text-primary" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.617.816L4.846 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.846l3.537-3.816a1 1 0 011.617.816zM16 8a2 2 0 11-4 0 2 2 0 014 0zM14 8a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
                               </svg>
                             </button>
                             <button
                               onClick={() => toggleTranslation(message.id)}
-                              className={`p-1 hover:bg-gray-100 rounded transition-colors text-xs ${
-                                showTranslation[message.id] ? 'text-blue-600 bg-blue-50' : 'text-gray-500'
+                              className={`p-1.5 rounded-lg transition-all duration-200 text-xs font-bold ${
+                                showTranslation[message.id] ? 'text-white bg-primary' : 'text-primary hover:bg-primary/10'
                               }`}
                               title="Translate"
                             >
@@ -5521,35 +5563,31 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                             </button>
                             <button
                               onClick={() => toggleSuggestions(message.id)}
-                              className="p-1 hover:bg-gray-100 rounded transition-colors"
+                              className="p-1.5 hover:bg-primary/10 rounded-lg transition-all duration-200"
                               title="Suggest responses"
                             >
-                              <svg className="h-3 w-3 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+                              <svg className="h-4 w-4 text-primary" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
                               </svg>
                             </button>
                             <button
                               onClick={() => handleHelpClick(message.content, message.id)}
-                              className={`p-1 rounded transition-colors ${
+                              className={`p-1.5 rounded-lg transition-all duration-200 ${
                                 activeHelpButton === message.id 
-                                  ? 'bg-blue-100' 
-                                  : 'hover:bg-gray-100'
+                                  ? 'bg-primary text-white' 
+                                  : 'hover:bg-primary/10 text-primary'
                               }`}
                               title="Get Grammar Help"
                             >
-                              <BookOpen className={`h-3 w-3 ${
-                                activeHelpButton === message.id 
-                                  ? 'text-blue-500' 
-                                  : 'text-gray-500'
-                              }`} />
+                              <BookOpen className="h-4 w-4" />
                             </button>
                           </div>
                         </div>
                       )}
-                      <div className={`text-sm ${
+                      <div className={`text-sm font-body leading-relaxed ${
                         message.role === 'user' 
                           ? 'text-white' 
-                          : 'apple-text-primary'
+                          : 'text-text'
                       }`}>
                         {message.isAudio ? (
                           <div className="flex items-center space-x-3">
@@ -5584,7 +5622,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                               setToolbarCollapsed(false);
                               setShowToolbar(true);
                             }}
-                            className="flex items-center space-x-1 px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-full text-xs font-medium transition-colors"
+                            className="flex items-center space-x-1 px-2 py-1 bg-primary-100 hover:bg-primary-200 text-text700 rounded-full text-xs font-medium transition-colors"
                             title="Analyze pronunciation"
                           >
                             <Volume2 className="h-3 w-3" />
@@ -5648,7 +5686,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                         <div className="text-xs font-medium text-gray-600 mb-1">Suggested answer:</div>
                         <button
                           onClick={() => handleSuggestedAnswerClick(message.id, suggestedAnswers[message.id])}
-                          className="block w-full text-left bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors"
+                          className="block w-full text-left bg-primary-50 hover:bg-primary-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors"
                         >
                           <div className="font-medium">{suggestedAnswers[message.id]}</div>
                         </button>
@@ -5659,7 +5697,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   {/* Motivation animation for wrong answers - Hide when max attempts reached */}
                   {message.role === 'user' && comprehensiveAnalysis[message.id] && comprehensiveAnalysis[message.id].hasErrors && userAttempts[message.id] < 2 && (
                     <div className="flex justify-end mt-2">
-                      <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-lg p-3 max-w-sm">
+                      <div className="bg-background-light border border-gray-200 rounded-lg p-3 max-w-sm">
                         <div className="flex items-center space-x-2">
                           <div className="animate-bounce">
                             <svg className="h-5 w-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
@@ -5684,7 +5722,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       </div>
                       <button
                         onClick={() => extractVocabularyFromText(message.content)}
-                        className="mt-2 text-xs text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                        className="mt-2 text-xs text-text600 hover:text-text800 hover:underline transition-colors"
                       >
                         📚 Add words to vocab
                       </button>
@@ -5703,7 +5741,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                           const isShowingTranslation = showSuggestionTranslation[translationKey];
                           
                           return (
-                            <div key={index} className="bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors">
+                            <div key={index} className="bg-primary-50 hover:bg-primary-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors">
                               <div className="flex items-center justify-between">
                                 <button
                                   onClick={() => useSuggestedResponse(suggestionText, message.id)}
@@ -5768,17 +5806,19 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               
               {isTyping && (
                 <div className="flex justify-start">
-                  <div className="apple-card rounded-2xl rounded-tl-md px-4 py-3 max-w-sm lg:max-w-lg">
+                  <div className="border border-gray-200 rounded-2xl rounded-tl-md px-4 py-3 max-w-sm lg:max-w-lg shadow-sm" style={{ backgroundColor: '#ffffff' }}>
                     <div className="flex items-center space-x-2 mb-2">
-                      <Bot className="h-4 w-4 text-blue-500" />
-                      <span className="text-xs font-medium text-blue-600">{germanPartnerName}</span>
+                      <div className="w-5 h-5 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center">
+                        <Bot className="h-3 w-3 text-white" />
+                      </div>
+                      <span className="text-xs font-bold text-primary font-display">{germanPartnerName}</span>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <span className="text-sm text-gray-600">{germanPartnerName} ist typing</span>
+                      <span className="text-sm text-text-muted font-body">{germanPartnerName} ist typing</span>
                       <div className="flex space-x-1">
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                        <div className="w-2 h-2 bg-primary rounded-full animate-bounce"></div>
+                        <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                        <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                       </div>
                     </div>
                   </div>
@@ -5789,56 +5829,65 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Message Input */}
-            <div className="bg-gradient-to-r from-white to-slate-50 border-t border-slate-200 p-4 shadow-lg">
-              <div className="flex items-center space-x-3">
+            {/* Message Input - Elingo Purple Theme */}
+            <div className="border-t border-gray-200 p-4 lg:p-6 shadow-lg" style={{ backgroundColor: 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(10px)' }}>
+              <div className="flex items-end space-x-3">
                 <div className="flex-1 relative">
                   <input
                     type="text"
-                    placeholder="Type your message..."
+                    placeholder="Type your message in German..."
                     value={messageInput}
                     onChange={(e) => setMessageInput(e.target.value)}
                     onKeyPress={handleKeyPress}
                     disabled={isSending}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-full text-sm bg-white shadow-sm focus:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    className="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-200 font-body placeholder:text-gray-400"
                   />
-                </div>
-                <button 
-                  onClick={sendMessage}
-                  disabled={!messageInput.trim() || isSending}
-                  className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white p-3 rounded-full disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg transition-all duration-200"
-                >
-                  {isSending ? (
-                    <Loader2 className="h-4 w-4 text-white animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4 text-white" />
-                  )}
-                </button>
-                <div className="flex items-center space-x-2">
                   {isRecording && (
-                    <div className="text-sm text-gray-600">
-                      {recordingDuration}s
-                      {recordingDuration >= 25 && (
-                        <span className="text-orange-500 ml-1">⚠️</span>
-                      )}
+                    <div className="absolute right-4 top-1/2 transform -translate-y-1/2 flex items-center space-x-2">
+                      <div className="flex items-center space-x-1.5 bg-red-50 px-2.5 py-1 rounded-xl border border-red-200">
+                        <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                        <span className="text-xs font-bold text-red-600">{recordingDuration}s</span>
+                        {recordingDuration >= 25 && (
+                          <span className="text-orange-500">⚠️</span>
+                        )}
+                      </div>
                     </div>
                   )}
-                  {/* Record Button - German by default */}
+                </div>
+                
+                {/* Action Buttons - Elingo Purple Theme */}
+                <div className="flex items-center space-x-2">
+                  {/* Send Button */}
+                  <button 
+                    onClick={sendMessage}
+                    disabled={!messageInput.trim() || isSending}
+                    className="btn-glossy p-4 rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl"
+                    title="Send message"
+                  >
+                    {isSending ? (
+                      <Loader2 className="h-5 w-5 text-white animate-spin" />
+                    ) : (
+                      <Send className="h-5 w-5 text-white" />
+                    )}
+                  </button>
+                  
+                  {/* Record Button - Elingo Purple Theme */}
                   <button 
                     onClick={isRecording ? stopRecording : startRecording}
                     disabled={isTranscribing}
-                    className={`p-3 rounded-full transition-colors ${
+                    className={`p-4 rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl ${
                       isRecording 
                         ? 'bg-red-500 hover:bg-red-600 text-white' 
-                        : 'bg-green-500 hover:bg-green-600 text-white'
+                        : 'bg-accent hover:bg-accent/90 text-white'
                     } ${isTranscribing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    title={isRecording ? "Stop recording" : "Start recording"}
                   >
                     {isTranscribing ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2 className="h-5 w-5 animate-spin" />
                     ) : isRecording ? (
-                      <MicOff className="h-4 w-4" />
+                      <MicOff className="h-5 w-5" />
                     ) : (
-                      <Mic className="h-4 w-4" />
+                      <Mic className="h-5 w-5" />
                     )}
                   </button>
                 </div>
@@ -5847,19 +5896,19 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             </div>
             
             {/* Right Sidebar - Collapsible Toolbar */}
-            <div className={`${toolbarCollapsed ? 'w-12' : 'w-[600px] lg:w-[700px]'} bg-white border-l border-gray-200 flex flex-col h-full transition-all duration-300 ease-in-out`}>
+            <div className={`${toolbarCollapsed ? 'w-12' : 'w-[600px] lg:w-[700px]'} border-l border-gray-200 flex flex-col h-full transition-all duration-300 ease-in-out`} style={{ backgroundColor: '#faf9ff' }}>
               {/* Toolbar Header */}
               <div className="p-4 border-b border-gray-100 flex-shrink-0">
                 <div className="flex items-center justify-between">
                   {!toolbarCollapsed && (
                     <div className="flex items-center space-x-2">
-                      <BookOpen className="h-5 w-5 text-blue-500" />
+                      <BookOpen className="h-5 w-5 text-text500" />
                       <span className="text-sm font-semibold text-gray-900">Learning Tools</span>
                     </div>
                   )}
                   <div className="flex items-center space-x-2">
                     {toolbarCollapsed && (
-                      <BookOpen className="h-5 w-5 text-blue-500" />
+                      <BookOpen className="h-5 w-5 text-text500" />
                     )}
                     <button
                       onClick={() => {
@@ -5871,7 +5920,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                           // Just make sure the toolbar shows the analysis
                         }
                       }}
-                      className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                      className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
                       title={toolbarCollapsed ? "Expand toolbar" : "Collapse toolbar"}
                     >
                       <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${toolbarCollapsed ? 'rotate-90' : '-rotate-90'}`} />
@@ -5948,7 +5997,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                         // Just make sure the toolbar shows the analysis
                       }
                     }}
-                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
                     title="Expand toolbar"
                   >
                     <ChevronDown className="h-6 w-6 rotate-90" />
@@ -5968,7 +6017,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 <h1 className="text-3xl font-display text-gradient-primary mb-2">
                   🎮 Your Gaming Progress
                 </h1>
-                <p className="text-xl text-slate-600 font-body">
+                <p className="text-xl text-text600 font-body">
                   Level up your German skills with achievements and rewards!
                 </p>
               </div>
@@ -5976,52 +6025,52 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               {/* 🎮 GAMIFIED STATS */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
                 {/* Level Card */}
-                <div className="bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl p-6 text-white">
+                <div className="bg-background-light border border-gray-200 rounded-lg p-6">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium opacity-90">Level</h3>
+                    <h3 className="text-sm font-medium text-text-muted font-body">Level</h3>
                     <span className="text-2xl">🎮</span>
                   </div>
-                  <p className="text-3xl font-bold">{playerStats.level}</p>
-                  <div className="text-xs opacity-90 mt-1">
+                  <p className="text-3xl font-bold text-text font-display">{playerStats.level}</p>
+                  <div className="text-xs text-text-muted mt-1 font-body">
                     {playerStats.experienceToNext} XP to next level
                   </div>
                 </div>
                 
                 {/* Experience Card */}
-                <div className="bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-xl p-6 shadow-sm">
+                <div className="bg-background-light border border-gray-200 rounded-lg p-6">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-semibold text-slate-600 font-heading">Total XP</h3>
+                    <h3 className="text-sm font-semibold text-text-muted font-display">Total XP</h3>
                     <span className="text-xl">⭐</span>
                   </div>
-                  <p className="text-2xl font-display text-slate-800">{playerStats.totalPoints}</p>
+                  <p className="text-2xl font-display text-text font-bold">{playerStats.totalPoints}</p>
                   <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
                     <div 
-                      className="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full transition-all duration-500"
+                      className="bg-text h-2 rounded-full transition-all duration-500"
                       style={{ width: `${(playerStats.experience % 100)}%` }}
                     ></div>
                   </div>
                 </div>
                 
                 {/* Streak Card */}
-                <div className="bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-xl p-6 shadow-sm">
+                <div className="bg-background-light border border-gray-200 rounded-lg p-6">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-semibold text-slate-600 font-heading">Streak</h3>
+                    <h3 className="text-sm font-semibold text-text-muted font-display">Streak</h3>
                     <span className="text-xl">🔥</span>
                   </div>
-                  <p className="text-2xl font-display text-slate-800">{playerStats.currentStreak}</p>
-                  <div className="text-xs text-slate-500 mt-1 font-caption">
+                  <p className="text-2xl font-display text-text font-bold">{playerStats.currentStreak}</p>
+                  <div className="text-xs text-text-muted mt-1 font-body">
                     Best: {playerStats.longestStreak} days
                   </div>
                 </div>
                 
                 {/* Conversations Card */}
-                <div className="bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-xl p-6 shadow-sm">
+                <div className="bg-background-light border border-gray-200 rounded-lg p-6">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-semibold text-slate-600 font-heading">Conversations</h3>
-                    <MessageCircle className="h-5 w-5 text-blue-500" />
+                    <h3 className="text-sm font-semibold text-text-muted font-display">Conversations</h3>
+                    <MessageCircle className="h-5 w-5 text-text" />
                   </div>
-                  <p className="text-2xl font-display text-slate-800">{playerStats.conversationsCompleted}</p>
-                  <div className="text-xs text-slate-500 mt-1 font-caption">
+                  <p className="text-2xl font-display text-text font-bold">{playerStats.conversationsCompleted}</p>
+                  <div className="text-xs text-text-muted mt-1 font-body">
                     {playerStats.wordsLearned} words learned
                   </div>
                 </div>
@@ -6106,7 +6155,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                         <div className="flex space-x-2 ml-4">
                           <button
                             onClick={() => setSelectedConversation(conversation.id)}
-                            className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
+                            className="px-3 py-1 text-sm bg-primary-100 text-text700 rounded-full hover:bg-primary-200 transition-colors"
                           >
                             Review
                           </button>
@@ -6116,7 +6165,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                               startNewConversation(conversation.id);
                               setCurrentView('dashboard');
                             }}
-                            className="px-3 py-1 text-sm bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors"
+                            className="px-3 py-1 text-sm bg-green-100 text-green-700 rounded-full hover:bg-green-200 transition-colors"
                           >
                             Re-practice
                           </button>
@@ -6149,7 +6198,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
                       <div 
-                        className="bg-blue-500 h-2 rounded-full transition-all duration-300" 
+                        className="bg-primary-500 h-2 rounded-full transition-all duration-300" 
                         style={{ 
                           width: `${Math.min(100, (conversations.filter(conv => {
                             const weekAgo = new Date();
@@ -6175,36 +6224,89 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             </div>
           </div>
         ) : currentView === 'vocab' ? (
-          // Vocab List View
-          <div className="flex-1 flex items-center justify-center p-8 overflow-y-auto">
+          // Vocab List View - Elingo Purple Theme
+          <div className="flex-1 flex items-center justify-center p-8 overflow-y-auto bg-white" style={{ backgroundColor: '#f5f5f5' }}>
             <div className="text-center">
-              <BookOpen className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-              <h2 className="text-2xl font-semibold apple-text-primary mb-2">Vocabulary List</h2>
-              <p className="text-lg apple-text-secondary">Your saved words and phrases will appear here</p>
+              <div className="w-20 h-20 bg-gradient-to-br from-primary/20 to-accent/20 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm">
+                <BookOpen className="h-10 w-10 text-primary" />
+              </div>
+              <h2 className="text-3xl font-bold text-text font-display mb-3">Vocabulary List</h2>
+              <p className="text-lg text-text-muted font-body">Your saved words and phrases will appear here</p>
             </div>
           </div>
         ) : (
-          // Welcome Screen
-          <div className="flex-1 flex items-center justify-center p-8 bg-gradient-to-br from-slate-50 to-white overflow-y-auto">
-            <div className="max-w-2xl w-full">
+          // Welcome Screen - Elingo Purple Theme with Animated Background
+          <div className="flex-1 flex items-center justify-center p-8 overflow-y-auto relative" style={{ backgroundColor: '#f5f5f5' }}>
+            {/* Animated Background - Fun & Engaging for Professional Learners */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+              {/* Animated Grid Pattern */}
+              <div className="absolute inset-0 opacity-20" style={{
+                backgroundImage: `
+                  linear-gradient(rgba(105, 73, 255, 0.1) 1px, transparent 1px),
+                  linear-gradient(90deg, rgba(105, 73, 255, 0.1) 1px, transparent 1px)
+                `,
+                backgroundSize: '50px 50px',
+                animation: 'grid-move 20s linear infinite'
+              }}></div>
+              
+              {/* Dynamic Floating Geometric Shapes */}
+              <div className="absolute top-20 left-20 w-16 h-16 bg-primary/30 rounded-2xl rotate-45 animate-bounce-slow shadow-lg"></div>
+              <div className="absolute top-40 right-32 w-12 h-12 bg-accent/35 rounded-full animate-bounce-medium shadow-lg" style={{ animationDelay: '0.5s' }}></div>
+              <div className="absolute bottom-32 left-32 w-20 h-20 bg-primary/25 rounded-lg rotate-12 animate-bounce-slow shadow-lg" style={{ animationDelay: '1s' }}></div>
+              <div className="absolute bottom-24 right-24 w-14 h-14 bg-accent/30 rounded-3xl rotate-45 animate-bounce-medium shadow-lg" style={{ animationDelay: '1.5s' }}></div>
+              <div className="absolute top-1/3 left-1/4 w-18 h-18 bg-primary/28 rounded-xl rotate-6 animate-bounce-medium shadow-lg" style={{ animationDelay: '2s' }}></div>
+              
+              {/* Animated Particles/Dots */}
+              <div className="absolute top-32 left-1/3 w-3 h-3 bg-primary rounded-full animate-particle-float shadow-md" style={{ animationDelay: '0s' }}></div>
+              <div className="absolute top-48 right-1/4 w-2 h-2 bg-accent rounded-full animate-particle-float shadow-md" style={{ animationDelay: '1s' }}></div>
+              <div className="absolute bottom-40 left-1/2 w-3 h-3 bg-primary rounded-full animate-particle-float shadow-md" style={{ animationDelay: '2s' }}></div>
+              <div className="absolute top-2/3 right-1/3 w-2.5 h-2.5 bg-accent rounded-full animate-particle-float shadow-md" style={{ animationDelay: '1.5s' }}></div>
+              <div className="absolute bottom-1/3 left-1/5 w-2 h-2 bg-primary rounded-full animate-particle-float shadow-md" style={{ animationDelay: '0.5s' }}></div>
+              
+              {/* Large Gradient Orbs with More Energy */}
+              <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-gradient-to-br from-primary/25 via-primary/15 to-transparent rounded-full blur-3xl animate-orb-drift"></div>
+              <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-gradient-to-tl from-accent/25 via-accent/15 to-transparent rounded-full blur-3xl animate-orb-drift" style={{ animationDelay: '2s' }}></div>
+              
+              {/* Pulsing Energy Rings */}
+              <div className="absolute top-1/2 left-1/2 w-64 h-64 border-2 border-primary/20 rounded-full animate-ring-pulse" style={{ transform: 'translate(-50%, -50%)' }}></div>
+              <div className="absolute top-1/2 left-1/2 w-80 h-80 border-2 border-accent/15 rounded-full animate-ring-pulse" style={{ transform: 'translate(-50%, -50%)', animationDelay: '1s' }}></div>
+              
+              {/* Floating Connection Lines */}
+              <svg className="absolute inset-0 w-full h-full opacity-10">
+                <path d="M 100 200 Q 300 100 500 250" stroke="url(#gradient1)" strokeWidth="2" fill="none" className="animate-draw-line" />
+                <path d="M 800 300 Q 600 200 400 350" stroke="url(#gradient2)" strokeWidth="2" fill="none" className="animate-draw-line" style={{ animationDelay: '1s' }} />
+                <defs>
+                  <linearGradient id="gradient1" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="rgba(105, 73, 255, 0.3)" />
+                    <stop offset="100%" stopColor="rgba(255, 193, 7, 0.3)" />
+                  </linearGradient>
+                  <linearGradient id="gradient2" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="rgba(255, 193, 7, 0.3)" />
+                    <stop offset="100%" stopColor="rgba(105, 73, 255, 0.3)" />
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
+
+            <div className="max-w-2xl w-full relative z-10">
               <div className="text-center mb-8">
-                <h1 className="text-3xl font-display text-gradient-primary mb-2">
-                  Hello {firstName}!
+                <h1 className="text-4xl font-display text-text font-bold mb-3">
+                  Hello {firstName}! 👋
                 </h1>
-                <p className="text-xl text-slate-600 font-body">
+                <p className="text-lg text-text-muted font-body">
                   What would you like to practice in German today?
                 </p>
               </div>
 
-              {/* Enhanced Conversation Input */}
-              <div className="bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-2xl p-6 shadow-lg">
+              {/* Enhanced Conversation Input - Elingo Purple Theme */}
+              <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm relative backdrop-blur-sm bg-white/95">
                 {/* Text Input */}
                 <div className="mb-6">
                   <textarea
                     placeholder="My left knee is injured and I want to visit a doctor."
                     value={conversationInput}
                     onChange={(e) => setConversationInput(e.target.value)}
-                    className="w-full px-4 py-4 border border-slate-300 rounded-xl text-base resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm focus:shadow-md transition-all duration-200 font-body"
+                    className="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl text-base resize-none focus:ring-2 focus:ring-primary focus:border-primary bg-gray-50 transition-all duration-200 font-body placeholder:text-gray-400"
                     rows={4}
                   />
                 </div>
@@ -6213,17 +6315,17 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 <div className="flex space-x-4 mb-6">
                   {/* Context Level */}
                   <div className="flex-1 relative">
-                    <label className="block text-sm font-semibold text-slate-800 mb-2 font-heading">Context</label>
+                    <label className="block text-sm font-semibold text-text800 mb-2 font-heading">Context</label>
                     <button
                       onClick={() => !currentConversationContextLocked && setShowContextDropdown(!showContextDropdown)}
                       disabled={currentConversationContextLocked}
-                      className={`w-full border border-slate-300 rounded-lg px-4 py-3 text-left flex items-center justify-between shadow-sm transition-all duration-200 ${
+                      className={`w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-left flex items-center justify-between shadow-sm transition-all duration-200 ${
                         currentConversationContextLocked 
                           ? 'bg-gray-100 cursor-not-allowed opacity-60' 
-                          : 'bg-white hover:shadow-md'
+                          : 'bg-white hover:shadow-md hover:border-primary/30'
                       }`}
                     >
-                      <span className="text-sm font-semibold text-slate-800 font-heading flex items-center">
+                      <span className="text-sm font-semibold text-text800 font-heading flex items-center">
                         {contextLevel}
                         {currentConversationContextLocked && (
                           <span className="ml-2 text-xs">🔒</span>
@@ -6232,7 +6334,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       <ChevronDown className={`h-4 w-4 ${currentConversationContextLocked ? 'text-gray-300' : 'text-gray-400'}`} />
                     </button>
                     {showContextDropdown && !currentConversationContextLocked && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-lg shadow-lg z-10">
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-gradient-to-br from-white to-slate-50 border border-gray-200 rounded-lg shadow-lg z-10">
                         {contextLevels.map((level) => (
                           <button
                             key={level}
@@ -6240,7 +6342,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                               setContextLevel(level);
                               setShowContextDropdown(false);
                             }}
-                            className="w-full text-left px-4 py-3 text-sm hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 first:rounded-t-lg last:rounded-b-lg text-slate-800 font-body transition-all duration-200"
+                            className="w-full text-left px-4 py-3 text-sm hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 first:rounded-t-lg last:rounded-b-lg text-text800 font-body transition-all duration-200"
                           >
                             {level}
                           </button>
@@ -6251,17 +6353,17 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
                   {/* Difficulty Level */}
                   <div className="flex-1 relative">
-                    <label className="block text-sm font-semibold text-slate-800 mb-2 font-heading">Level</label>
+                    <label className="block text-sm font-semibold text-text800 mb-2 font-heading">Level</label>
                     <button
                       onClick={() => !currentConversationDifficultyLocked && setShowDifficultyDropdown(!showDifficultyDropdown)}
                       disabled={currentConversationDifficultyLocked}
-                      className={`w-full border border-slate-300 rounded-lg px-4 py-3 text-left flex items-center justify-between bg-white shadow-sm transition-all duration-200 ${
+                      className={`w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-left flex items-center justify-between bg-white shadow-sm transition-all duration-200 ${
                         currentConversationDifficultyLocked 
                           ? 'opacity-50 cursor-not-allowed' 
-                          : 'hover:shadow-md'
+                          : 'hover:shadow-md hover:border-primary/30'
                       }`}
                     >
-                      <span className="text-sm font-semibold text-slate-800 font-heading">{difficultyLevel}</span>
+                      <span className="text-sm font-semibold text-text800 font-heading">{difficultyLevel}</span>
                       {currentConversationDifficultyLocked ? (
                         <Lock className="h-4 w-4 text-gray-400" />
                       ) : (
@@ -6269,7 +6371,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       )}
                     </button>
                     {showDifficultyDropdown && !currentConversationDifficultyLocked && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-lg shadow-lg z-10">
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-gradient-to-br from-white to-slate-50 border border-gray-200 rounded-lg shadow-lg z-10">
                         {difficultyLevels.map((level) => (
                           <button
                             key={level}
@@ -6277,7 +6379,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                               setDifficultyLevel(level);
                               setShowDifficultyDropdown(false);
                             }}
-                            className="w-full text-left px-4 py-3 text-sm hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 first:rounded-t-lg last:rounded-b-lg text-slate-800 font-body transition-all duration-200"
+                            className="w-full text-left px-4 py-3 text-sm hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 first:rounded-t-lg last:rounded-b-lg text-text800 font-body transition-all duration-200"
                           >
                             {level}
                           </button>
@@ -6295,10 +6397,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     <button 
                       onClick={isModalRecording ? stopModalRecording : () => startModalRecording(true)}
                       disabled={isTranscribing}
-                      className={`p-3 rounded-full transition-colors ${
+                      className={`p-3 rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl ${
                         isModalRecording 
                           ? 'bg-red-500 hover:bg-red-600 text-white' 
-                          : 'bg-green-500 hover:bg-green-600 text-white'
+                          : 'bg-accent hover:bg-accent/90 text-white'
                       } ${isTranscribing ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       {isTranscribing ? (
@@ -6312,10 +6414,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     <button 
                       onClick={createNewConversation}
                       disabled={!conversationInput.trim()}
-                      className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-8 py-3 rounded-full flex items-center space-x-2 font-semibold disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg transition-all duration-200"
+                      className="btn-glossy px-8 py-3 rounded-2xl flex items-center space-x-2 font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transition-all duration-200"
                     >
                       <Play className="h-4 w-4" />
-                      <span>Start Chat</span>
+                      <span>Start Conversation</span>
                     </button>
                   </div>
                 </div>
@@ -6359,8 +6461,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                           onClick={() => toggleWordSelection(cleanWord)}
                           className={`inline-block px-2 py-1 mx-1 my-1 rounded-lg transition-all duration-200 ${
                             isSelected 
-                              ? 'bg-blue-500 text-white shadow-md' 
-                              : 'bg-white text-gray-700 hover:bg-blue-100 border border-gray-200'
+                              ? 'bg-primary-500 text-white shadow-md' 
+                              : 'bg-white text-gray-700 hover:bg-primary-100 border border-gray-200'
                           }`}
                         >
                           {cleanWord}
@@ -6378,10 +6480,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 <div className="space-y-2">
                   <h4 className="font-semibold text-gray-900 text-sm">Selected words:</h4>
                   {Array.from(selectedWords).map((word, index) => (
-                    <div key={index} className="flex items-center justify-between bg-blue-50 rounded-lg p-3">
+                    <div key={index} className="flex items-center justify-between bg-primary-50 rounded-lg p-3">
                       <div className="flex-1">
-                        <span className="font-semibold text-blue-900">{word}</span>
-                        <span className="text-blue-600 ml-2 text-sm">Meanings will be generated in vocab tab</span>
+                        <span className="font-semibold text-text900">{word}</span>
+                        <span className="text-text600 ml-2 text-sm">Meanings will be generated in vocab tab</span>
                       </div>
                       <button
                         onClick={() => toggleWordSelection(word)}
@@ -6405,7 +6507,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               <button
                 onClick={addSelectedVocab}
                 disabled={selectedWords.size === 0}
-                className="flex-1 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white rounded-xl transition-colors disabled:cursor-not-allowed"
+                className="flex-1 py-3 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-300 text-white rounded-xl transition-colors disabled:cursor-not-allowed"
               >
                 Add {selectedWords.size} word{selectedWords.size !== 1 ? 's' : ''}
               </button>
@@ -6432,7 +6534,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             
             {/* German Suggestion */}
             <div className="mb-6">
-              <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mb-4">
+              <div className="bg-primary-50 border-2 border-blue-200 rounded-lg p-6 mb-4">
                 <div className="text-center">
                   <div className="text-2xl font-semibold text-gray-900 mb-4">
                     {germanSuggestion || 'Loading...'}
@@ -6448,7 +6550,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     disabled={!germanSuggestion}
                     className={`px-6 py-3 rounded-lg transition-colors flex items-center space-x-2 mx-auto ${
                       germanSuggestion 
-                        ? 'bg-blue-500 hover:bg-blue-600 text-white' 
+                        ? 'bg-primary-500 hover:bg-primary-600 text-white' 
                         : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                     }`}
                   >
@@ -6487,7 +6589,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       disabled={!modalInput.trim()}
                       className={`px-4 py-2 rounded-lg transition-colors ${
                         modalInput.trim()
-                          ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                          ? 'bg-primary-500 hover:bg-primary-600 text-white'
                           : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                       }`}
                     >
@@ -6565,7 +6667,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             </div>
             <button
               onClick={() => setShowLevelUp(false)}
-              className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-lg font-medium transition-colors"
+              className="w-full bg-primary-500 hover:bg-primary-600 text-white py-3 rounded-lg font-medium transition-colors"
             >
               Awesome!
             </button>

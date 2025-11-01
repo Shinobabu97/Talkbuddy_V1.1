@@ -48,7 +48,7 @@ const WordDetails: React.FC<WordDetailsProps> = ({ word, onRepractice, onClose, 
           <h4 className="text-lg font-semibold text-gray-800">{word.word}</h4>
           <button
             onClick={() => germanTTS.speak(word.word)}
-            className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+            className="p-2 text-primary-600 hover:bg-primary-50 rounded transition-colors"
             title="Listen to pronunciation"
           >
             <Volume2 className="h-5 w-5" />
@@ -82,7 +82,7 @@ const WordDetails: React.FC<WordDetailsProps> = ({ word, onRepractice, onClose, 
         <div className="mb-4">
           <button
             onClick={() => setShowSyllables(!showSyllables)}
-            className="flex items-center space-x-2 text-sm font-medium text-blue-600 hover:text-blue-800"
+            className="flex items-center space-x-2 text-sm font-medium text-primary-600 hover:text-primary-800"
           >
             {showSyllables ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             <span>Syllable Analysis</span>
@@ -157,7 +157,7 @@ const WordDetails: React.FC<WordDetailsProps> = ({ word, onRepractice, onClose, 
           <h5 className="text-sm font-medium text-gray-700 mb-2">Focus on these sounds:</h5>
           <div className="flex flex-wrap gap-1">
             {word.soundsToFocus.map((sound, index) => (
-              <span key={index} className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
+              <span key={index} className="px-2 py-1 bg-primary-100 text-primary-800 rounded text-xs">
                 {sound}
               </span>
             ))}
@@ -171,7 +171,7 @@ const WordDetails: React.FC<WordDetailsProps> = ({ word, onRepractice, onClose, 
         className={`w-full py-2 px-4 rounded-lg flex items-center justify-center space-x-2 ${
           isRecording 
             ? 'bg-red-500 hover:bg-red-600 text-white' 
-            : 'bg-blue-500 hover:bg-blue-600 text-white'
+            : 'bg-primary-500 hover:bg-primary-600 text-white'
         }`}
       >
         {isRecording ? (
@@ -348,7 +348,7 @@ const PronunciationSentenceView: React.FC<PronunciationSentenceViewProps> = ({
               className={`flex items-center space-x-2 px-3 py-2 rounded-lg ${
                 isRecordingSentence
                   ? 'bg-red-500 text-white hover:bg-red-600'
-                  : 'bg-blue-500 text-white hover:bg-blue-600'
+                  : 'bg-primary-500 text-white hover:bg-primary-600'
               }`}
             >
               <Mic className="h-4 w-4" />
@@ -366,7 +366,7 @@ const PronunciationSentenceView: React.FC<PronunciationSentenceViewProps> = ({
                   onClick={() => handleSpeedChange(speed)}
                   className={`px-2 py-1 text-xs rounded ${
                     sentenceSpeed === speed
-                      ? 'bg-blue-500 text-white'
+                      ? 'bg-primary-500 text-white'
                       : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                   }`}
                 >
@@ -393,9 +393,9 @@ const PronunciationSentenceView: React.FC<PronunciationSentenceViewProps> = ({
 
       {/* Suggestions */}
       {pronunciationData.suggestions && pronunciationData.suggestions.length > 0 && (
-        <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-          <h4 className="text-sm font-medium text-blue-700 mb-2">Suggestions:</h4>
-          <ul className="text-sm text-blue-600 space-y-1">
+        <div className="mt-4 p-3 bg-primary-50 rounded-lg">
+          <h4 className="text-sm font-medium text-primary-700 mb-2">Suggestions:</h4>
+          <ul className="text-sm text-primary-600 space-y-1">
             {pronunciationData.suggestions.map((suggestion, index) => (
               <li key={index}>• {suggestion}</li>
             ))}

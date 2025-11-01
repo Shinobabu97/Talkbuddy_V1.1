@@ -644,7 +644,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
                   <button
                     key={motivation.id}
                     onClick={() => toggleMotivation(motivation.id)}
-                    className={`card-glass rounded-xl p-6 text-left transition-all duration-300 ${
+                    className={`bg-background-light border border-gray-200 rounded-lg p-6 text-left transition-all duration-300 ${
                       isSelected ? 'ring-2 ring-orange-400 bg-orange-50/50' : ''
                     }`}
                   >
@@ -672,7 +672,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
 
               {/* Custom motivations display */}
               {data.customMotivation && (
-                <div className="card-glass rounded-xl p-6 text-left ring-2 ring-orange-400 bg-orange-50/50">
+                <div className="bg-background-light border border-gray-200 rounded-lg p-6 text-left ring-2 ring-orange-400 bg-orange-50/50">
                   <div className="flex items-start space-x-4">
                     <div className="p-3 rounded-lg bg-orange-100">
                       <Plus className="h-6 w-6 text-orange-600" />
@@ -704,7 +704,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
               {/* Add custom motivation button */}
               <button
                 onClick={() => setShowCustomMotivation(true)}
-                className="card-glass rounded-xl p-6 text-center transition-all duration-300 border-2 border-dashed border-gray-300 hover:border-orange-400"
+                className="bg-background-light border border-gray-200 rounded-lg p-6 text-center transition-all duration-300 border-2 border-dashed border-gray-300 hover:border-orange-400"
               >
                 <div className="flex items-center justify-center space-x-3">
                   <Plus className="h-6 w-6 text-gray-600" />
@@ -717,7 +717,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
             </div>
 
             {showCustomMotivation && (
-              <div className="max-w-md mx-auto card-glass rounded-xl p-6">
+              <div className="max-w-md mx-auto bg-background-light border border-gray-200 rounded-lg p-6">
                 <h3 className="font-semibold text-gray-900 mb-3">Tell us more!</h3>
                 <div className="space-y-3">
                   <input
@@ -732,7 +732,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
                   <div className="flex space-x-2">
                     <button
                       onClick={addCustomMotivation}
-                      className="flex-1 btn-glossy text-white py-2 rounded-lg"
+                      className="flex-1 bg-text text-background-light hover:opacity-90 transition-opacity text-white py-2 rounded-lg"
                     >
                       Add
                     </button>
@@ -770,7 +770,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
                   <button
                     key={hobby.id}
                     onClick={() => toggleHobby(hobby.id)}
-                    className={`card-glass rounded-xl p-4 text-center transition-all duration-300 ${
+                    className={`bg-background-light border border-gray-200 rounded-lg p-4 text-center transition-all duration-300 ${
                       isSelected ? 'ring-2 ring-orange-400 bg-orange-50/50' : ''
                     }`}
                   >
@@ -795,7 +795,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
               {data.customHobbies.map((hobby, index) => (
                 <div
                   key={`custom-${index}`}
-                  className="card-glass rounded-xl p-4 text-center ring-2 ring-orange-400 bg-orange-50/50 relative"
+                  className="bg-background-light border border-gray-200 rounded-lg p-4 text-center ring-2 ring-orange-400 bg-orange-50/50 relative"
                 >
                   <div className="w-12 h-12 mx-auto mb-2 rounded-lg flex items-center justify-center bg-orange-100">
                     <Plus className="h-6 w-6 text-orange-600" />
@@ -815,7 +815,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
               
               <button
                 onClick={() => setShowCustomHobby(true)}
-                className="card-glass rounded-xl p-4 text-center transition-all duration-300 border-2 border-dashed border-gray-300 hover:border-orange-400"
+                className="bg-background-light border border-gray-200 rounded-lg p-4 text-center transition-all duration-300 border-2 border-dashed border-gray-300 hover:border-orange-400"
               >
                 <div className="w-12 h-12 mx-auto mb-2 rounded-lg bg-white/50 flex items-center justify-center">
                   <Plus className="h-6 w-6 text-gray-600" />
@@ -827,7 +827,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
             </div>
 
             {showCustomHobby && (
-              <div className="max-w-md mx-auto card-glass rounded-xl p-6">
+              <div className="max-w-md mx-auto bg-background-light border border-gray-200 rounded-lg p-6">
                 <h3 className="font-semibold text-gray-900 mb-3">Add your hobby</h3>
                 <div className="space-y-3">
                   <input
@@ -842,7 +842,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
                   <div className="flex space-x-2">
                     <button
                       onClick={addCustomHobby}
-                      className="flex-1 btn-glossy text-white py-2 rounded-lg"
+                      className="flex-1 bg-text text-background-light hover:opacity-90 transition-opacity text-white py-2 rounded-lg"
                     >
                       Add
                     </button>
@@ -875,7 +875,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
               <div className="grid grid-cols-2 gap-4">
                 <button
                   onClick={() => updateData({ hasWork: true })}
-                  className={`card-glass rounded-xl p-6 text-center transition-all duration-300 ${
+                  className={`bg-background-light border border-gray-200 rounded-lg p-6 text-center transition-all duration-300 ${
                     data.hasWork ? 'ring-2 ring-orange-400 bg-orange-50/50' : ''
                   }`}
                 >
@@ -887,7 +887,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
                 
                 <button
                   onClick={() => updateData({ hasWork: false, workDomain: undefined })}
-                  className={`card-glass rounded-xl p-6 text-center transition-all duration-300 ${
+                  className={`bg-background-light border border-gray-200 rounded-lg p-6 text-center transition-all duration-300 ${
                     data.hasWork === false ? 'ring-2 ring-orange-400 bg-orange-50/50' : ''
                   }`}
                 >
@@ -912,7 +912,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
                         <button
                           key={domain.id}
                           onClick={() => updateData({ workDomain: domain.id })}
-                          className={`card-glass rounded-lg p-3 text-center transition-all duration-300 ${
+                          className={`bg-background-light border border-gray-200 rounded-lg p-3 text-center transition-all duration-300 ${
                             isSelected ? 'ring-2 ring-orange-400 bg-orange-50/50' : ''
                           }`}
                         >
@@ -952,7 +952,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
                   <button
                     key={level.id}
                     onClick={() => updateData({ germanLevel: level.id })}
-                    className={`w-full card-glass rounded-xl p-6 text-left transition-all duration-300 ${
+                    className={`w-full bg-background-light border border-gray-200 rounded-lg p-6 text-left transition-all duration-300 ${
                       isSelected ? 'ring-2 ring-orange-400 bg-orange-50/50' : ''
                     }`}
                   >
@@ -996,7 +996,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
                   <button
                     key={fear.id}
                     onClick={() => toggleFear(fear.id)}
-                    className={`card-glass rounded-xl p-6 text-left transition-all duration-300 ${
+                    className={`bg-background-light border border-gray-200 rounded-lg p-6 text-left transition-all duration-300 ${
                       isSelected ? 'ring-2 ring-orange-400 bg-orange-50/50' : ''
                     }`}
                   >
@@ -1026,7 +1026,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
               {data.customFears.map((fear, index) => (
                 <div
                   key={`custom-fear-${index}`}
-                  className="card-glass rounded-xl p-6 text-left ring-2 ring-orange-400 bg-orange-50/50 relative"
+                  className="bg-background-light border border-gray-200 rounded-lg p-6 text-left ring-2 ring-orange-400 bg-orange-50/50 relative"
                 >
                   <div className="flex items-start space-x-4">
                     <div className="p-3 rounded-lg bg-orange-100">
@@ -1054,7 +1054,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
               {/* Add custom fear button */}
               <button
                 onClick={() => setShowCustomFear(true)}
-                className="card-glass rounded-xl p-6 text-center transition-all duration-300 border-2 border-dashed border-gray-300 hover:border-orange-400"
+                className="bg-background-light border border-gray-200 rounded-lg p-6 text-center transition-all duration-300 border-2 border-dashed border-gray-300 hover:border-orange-400"
               >
                 <div className="flex items-center justify-center space-x-3">
                   <Plus className="h-6 w-6 text-gray-600" />
@@ -1067,7 +1067,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
             </div>
 
             {showCustomFear && (
-              <div className="max-w-md mx-auto card-glass rounded-xl p-6">
+              <div className="max-w-md mx-auto bg-background-light border border-gray-200 rounded-lg p-6">
                 <h3 className="font-semibold text-gray-900 mb-3">What else worries you?</h3>
                 <div className="space-y-3">
                   <input
@@ -1082,7 +1082,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
                   <div className="flex space-x-2">
                     <button
                       onClick={addCustomFear}
-                      className="flex-1 btn-glossy text-white py-2 rounded-lg"
+                      className="flex-1 bg-text text-background-light hover:opacity-90 transition-opacity text-white py-2 rounded-lg"
                     >
                       Add
                     </button>
@@ -1125,7 +1125,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
                   <button
                     key={timeline.id}
                     onClick={() => updateData({ timeline: timeline.id })}
-                    className={`card-glass rounded-xl p-6 text-center transition-all duration-300 ${
+                    className={`bg-background-light border border-gray-200 rounded-lg p-6 text-center transition-all duration-300 ${
                       isSelected ? 'ring-2 ring-orange-400 bg-orange-50/50' : ''
                     }`}
                   >
@@ -1158,7 +1158,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
                     <button
                       key={goal.id}
                       onClick={() => toggleGoal(goal.id)}
-                      className={`card-glass rounded-lg p-4 text-center transition-all duration-300 ${
+                      className={`bg-background-light border border-gray-200 rounded-lg p-4 text-center transition-all duration-300 ${
                         isSelected ? 'ring-2 ring-orange-400 bg-orange-50/50' : ''
                       }`}
                     >
@@ -1198,7 +1198,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
                   <button
                     key={trait.id}
                     onClick={() => togglePersonalityTrait(trait.id)}
-                    className={`card-glass rounded-xl p-6 text-left transition-all duration-300 ${
+                    className={`bg-background-light border border-gray-200 rounded-lg p-6 text-left transition-all duration-300 ${
                       isSelected ? 'ring-2 ring-orange-400 bg-orange-50/50' : ''
                     }`}
                   >
@@ -1226,7 +1226,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
             </div>
 
             <div className="max-w-2xl mx-auto">
-              <div className="card-glass rounded-xl p-6">
+              <div className="bg-background-light border border-gray-200 rounded-lg p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-3">
                   Share something special about yourself (optional) 💫
                 </h3>
@@ -1262,7 +1262,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
 
             <div className="max-w-4xl mx-auto grid md:grid-cols-2 gap-6">
               {/* Personal Summary */}
-              <div className="card-glass rounded-xl p-6">
+              <div className="bg-background-light border border-gray-200 rounded-lg p-6">
                 <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
                   <Sparkles className="h-6 w-6 text-orange-600 mr-2" />
                   Your Profile
@@ -1310,15 +1310,15 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
               </div>
 
               {/* Conversation Topics */}
-              <div className="card-glass rounded-xl p-6">
+              <div className="bg-background-light border border-gray-200 rounded-lg p-6">
                 <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
-                  <MessageCircle className="h-6 w-6 text-blue-600 mr-2" />
+                  <MessageCircle className="h-6 w-6 text-primary-600 mr-2" />
                   Your Conversation Topics
                 </h3>
                 <div className="space-y-2">
                   {conversationTopics.map((topic, index) => (
                     <div key={index} className="flex items-center space-x-2 text-sm">
-                      <div className="w-2 h-2 bg-blue-400 rounded-full" />
+                      <div className="w-2 h-2 bg-primary-400 rounded-full" />
                       <span className="text-gray-900">{topic}</span>
                     </div>
                   ))}
@@ -1326,7 +1326,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
               </div>
 
               {/* Motivations */}
-              <div className="card-glass rounded-xl p-6">
+              <div className="bg-background-light border border-gray-200 rounded-lg p-6">
                 <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
                   <Heart className="h-6 w-6 text-red-500 mr-2" />
                   What Drives You
@@ -1353,7 +1353,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
               </div>
 
               {/* Support Areas */}
-              <div className="card-glass rounded-xl p-6">
+              <div className="bg-background-light border border-gray-200 rounded-lg p-6">
                 <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
                   <Target className="h-6 w-6 text-green-600 mr-2" />
                   We'll Help You With
@@ -1389,7 +1389,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
 
             {data.secretDetails && (
               <div className="max-w-2xl mx-auto">
-                <div className="card-glass rounded-xl p-6">
+                <div className="bg-background-light border border-gray-200 rounded-lg p-6">
                   <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
                     <Sparkles className="h-6 w-6 text-purple-600 mr-2" />
                     Your Special Touch
@@ -1406,7 +1406,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
               <button
                 onClick={completeOnboarding}
                 disabled={saving}
-                className="px-8 py-4 btn-glossy text-white rounded-lg font-semibold text-lg shadow-glass-lg hover:scale-105 transition-transform duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center mx-auto"
+                className="px-8 py-4 bg-text text-background-light hover:opacity-90 transition-opacity text-white rounded-lg font-semibold text-lg shadow-glass-lg hover:scale-105 transition-transform duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center mx-auto"
               >
                 {saving ? (
                   <>
@@ -1431,7 +1431,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
       {/* Close Confirmation Modal */}
       {showCloseConfirm && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="modal-glass rounded-xl max-w-md w-full p-6">
+          <div className="modal-glass rounded-lg max-w-md w-full p-6">
             <h3 className="text-xl font-bold mb-4 text-glass">Discard Changes?</h3>
             <p className="text-gray-700 mb-6">
               Are you sure you want to close without saving your changes? All modifications will be lost.
@@ -1439,7 +1439,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
             <div className="flex space-x-4">
               <button
                 onClick={() => setShowCloseConfirm(false)}
-                className="flex-1 px-4 py-2 btn-glossy-secondary rounded-lg"
+                className="flex-1 px-4 py-2 bg-text text-background-light hover:opacity-90 transition-opacity-secondary rounded-lg"
               >
                 Continue Editing
               </button>
@@ -1480,7 +1480,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
               className={`flex items-center space-x-2 px-6 py-3 rounded-lg transition-all duration-200 ${
                 currentStep === 0
                   ? 'text-gray-400 cursor-not-allowed'
-                  : 'btn-glossy-secondary hover:scale-105'
+                  : 'bg-text text-background-light hover:opacity-90 transition-opacity-secondary hover:scale-105'
               }`}
             >
               <ChevronLeft className="h-5 w-5" />
@@ -1496,7 +1496,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
             {currentStep < totalSteps - 1 ? (
               <button
                 onClick={nextStep}
-                className="flex items-center space-x-2 px-6 py-3 btn-glossy text-white rounded-lg hover:scale-105 transition-transform duration-200"
+                className="flex items-center space-x-2 px-6 py-3 bg-text text-background-light hover:opacity-90 transition-opacity text-white rounded-lg hover:scale-105 transition-transform duration-200"
               >
                 <span>Continue</span>
                 <ChevronRight className="h-5 w-5" />

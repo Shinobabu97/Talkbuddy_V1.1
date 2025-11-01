@@ -507,15 +507,15 @@ const VocabularyBuilderModal: React.FC<VocabularyBuilderModalProps> = ({
   return (
     <>
       {/* Vocabulary Builder Panel */}
-      <div className="w-[800px] h-full bg-gradient-to-b from-white to-slate-50 border-r border-slate-200 flex flex-col overflow-hidden shadow-lg">
+      <div className="w-[800px] h-full bg-background-light border-r border-gray-200 flex flex-col overflow-hidden">
       {/* Header with Close Button */}
-      <div className="p-4 border-b border-slate-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+      <div className="p-4 border-b border-gray-200 bg-background-light">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-              <BookOpen className="h-5 w-5 text-white" />
+            <div className="w-8 h-8 bg-text rounded-lg flex items-center justify-center">
+              <BookOpen className="h-5 w-5 text-background-light" />
             </div>
-            <span className="text-lg font-display text-slate-800">Vocabulary Builder</span>
+            <span className="text-lg font-display text-text font-display">Vocabulary Builder</span>
           </div>
           <button
             onClick={onClose}
@@ -533,7 +533,7 @@ const VocabularyBuilderModal: React.FC<VocabularyBuilderModalProps> = ({
             onClick={() => setActiveTab('my-vocab')}
             className={`px-6 py-4 text-sm font-semibold transition-all duration-200 border-b-2 ${
               activeTab === 'my-vocab'
-                ? 'text-blue-700 border-blue-600 bg-gradient-to-r from-blue-50 to-indigo-50'
+                ? 'text-text border-text bg-gray-50'
                 : 'text-gray-600 border-transparent hover:text-gray-800 hover:bg-gray-50'
             }`}
           >
@@ -543,7 +543,7 @@ const VocabularyBuilderModal: React.FC<VocabularyBuilderModalProps> = ({
             onClick={() => setActiveTab('by-topic')}
             className={`px-6 py-4 text-sm font-semibold transition-all duration-200 border-b-2 ${
               activeTab === 'by-topic'
-                ? 'text-blue-700 border-blue-600 bg-gradient-to-r from-blue-50 to-indigo-50'
+                ? 'text-text border-text bg-gray-50'
                 : 'text-gray-600 border-transparent hover:text-gray-800 hover:bg-gray-50'
             }`}
           >
@@ -566,7 +566,7 @@ const VocabularyBuilderModal: React.FC<VocabularyBuilderModalProps> = ({
               className={`px-8 py-2.5 rounded-lg font-semibold transition-all duration-200 shadow-sm ${
                 myVocabWords.length === 0
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-green-500 text-white hover:bg-green-600 hover:shadow-md'
+                  : 'btn-glossy hover:opacity-90 transition-opacity'
               }`}
             >
               Test My Vocabulary ({myVocabWords.length} words)
@@ -641,7 +641,7 @@ const VocabularyBuilderModal: React.FC<VocabularyBuilderModalProps> = ({
                                     e.stopPropagation();
                                     onPlayAudio(wordDetails.word);
                                   }}
-                                  className="p-2 text-blue-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                  className="p-2 text-primary-500 hover:text-text-muted hover:bg-primary-50 rounded-lg transition-colors"
                                 >
                                   <Volume2 className="h-5 w-5" />
                                 </button>
@@ -685,16 +685,16 @@ const VocabularyBuilderModal: React.FC<VocabularyBuilderModalProps> = ({
                     <button
                       key={topic.id}
                       onClick={() => setSelectedTopic(topic)}
-                      className="bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl p-6 hover:from-blue-100 hover:to-indigo-200 transition-all shadow-md hover:shadow-lg border border-blue-200 text-left"
+                      className="bg-background-light rounded-lg p-6 hover:bg-gray-50 transition-all border border-gray-200 text-left"
                     >
                       <div className="flex items-start space-x-4">
-                        <div className="bg-blue-500 p-3 rounded-lg">
-                          <IconComponent className="h-8 w-8 text-white" />
+                        <div className="bg-text p-3 rounded-lg">
+                          <IconComponent className="h-8 w-8 text-background-light" />
                         </div>
                         <div className="flex-1">
                           <h4 className="text-lg font-bold text-gray-900 mb-1">{topic.name}</h4>
                           <p className="text-sm text-gray-600 mb-2">{topic.description}</p>
-                          <p className="text-xs text-blue-600 font-medium">{topic.words.length} words</p>
+                          <p className="text-xs text-text-muted font-medium">{topic.words.length} words</p>
                         </div>
                       </div>
                     </button>
@@ -708,7 +708,7 @@ const VocabularyBuilderModal: React.FC<VocabularyBuilderModalProps> = ({
               <div className="flex items-center justify-between mb-4">
                 <button
                   onClick={() => setSelectedTopic(null)}
-                  className="text-blue-600 hover:text-blue-700 font-medium text-sm flex items-center space-x-1"
+                  className="text-text-muted hover:text-primary-700 font-medium text-sm flex items-center space-x-1"
                 >
                   <span>←</span>
                   <span>Back to Topics</span>
@@ -741,7 +741,7 @@ const VocabularyBuilderModal: React.FC<VocabularyBuilderModalProps> = ({
                           <div className="relative group">
                             <button
                               onClick={() => onPlayAudio(word.word)}
-                              className="p-2 text-blue-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              className="p-2 text-primary-500 hover:text-text-muted hover:bg-primary-50 rounded-lg transition-colors"
                             >
                               <Volume2 className="h-5 w-5" />
                             </button>
