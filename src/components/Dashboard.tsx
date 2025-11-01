@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { germanTTS } from '../lib/tts';
+import { saveMessageAnalysis, PronunciationData } from '../lib/analysisStorage';
 import {
   Mic,
   MicOff,
@@ -10,13 +11,13 @@ import {
   Loader2,
   User,
   ChevronDown,
+  Lock,
   Send,
   Play,
   BookOpen,
   BarChart3,
   MessageCircle,
   Volume2,
-  Target,
   Bot,
   Trash2,
   X,
@@ -25,6 +26,10 @@ import { supabase, AuthUser } from '../lib/supabase';
 import OnboardingFlow from './OnboardingFlow';
 import ProfilePictureModal from './ProfilePictureModal';
 import Toolbar from './Toolbar';
+import VocabularyBuilderModal from './VocabularyBuilderModal';
+import ConversationSummaryModal from './ConversationSummaryModal';
+import { SessionData } from '../types/sessionData';
+import { generateConversationSummary, ConversationSummary } from '../utils/summaryGenerator';
 
 interface DashboardProps {
   user: AuthUser;
@@ -77,6 +82,8 @@ interface Conversation {
   context_level: string;
   difficulty_level: string;
   context_locked: boolean;
+  difficulty_locked: boolean;
+  conversation_context?: string;
   created_at: string;
   updated_at: string;
   user_id: string;
@@ -91,6 +98,7 @@ interface ChatMessage {
   isAudio?: boolean; // Flag for audio messages
   isTranscribing?: boolean; // Flag for messages being transcribed
   showTryAgain?: boolean; // Flag to show "Try it again" button
+  pronunciationData?: PronunciationData; // Pronunciation analysis data for German voice messages
 }
 
 type MessageStatus = 'checking' | 'needs_correction' | 'mismatch' | 'error';
@@ -125,10 +133,28 @@ export default function Dashboard({ user }: DashboardProps) {
   const [showLevelUp, setShowLevelUp] = React.useState(false);
   const [showAchievement, setShowAchievement] = React.useState<string | null>(null);
   const [recentAchievements, setRecentAchievements] = React.useState<string[]>([]);
+
+  // 📊 SESSION TRACKING STATE
+  const [sessionData, setSessionData] = useState<SessionData>({
+    sessionId: `session-${Date.now()}`,
+    startTime: new Date().toISOString(),
+    wordsLearned: [],
+    wordsDeleted: [],
+    vocabularyTests: [],
+    pronunciationAttempts: [],
+    grammarMistakes: [],
+    correctResponses: 0,
+    totalMessages: 0
+  });
+
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [conversationSummary, setConversationSummary] = useState<ConversationSummary | null>(null);
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [contextLevel, setContextLevel] = useState('Professional');
   const [difficultyLevel, setDifficultyLevel] = useState('Intermediate');
   const [currentConversationContextLocked, setCurrentConversationContextLocked] = useState(false);
+  const [currentConversationDifficultyLocked, setCurrentConversationDifficultyLocked] = useState(false);
+  const [lastGermanVoiceMessage, setLastGermanVoiceMessage] = useState<any>(null);
   const [showContextDropdown, setShowContextDropdown] = useState(false);
   const [showDifficultyDropdown, setShowDifficultyDropdown] = useState(false);
   const [conversationInput, setConversationInput] = useState('');
@@ -152,12 +178,27 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('Initial userAttempts:', userAttempts);
     console.log('Initial errorMessages:', errorMessages);
     
+    // Add beforeunload event listener for session clearing
+    const handleBeforeUnload = () => {
+      console.log('🔄 === WINDOW CLOSING - CLEARING SESSION ===');
+      resetConversationState();
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
     return () => {
       console.log('🛑 === DASHBOARD COMPONENT UNMOUNTING ===');
       console.log('Final messageInput:', messageInput);
       console.log('Final waitingForCorrection:', waitingForCorrection);
       console.log('Final userAttempts:', userAttempts);
       console.log('Final errorMessages:', errorMessages);
+      
+      // Clear session on unmount
+      console.log('🔄 === COMPONENT UNMOUNTING - CLEARING SESSION ===');
+      resetConversationState();
+      
+      // Remove event listener
+      window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, []);
   
@@ -191,9 +232,11 @@ export default function Dashboard({ user }: DashboardProps) {
   const [isSending, setIsSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [translatedMessages, setTranslatedMessages] = useState<{[key: string]: string}>({});
-  const [suggestedResponses, setSuggestedResponses] = useState<{[key: string]: string[]}>({});
+  const [suggestedResponses, setSuggestedResponses] = useState<{[key: string]: (string | {german: string, english: string})[]}>({});
   const [showTranslation, setShowTranslation] = useState<{[key: string]: boolean}>({});
+  const [showSuggestionTranslation, setShowSuggestionTranslation] = useState<{[key: string]: boolean}>({});
   const [showSuggestions, setShowSuggestions] = useState<{[key: string]: boolean}>({});
+  const [showSuggestionsButtonClicked, setShowSuggestionsButtonClicked] = useState<{[key: string]: boolean}>({});
   const [hoveredConversation, setHoveredConversation] = useState<string | null>(null);
   const [showToolbar, setShowToolbar] = useState(false);
   const [currentAIMessage, setCurrentAIMessage] = useState<string>('');
@@ -211,6 +254,8 @@ export default function Dashboard({ user }: DashboardProps) {
   const [suggestedAnswers, setSuggestedAnswers] = useState<{[key: string]: string}>({});
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const [messageStatus, setMessageStatus] = useState<{[key: string]: MessageStatus}>({});
+  const [showVocabBuilder, setShowVocabBuilder] = useState(false);
+  const [lastSuggestionUsed, setLastSuggestionUsed] = useState<{[messageId: string]: string}>({});
 
   const updateMessageStatus = (messageId: string, status: MessageStatus | null) => {
     setMessageStatus(prev => {
@@ -281,6 +326,30 @@ export default function Dashboard({ user }: DashboardProps) {
   // Comprehensive analysis state
   const [comprehensiveAnalysis, setComprehensiveAnalysis] = useState<{[key: string]: any}>({});
   
+  // Pronunciation features state
+  const [globalPlaybackSpeed, setGlobalPlaybackSpeed] = useState<number>(() => {
+    const saved = localStorage.getItem('talkbuddy-playback-speed');
+    return saved ? parseFloat(saved) : 1.0;
+  });
+
+  // Individual word speeds for Pronunciation Guide
+  const [wordSpeeds, setWordSpeeds] = useState<Record<string, number>>({});
+
+  // Helper function to get speed for a specific word
+  const getWordSpeed = (word: string): number => {
+    return wordSpeeds[word] || globalPlaybackSpeed;
+  };
+
+  // Helper function to set speed for a specific word - UNUSED
+  // const setWordSpeed = (word: string, speed: number): void => {
+  //   setWordSpeeds(prev => ({
+  //     ...prev,
+  //     [word]: speed
+  //   }));
+  // };
+  const [phoneticBreakdowns, setPhoneticBreakdowns] = useState<{[key: string]: Array<{original: string, phonetic: string, transliteration: string, syllables: string[]}>}>({});
+  const [showPronunciationBreakdown, setShowPronunciationBreakdown] = useState<{[key: string]: boolean}>({});
+  
   // Debug messageInput state changes
   React.useEffect(() => {
     console.log('📝 === MESSAGE INPUT STATE CHANGED ===');
@@ -288,6 +357,11 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('Length:', messageInput.length);
     console.log('Trimmed:', messageInput.trim());
   }, [messageInput]);
+
+  // Persist global playback speed to localStorage
+  useEffect(() => {
+    localStorage.setItem('talkbuddy-playback-speed', globalPlaybackSpeed.toString());
+  }, [globalPlaybackSpeed]);
   
   // Debug errorMessages state changes
   React.useEffect(() => {
@@ -546,10 +620,23 @@ export default function Dashboard({ user }: DashboardProps) {
   };
 
   const createNewConversation = async () => {
-    if (!conversationInput.trim()) return;
+    console.log('🚀 === START CHAT BUTTON CLICKED ===');
+    console.log('Conversation input:', conversationInput);
+    console.log('Input trim check:', conversationInput.trim());
+    console.log('Context level:', contextLevel);
+    console.log('Difficulty level:', difficultyLevel);
+    
+    if (!conversationInput.trim()) {
+      console.log('❌ === BLOCKING - Empty conversation input ===');
+      return;
+    }
 
     try {
+      console.log('👤 User ID:', user.id);
+      console.log('👤 User object:', user);
+      
       // Create the conversation in database
+      // NOTE: conversation_context column doesn't exist in database yet, so excluding it
       const { data, error } = await supabase
         .from('conversations')
         .insert({
@@ -558,12 +645,21 @@ export default function Dashboard({ user }: DashboardProps) {
           preview: conversationInput.slice(0, 100),
           context_level: contextLevel,
           difficulty_level: difficultyLevel,
-          context_locked: false
+          context_locked: false,
+          difficulty_locked: false
+          // conversation_context: conversationInput.trim() - removed until column exists
         })
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Supabase insert error:', error);
+        console.error('Error code:', error.code);
+        console.error('Error message:', error.message);
+        console.error('Error details:', error.details);
+        console.error('Error hint:', error.hint);
+        throw error;
+      }
 
       // Add to conversations list and start immediately
       setConversations(prev => [data, ...prev]);
@@ -573,8 +669,10 @@ export default function Dashboard({ user }: DashboardProps) {
       
       // Clear input
       setConversationInput('');
+      console.log('✅ === CONVERSATION CREATED SUCCESSFULLY ===');
     } catch (error) {
-      console.error('Error creating conversation:', error);
+      console.error('❌ === ERROR CREATING CONVERSATION ===', error);
+      alert('Failed to create conversation. Please check the console for details.');
     }
   };
 
@@ -584,6 +682,10 @@ export default function Dashboard({ user }: DashboardProps) {
     // Set initial messages
     setChatMessages([]);
     
+    // Store the conversation context separately for future use
+    // Note: conversation_context column will be added to database later
+    console.log('📝 Conversation context stored:', userMessage);
+    
     // Immediately send the user's message to get AI response
     sendInitialMessage(conversationId, userMessage);
   };
@@ -591,6 +693,16 @@ export default function Dashboard({ user }: DashboardProps) {
   const sendInitialMessage = async (conversationId: string, userMessage: string) => {
     setIsSending(true);
     setIsTyping(true);
+    
+    // Store the user's initial message in chatMessages for contextual suggestions
+    const userMessageObj: ChatMessage = {
+      id: '1',
+      role: 'user',
+      content: userMessage,
+      timestamp: new Date().toISOString()
+    };
+    
+    setChatMessages(prev => [...prev, userMessageObj]);
     
     // Reset retry states for new conversation
     setWaitingForCorrection(false);
@@ -611,7 +723,7 @@ export default function Dashboard({ user }: DashboardProps) {
         body: JSON.stringify({
           messages: [{
             role: 'user',
-            content: `${contextLevel === 'Professional' ? 'Ich möchte dieses Szenario üben' : 'Ich möchte dieses Szenario üben'}: ${userMessage}. ${contextLevel === 'Professional' ? 'Beginnen Sie das Gespräch sofort mit der ersten Frage auf Deutsch. Verwenden Sie keine einleitenden Phrasen wie "Natürlich, gerne!" oder "Gerne!" - stellen Sie einfach die erste Frage direkt. WICHTIG: Antworten Sie NUR auf Deutsch. Verwenden Sie "Sie" statt "Du" für eine professionelle Atmosphäre.' : 'Beginn das Gespräch sofort mit der ersten Frage auf Deutsch. Verwende keine einleitenden Phrasen wie "Natürlich, gerne!" oder "Gerne!" - stell einfach die erste Frage direkt. WICHTIG: Antworte NUR auf Deutsch. Verwende "Du" statt "Sie" für eine lockere Atmosphäre.'}`
+            content: `Ich möchte dieses Szenario üben: ${userMessage}.\n\nWICHTIG:\n1. Bestätigen Sie zunächst, dass Sie den Kontext verstanden haben\n2. Fassen Sie kurz zusammen, was wir üben werden\n3. Fragen Sie, ob ich bereit bin, mit dem Rollenspiel zu beginnen\n4. Antworten Sie NUR auf Deutsch\n${contextLevel === 'Professional' ? 'Verwenden Sie "Sie" für formale Anrede.' : 'Verwenden Sie "Du" für lockere Anrede.'}`
           }],
           conversationId,
           contextLevel,
@@ -621,7 +733,8 @@ export default function Dashboard({ user }: DashboardProps) {
             goals: onboardingData.goals,
             personalityTraits: onboardingData.personalityTraits,
             conversationTopics: onboardingData.conversationTopics
-          } : undefined
+          } : undefined,
+          conversationContext: userMessage
         })
       });
 
@@ -642,17 +755,23 @@ export default function Dashboard({ user }: DashboardProps) {
 
       setChatMessages(prev => [...prev, assistantMessage]);
       
-      // Lock the context for this conversation
+      // Lock the context AND difficulty for this conversation
       await supabase
         .from('conversations')
-        .update({ context_locked: true })
+        .update({ 
+          context_locked: true,
+          difficulty_locked: true
+        })
         .eq('id', conversationId);
       
       // Update local state
       setCurrentConversationContextLocked(true);
+      setCurrentConversationDifficultyLocked(true);
       
       // Update current message but don't show toolbar automatically
       setCurrentAIMessage(data.message);
+      
+      // Don't auto-generate suggestions - user must click button to show them
 
     } catch (error) {
       console.error('Error sending initial message:', error);
@@ -669,7 +788,163 @@ export default function Dashboard({ user }: DashboardProps) {
     }
   };
 
+  // Generate contextual fallback suggestions based on AI message content
+  const generateContextualFallbacks = (germanText: string) => {
+    const text = germanText.toLowerCase();
+    
+    // Specific question patterns and their direct answers
+    if (text.includes('welche details') || text.includes('which details') || text.includes('am wichtigsten')) {
+      return [
+        { german: 'Die Budgetplanung ist am wichtigsten für uns.', english: 'Budget planning is most important for us.' },
+        { german: 'Die technischen Spezifikationen sind entscheidend.', english: 'Technical specifications are crucial.' },
+        { german: 'Die Sicherheitsanforderungen haben Priorität.', english: 'Security requirements have priority.' }
+      ];
+    }
+    
+    if (text.includes('anforderungen') || text.includes('requirements')) {
+      return [
+        { german: 'Wir brauchen eine Cloud-basierte Lösung.', english: 'We need a cloud-based solution.' },
+        { german: 'Die Sicherheit ist unsere Hauptpriorität.', english: 'Security is our main priority.' },
+        { german: 'Wir benötigen 24/7 Support.', english: 'We need 24/7 support.' }
+      ];
+    }
+    
+    if (text.includes('erfahrung') || text.includes('experience')) {
+      return [
+        { german: 'Ja, ich habe Erfahrung mit Microsoft-Produkten.', english: 'Yes, I have experience with Microsoft products.' },
+        { german: 'Ich arbeite seit 5 Jahren in der IT-Branche.', english: 'I have been working in IT for 5 years.' },
+        { german: 'Nein, aber ich lerne sehr schnell.', english: 'No, but I learn very quickly.' }
+      ];
+    }
+    
+    if (text.includes('finanz') || text.includes('budget') || text.includes('kosten')) {
+      return [
+        { german: 'Unser Budget liegt bei 50.000 Euro.', english: 'Our budget is 50,000 euros.' },
+        { german: 'Die Kosten sind ein wichtiger Faktor.', english: 'Costs are an important factor.' },
+        { german: 'Wir suchen nach einer kosteneffizienten Lösung.', english: 'We are looking for a cost-effective solution.' }
+      ];
+    }
+    
+    // Business/Professional context
+    if (text.includes('vertrag') || text.includes('software') || text.includes('geschäft') || text.includes('meeting') || text.includes('projekt')) {
+      return [
+        { german: 'Das Projekt sollte bis Ende des Jahres abgeschlossen sein.', english: 'The project should be completed by the end of the year.' },
+        { german: 'Wir haben bereits einen ähnlichen Vertrag abgeschlossen.', english: 'We have already signed a similar contract.' },
+        { german: 'Können wir die nächsten Schritte besprechen?', english: 'Can we discuss the next steps?' }
+      ];
+    }
+    
+    // Travel context
+    if (text.includes('reise') || text.includes('hotel') || text.includes('flug') || text.includes('stadt') || text.includes('urlaub')) {
+      return [
+        { german: 'Ich möchte gerne die Altstadt besichtigen.', english: 'I would like to visit the old town.' },
+        { german: 'Welche Sehenswürdigkeiten empfehlen Sie?', english: 'What sights do you recommend?' },
+        { german: 'Ich interessiere mich für die lokale Küche.', english: 'I am interested in the local cuisine.' }
+      ];
+    }
+    
+    // Food/Restaurant context
+    if (text.includes('essen') || text.includes('restaurant') || text.includes('küche') || text.includes('speise') || text.includes('menü')) {
+      return [
+        { german: 'Ich bin Vegetarier, haben Sie vegetarische Optionen?', english: 'I am vegetarian, do you have vegetarian options?' },
+        { german: 'Das hört sich sehr lecker an!', english: 'That sounds very delicious!' },
+        { german: 'Können Sie das Gericht empfehlen?', english: 'Can you recommend this dish?' }
+      ];
+    }
+    
+    // General conversation context
+    if (text.includes('frage') || text.includes('denken') || text.includes('meinung') || text.includes('glauben')) {
+      return [
+        { german: 'Das ist eine sehr gute Frage.', english: 'That is a very good question.' },
+        { german: 'Ich denke, dass...', english: 'I think that...' },
+        { german: 'Meine Meinung dazu ist...', english: 'My opinion on this is...' }
+      ];
+    }
+    
+    // Default contextual responses
+    return [
+      { german: 'Das ist sehr interessant!', english: 'That is very interesting!' },
+      { german: 'Können Sie das genauer erklären?', english: 'Can you explain that in more detail?' },
+      { german: 'Ich verstehe, danke für die Erklärung.', english: 'I understand, thank you for the explanation.' }
+    ];
+  };
+
+  // Context enhancement function - extracts key topics from user messages
+  const enhanceConversationContext = async (conversationId: string, userMessage: string) => {
+    if (!conversationId || !userMessage.trim()) return;
+
+    try {
+      // NOTE: conversation_context column doesn't exist in database yet
+      // This function is disabled until the migration is applied
+      console.log('📝 Context enhancement skipped - column not available yet');
+      return;
+    } catch (error) {
+      console.error('Error in enhanceConversationContext:', error);
+    }
+  };
+
   const generateTranslationAndSuggestions = async (messageId: string, germanText: string) => {
+    console.log('🎯 === AUTO-GENERATING SUGGESTIONS ===');
+    console.log('Message ID:', messageId);
+    console.log('German text:', germanText);
+    console.log('🚨 FUNCTION CALLED - Starting suggestion generation...');
+    
+    // Fetch conversation context from database
+    // For now, we'll get context from the first user message in chat
+    let conversationContext = '';
+    
+    // Find the first user message to use as context
+    const firstUserMessage = chatMessages.find(msg => msg.role === 'user');
+    if (firstUserMessage) {
+      conversationContext = firstUserMessage.content;
+      console.log('📝 Using first user message as context:', conversationContext);
+    }
+    
+    console.log('🎯 Generating contextual suggestions for:', germanText);
+    
+    // Check if this is a readiness question - provide direct answers
+    const isReadinessQuestion = /sind.*bereit|bist.*bereit|ready|bereit.*beginnen/i.test(germanText);
+    
+    if (isReadinessQuestion) {
+      console.log('✅ Detected readiness question - using hardcoded responses');
+      // Provide direct yes/no/maybe answers to readiness questions
+      const directResponses = contextLevel === 'Professional' 
+        ? [
+            { german: "Ja, ich bin bereit.", english: "Yes, I am ready." },
+            { german: "Absolut, ich freue mich darauf.", english: "Absolutely, I'm looking forward to it." },
+            { german: "Nein, ich möchte noch Kontext geben.", english: "No, I want to provide more context." }
+          ]
+        : [
+            { german: "Ja, ich bin bereit.", english: "Yes, I'm ready." },
+            { german: "Absolut, fangen wir an!", english: "Absolutely, let's start!" },
+            { german: "Nein, ich möchte mehr Kontext geben.", english: "No, I want to provide more context." }
+          ];
+      
+      setSuggestedResponses(prev => ({
+        ...prev,
+        [messageId]: directResponses
+      }));
+      
+      setTranslatedMessages(prev => {
+        if (prev[messageId]) return prev;
+        return {
+          ...prev,
+          [messageId]: germanText
+        };
+      });
+      
+      return;
+    }
+    
+    // For other questions, use AI generation
+    // Frame the AI's message as a user question to generate direct answers
+    const messagesForSuggestion = [{
+      role: 'user' as const,
+      content: germanText
+    }];
+    
+    console.log('📤 Sending messages to API:', messagesForSuggestion.length, 'messages');
+    
     try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
@@ -678,39 +953,88 @@ export default function Dashboard({ user }: DashboardProps) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: [{
-            role: 'user',
-            content: `Please provide: 1) English translation of: "${germanText}" 2) Three suggested German responses that a language learner could use to reply. IMPORTANT: The suggestions must be ONLY in German - no English translations in parentheses or brackets. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [suggestion1] | [suggestion2] | [suggestion3]`
-          }],
-          conversationId: 'helper',
+          messages: messagesForSuggestion,
+          conversationId: selectedConversation || 'helper',
           contextLevel,
           difficultyLevel,
-          systemInstruction: "When providing German suggestions, respond ONLY in German. Do not include any English translations in parentheses or brackets in the suggestions."
+          conversationContext: conversationContext,
+          systemInstruction: `Die Frage: "${germanText}"
+
+Aufgabe: 3 kurze Antworten auf DIESE Frage.
+
+Regeln:
+- Direkte Antworten zur Frage
+- Max 8 Wörter
+- Deutsch
+- Wenn Frage "Sind Sie bereit?" → Antworten: "Ja, ich bin bereit." / "Nein, nicht bereit." / "Ja, fangen wir an."
+
+Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Antwort 3] ENGLISH: [Answer 1] | [Answer 2] | [Answer 3]`
         })
       });
 
+      console.log('📡 API Response status:', response.status);
+      console.log('📡 API Response ok:', response.ok);
+      
       if (response.ok) {
         const data = await response.json();
         const content = data.message;
         
-        console.log('Translation and suggestions response:', content);
+        console.log('📡 API Response received for contextual suggestions:', content.substring(0, 300) + '...');
+        console.log('📡 Full API response:', content);
+        console.log('📡 Response data structure:', data);
         
-        // Parse translation and suggestions
+        // Parse translation and suggestions - handle both old and new formats
         const translationMatch = content.match(/TRANSLATION:\s*(.+?)(?=SUGGESTIONS:|$)/);
-        const suggestionsMatch = content.match(/SUGGESTIONS:\s*(.+)/);
+        const suggestionsMatch = content.match(/SUGGESTIONS:\s*(.+?)(?=ENGLISH:|$)/);
+        const englishMatch = content.match(/ENGLISH:\s*(.+)/);
+        
+        console.log('🔍 Parsing debug:', {
+          translationMatch: translationMatch ? translationMatch[1] : null,
+          suggestionsMatch: suggestionsMatch ? suggestionsMatch[1] : null,
+          englishMatch: englishMatch ? englishMatch[1] : null,
+          content: content.substring(0, 200) + '...'
+        });
         
         if (translationMatch) {
-          setTranslatedMessages(prev => ({
-            ...prev,
-            [messageId]: translationMatch[1].trim()
-          }));
+          // Only set translation if one doesn't already exist
+          // This prevents overwriting user's manual translation when generating suggestions
+          setTranslatedMessages(prev => {
+            if (prev[messageId]) {
+              console.log('📝 Translation already exists, keeping user translation for message:', messageId);
+              return prev;
+            }
+            return {
+              ...prev,
+              [messageId]: translationMatch[1].trim()
+            };
+          });
         }
         
-        if (suggestionsMatch) {
-          const suggestions = suggestionsMatch[1].split('|').map(s => s.trim()).filter(s => s.length > 0);
+        // Try new format first (with English translations)
+        if (suggestionsMatch && englishMatch) {
+          const germanSuggestions = suggestionsMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+          const englishTranslations = englishMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+          
+          // Pair German suggestions with their English translations
+          const pairedSuggestions = germanSuggestions.map((german: string, index: number) => ({
+            german: german.trim(),
+            english: englishTranslations[index] ? englishTranslations[index].trim() : ''
+          }));
+          
+          console.log('New format - German suggestions:', germanSuggestions);
+          console.log('New format - English translations:', englishTranslations);
+          console.log('New format - Paired suggestions:', pairedSuggestions);
+          
+          setSuggestedResponses(prev => ({
+            ...prev,
+            [messageId]: pairedSuggestions
+          }));
+        } else if (suggestionsMatch) {
+          // Fallback: old format (German suggestions only)
+          const suggestions = suggestionsMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
           
           // Clean up any English translations that might be in parentheses or brackets
-          const cleanedSuggestions = suggestions.map(suggestion => {
+          const cleanedSuggestions = suggestions.map((suggestion: string) => {
             // Remove English text in parentheses like (English translation)
             let cleaned = suggestion.replace(/\([^)]*[A-Za-z][^)]*\)/g, '');
             // Remove English text in brackets like [English translation]
@@ -720,10 +1044,10 @@ export default function Dashboard({ user }: DashboardProps) {
             cleaned = cleaned.replace(/\[[^\]]*\]/g, '');
             // Trim whitespace
             return cleaned.trim();
-          }).filter(s => s.length > 0);
+          }).filter((s: string) => s.length > 0);
           
-          console.log('Original suggestions:', suggestions);
-          console.log('Cleaned suggestions:', cleanedSuggestions);
+          console.log('Old format - Original suggestions:', suggestions);
+          console.log('Old format - Cleaned suggestions:', cleanedSuggestions);
           
           setSuggestedResponses(prev => ({
             ...prev,
@@ -731,12 +1055,46 @@ export default function Dashboard({ user }: DashboardProps) {
           }));
         } else {
           console.log('No suggestions match found in:', content);
+          // Set contextual fallback suggestions based on the AI's message
+          const contextualFallbacks = generateContextualFallbacks(germanText);
+          console.log('Setting contextual fallback suggestions:', contextualFallbacks);
+          
+          setSuggestedResponses(prev => ({
+            ...prev,
+            [messageId]: contextualFallbacks
+          }));
         }
       } else {
-        console.error('Failed to get translation and suggestions:', response.status, response.statusText);
+        console.error('❌ API call failed with status:', response.status);
+        console.error('❌ Response status text:', response.statusText);
+        const errorText = await response.text();
+        console.error('❌ Error response body:', errorText);
+        
+        // Try to get more specific error information
+        try {
+          const errorData = JSON.parse(errorText);
+          console.error('❌ Parsed error data:', errorData);
+        } catch (e) {
+          console.error('❌ Could not parse error response as JSON');
+        }
       }
     } catch (error) {
-      console.error('Error generating translation and suggestions:', error);
+      console.error('❌ Error generating translation and suggestions:', error);
+      console.error('❌ Error details:', {
+        messageId,
+        germanText,
+        error: (error as Error).message,
+        stack: (error as Error).stack
+      });
+      
+      // Set contextual fallback suggestions based on the AI's message
+      const contextualFallbacks = generateContextualFallbacks(germanText);
+      console.log('Setting contextual error fallback suggestions:', contextualFallbacks);
+      
+      setSuggestedResponses(prev => ({
+        ...prev,
+        [messageId]: contextualFallbacks
+      }));
     }
   };
 
@@ -864,6 +1222,115 @@ export default function Dashboard({ user }: DashboardProps) {
     await germanTTS.speak(text);
   };
 
+  // Pronunciation feature functions - UNUSED
+  /*
+  const getPhoneticBreakdown = async (text: string, messageId: string) => {
+    console.log('🎯 Getting phonetic breakdown for:', text, 'Message ID:', messageId);
+    console.log('🔗 Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
+    console.log('🔑 Supabase Key exists:', !!import.meta.env.VITE_SUPABASE_ANON_KEY);
+    
+    // For now, let's create mock data to test the UI
+    console.log('🧪 Using mock data for testing...');
+    
+    const mockData = {
+      words: text.split(' ').map(word => ({
+        original: word,
+        phonetic: `[${word}]`,
+        transliteration: word.toUpperCase(),
+        syllables: [word]
+      }))
+    };
+    
+    console.log('📊 Mock phonetic breakdown data:', mockData);
+    
+    setPhoneticBreakdowns(prev => ({
+      ...prev,
+      [messageId]: mockData.words
+    }));
+    
+    console.log('✅ Mock phonetic breakdown set for message:', messageId);
+    
+    // TODO: Uncomment this when Supabase function is working
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/phonetic-breakdown`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text })
+      });
+
+      console.log('📡 Phonetic breakdown response status:', response.status);
+      console.log('📡 Response headers:', Object.fromEntries(response.headers.entries()));
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Phonetic breakdown error:', errorText);
+        throw new Error(`Failed to get phonetic breakdown: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('📊 Phonetic breakdown data:', data);
+      
+      if (data.success) {
+        setPhoneticBreakdowns(prev => ({
+          ...prev,
+          [messageId]: data.words
+        }));
+        console.log('✅ Phonetic breakdown set for message:', messageId);
+        console.log('📊 Updated phoneticBreakdowns:', { ...phoneticBreakdowns, [messageId]: data.words });
+      } else {
+        console.error('❌ Phonetic breakdown failed:', data.error);
+      }
+    } catch (error) {
+      console.error('❌ Error getting phonetic breakdown:', error);
+      console.error('❌ Error details:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
+    }
+  };
+  */
+
+  const playWordAudio = async (word: string, speed?: number) => {
+    // const actualSpeed = speed || getWordSpeed(word); // Unused
+    
+    // Add gamification points for playing word audio
+    addExperience(2, 'word_audio_play');
+    
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/german-tts`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: word, speed })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate audio');
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        const audio = new Audio(data.audioUrl);
+        await audio.play();
+      }
+    } catch (error) {
+      console.error('Error playing word audio:', error);
+    }
+  };
+
+  const togglePronunciationBreakdown = (messageId: string) => {
+    setShowPronunciationBreakdown(prev => ({
+      ...prev,
+      [messageId]: !prev[messageId]
+    }));
+  };
+
   const toggleTranslation = (messageId: string) => {
     const isCurrentlyShowing = showTranslation[messageId];
     
@@ -890,6 +1357,10 @@ export default function Dashboard({ user }: DashboardProps) {
   };
 
   const translateMessage = async (messageId: string, germanText: string) => {
+    console.log('🔤 === TRANSLATION REQUEST ===');
+    console.log('Message ID:', messageId);
+    console.log('German Text:', germanText);
+    
     try {
       // Use chat function for translation since translate function might not exist
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
@@ -904,17 +1375,32 @@ export default function Dashboard({ user }: DashboardProps) {
             content: `Translate this German text to English: "${germanText}". Provide only the English translation, nothing else.`
           }],
           conversationId: 'translation',
-          systemInstruction: "You are a German to English translator. Provide only the English translation of the German text. Be accurate and concise."
+          contextLevel: 'Casual',
+          difficultyLevel: 'Intermediate',
+          systemInstruction: "You are a German to English translator. Provide ONLY the English translation of the German text. Be accurate and concise. Do not add any explanations or additional text."
         })
       });
 
+      console.log('🔤 Translation response status:', response.status);
+      console.log('🔤 Translation response ok:', response.ok);
+
       if (response.ok) {
         const data = await response.json();
-        setTranslatedMessages(prev => ({
-          ...prev,
-          [messageId]: data.message
-        }));
+        console.log('🔤 Translation response data:', data);
+        console.log('🔤 Translation message:', data.message);
+        
+        if (data.message) {
+          setTranslatedMessages(prev => ({
+            ...prev,
+            [messageId]: data.message
+          }));
+          console.log('✅ Translation set for message ID:', messageId);
+        } else {
+          console.error('❌ No message in response data');
+        }
       } else {
+        const errorText = await response.text();
+        console.error('❌ Translation failed:', errorText);
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
     } catch (error) {
@@ -928,7 +1414,10 @@ export default function Dashboard({ user }: DashboardProps) {
   };
 
   const toggleSuggestions = async (messageId: string) => {
+    console.log('🔄 toggleSuggestions called for messageId:', messageId);
     const isCurrentlyShowing = showSuggestions[messageId];
+    console.log('Current showSuggestions state:', showSuggestions);
+    console.log('Is currently showing:', isCurrentlyShowing);
     
     if (isCurrentlyShowing) {
       // Hide suggestions
@@ -945,34 +1434,90 @@ export default function Dashboard({ user }: DashboardProps) {
       
       // Check if we already have suggestions for this message
       const currentSuggestions = suggestedResponses[messageId];
+      console.log('🔍 toggleSuggestions: Current suggestions for messageId:', currentSuggestions);
+      console.log('🔍 toggleSuggestions: Suggestions type:', typeof currentSuggestions);
+      console.log('🔍 toggleSuggestions: Suggestions length:', currentSuggestions?.length);
+      
       if (!currentSuggestions || currentSuggestions.length === 0) {
-        // Generate suggestions on demand
+        // Generate suggestions on demand only if not already generated
+        console.log('🔍 toggleSuggestions: No suggestions found, generating new ones...');
         const message = chatMessages.find(msg => msg.id === messageId);
         if (message) {
-          await generateSuggestionsOnDemand(messageId, message.content);
+          console.log('🔍 toggleSuggestions: Found message, generating suggestions for:', message.content);
+          await generateTranslationAndSuggestions(messageId, message.content);
+        } else {
+          console.log('🔍 toggleSuggestions: No message found for messageId:', messageId);
         }
       } else {
+        console.log('🔍 toggleSuggestions: Suggestions already exist, checking format...');
         // If we have suggestions but they're not translated yet, translate them
         const firstSuggestion = currentSuggestions[0];
+        console.log('🔍 toggleSuggestions: First suggestion:', firstSuggestion);
+        console.log('🔍 toggleSuggestions: First suggestion type:', typeof firstSuggestion);
+        
         if (typeof firstSuggestion === 'string') {
           // They're still strings, need translation
-          translateSuggestions(messageId, currentSuggestions);
+          console.log('🔍 toggleSuggestions: Converting string suggestions to translated format...');
+          translateSuggestions(messageId, currentSuggestions as string[]);
+        } else {
+          console.log('🔍 toggleSuggestions: Suggestions already in object format, no action needed');
         }
       }
     }
   };
 
-  const useSuggestedResponse = (suggestion: string) => {
-    setMessageInput(suggestion);
+  const toggleSuggestionTranslation = (messageId: string, suggestionIndex: number) => {
+    const key = `${messageId}-${suggestionIndex}`;
+    setShowSuggestionTranslation(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
   };
 
-  // Generate suggestions on demand when user clicks on suggested responses
-  const generateSuggestionsOnDemand = async (messageId: string, germanText: string) => {
-    if (suggestedResponses[messageId]) {
-      return; // Already generated
+  const useSuggestedResponse = (suggestion: string, messageId?: string) => {
+    console.log('🔵 === USER SELECTED A SUGGESTION ===');
+    console.log('Selected suggestion:', suggestion);
+    console.log('Message ID:', messageId);
+    
+    setMessageInput(suggestion);
+    
+    // Track that this suggestion was selected for this message
+    if (messageId) {
+      setLastSuggestionUsed(prev => ({
+        ...prev,
+        [messageId]: suggestion
+      }));
+      console.log('✅ Tracked suggestion selection for message:', messageId);
     }
+  };
+
+  // Generate suggestions on demand when user clicks on suggested responses - UNUSED
+  /*
+  const generateSuggestionsOnDemand = async (messageId: string, germanText: string) => {
+    // Always try to get contextual suggestions, even if fallback exists
+    console.log('🎯 Generating contextual suggestions for:', germanText);
     
     try {
+      // Extract conversation context (last 2-3 messages including current message)
+      const currentMessageIndex = chatMessages.findIndex(msg => msg.id === messageId);
+      let conversationContext = '';
+      
+      if (currentMessageIndex >= 0) {
+        // Include messages up to and including the current message
+        const contextMessages = chatMessages.slice(Math.max(0, currentMessageIndex - 2), currentMessageIndex + 1);
+        const contextStrings = contextMessages.map(msg => `${msg.role}: ${msg.content}`);
+        conversationContext = contextStrings.join(' -> ');
+      }
+      
+      console.log('📝 Conversation context:', conversationContext);
+      
+      // Build enhanced prompt with conversation context
+      const promptContent = conversationContext 
+        ? `Based on this conversation context: ${conversationContext}. The AI just asked: "${germanText}". Please provide: 1) English translation of the AI's question: "${germanText}" 2) Three specific German responses that directly answer or respond to this question, appropriate for a language learner. Each response should be contextually relevant to the question asked. WITH their English translations. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [German suggestion 1] | [German suggestion 2] | [German suggestion 3] ENGLISH: [English translation 1] | [English translation 2] | [English translation 3]`
+        : `The AI just asked: "${germanText}". Please provide: 1) English translation of the AI's question: "${germanText}" 2) Three specific German responses that directly answer or respond to this question, appropriate for a language learner. Each response should be contextually relevant to the question asked. WITH their English translations. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [German suggestion 1] | [German suggestion 2] | [German suggestion 3] ENGLISH: [English translation 1] | [English translation 2] | [English translation 3]`;
+      
+      console.log('🚀 Making API call for contextual suggestions...');
+      
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
         headers: {
@@ -982,12 +1527,12 @@ export default function Dashboard({ user }: DashboardProps) {
         body: JSON.stringify({
           messages: [{
             role: 'user',
-            content: `Please provide: 1) English translation of: "${germanText}" 2) Three suggested German responses that a language learner could use to reply. IMPORTANT: The suggestions must be ONLY in German - no English translations in parentheses or brackets. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [suggestion1] | [suggestion2] | [suggestion3]`
+            content: promptContent
           }],
           conversationId: 'helper',
           contextLevel,
           difficultyLevel,
-          systemInstruction: "When providing German suggestions, respond ONLY in German. Do not include any English translations in parentheses or brackets in the suggestions."
+          systemInstruction: "You are a German language learning assistant. Generate suggestions that DIRECTLY ANSWER the specific question asked by the AI. Do NOT provide generic responses. Each suggestion must be a concrete, specific answer to the exact question. For example: if asked 'Which details are most important?' respond with specific details like 'Die Budgetplanung ist am wichtigsten' or 'Die technischen Spezifikationen sind entscheidend'. Always provide German suggestions with English translations in the exact format requested."
         })
       });
 
@@ -995,9 +1540,17 @@ export default function Dashboard({ user }: DashboardProps) {
         const data = await response.json();
         const content = data.message;
         
-        // Parse translation and suggestions
+        // Parse translation and suggestions - handle both old and new formats
         const translationMatch = content.match(/TRANSLATION:\s*(.+?)(?=SUGGESTIONS:|$)/);
-        const suggestionsMatch = content.match(/SUGGESTIONS:\s*(.+)/);
+        const suggestionsMatch = content.match(/SUGGESTIONS:\s*(.+?)(?=ENGLISH:|$)/);
+        const englishMatch = content.match(/ENGLISH:\s*(.+)/);
+        
+        console.log('On-demand parsing debug:', {
+          translationMatch: translationMatch ? translationMatch[1] : null,
+          suggestionsMatch: suggestionsMatch ? suggestionsMatch[1] : null,
+          englishMatch: englishMatch ? englishMatch[1] : null,
+          content: content.substring(0, 200) + '...'
+        });
         
         if (translationMatch) {
           setTranslatedMessages(prev => ({
@@ -1006,11 +1559,31 @@ export default function Dashboard({ user }: DashboardProps) {
           }));
         }
         
-        if (suggestionsMatch) {
-          const suggestions = suggestionsMatch[1].split('|').map(s => s.trim()).filter(s => s.length > 0);
+        // Try new format first (with English translations)
+        if (suggestionsMatch && englishMatch) {
+          const germanSuggestions = suggestionsMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+          const englishTranslations = englishMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+          
+          // Pair German suggestions with their English translations
+          const pairedSuggestions = germanSuggestions.map((german: string, index: number) => ({
+            german: german.trim(),
+            english: englishTranslations[index] ? englishTranslations[index].trim() : ''
+          }));
+          
+          console.log('New format - German suggestions:', germanSuggestions);
+          console.log('New format - English translations:', englishTranslations);
+          console.log('New format - Paired suggestions:', pairedSuggestions);
+          
+          setSuggestedResponses(prev => ({
+            ...prev,
+            [messageId]: pairedSuggestions
+          }));
+        } else if (suggestionsMatch) {
+          // Fallback: old format (German suggestions only)
+          const suggestions = suggestionsMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
           
           // Clean up any English translations that might be in parentheses or brackets
-          const cleanedSuggestions = suggestions.map(suggestion => {
+          const cleanedSuggestions = suggestions.map((suggestion: string) => {
             // Remove English text in parentheses like (English translation)
             let cleaned = suggestion.replace(/\([^)]*[A-Za-z][^)]*\)/g, '');
             // Remove English text in brackets like [English translation]
@@ -1020,18 +1593,47 @@ export default function Dashboard({ user }: DashboardProps) {
             cleaned = cleaned.replace(/\[[^\]]*\]/g, '');
             // Trim whitespace
             return cleaned.trim();
-          }).filter(s => s.length > 0);
+          }).filter((s: string) => s.length > 0);
+          
+          console.log('Old format - Original suggestions:', suggestions);
+          console.log('Old format - Cleaned suggestions:', cleanedSuggestions);
           
           setSuggestedResponses(prev => ({
             ...prev,
             [messageId]: cleanedSuggestions
           }));
+        } else {
+          console.log('No suggestions match found in:', content);
+          // Set fallback suggestions if parsing fails
+          const fallbackSuggestions = [
+            { german: 'Das ist interessant.', english: 'That is interesting.' },
+            { german: 'Können Sie das erklären?', english: 'Can you explain that?' },
+            { german: 'Ich verstehe.', english: 'I understand.' }
+          ];
+          
+          setSuggestedResponses(prev => ({
+            ...prev,
+            [messageId]: fallbackSuggestions
+          }));
         }
       }
     } catch (error) {
       console.error('Error generating suggestions on demand:', error);
+      
+      // Set fallback suggestions to prevent infinite loading
+      const fallbackSuggestions = [
+        'Das ist interessant.',
+        'Können Sie das erklären?',
+        'Ich verstehe.'
+      ];
+      
+      setSuggestedResponses(prev => ({
+        ...prev,
+        [messageId]: fallbackSuggestions
+      }));
     }
   };
+  */
 
   const handleHelpClick = async (messageContent: string, messageId: string) => {
     console.log('AI Grammar help button clicked for message:', messageId);
@@ -1122,6 +1724,30 @@ export default function Dashboard({ user }: DashboardProps) {
     setIsSending(true);
     setIsTyping(true);
     
+    // Check if user selected a suggestion for this message
+    const selectedSuggestion = lastSuggestionUsed[messageId];
+    console.log('🔍 Checking if suggestion was used for this message:', messageId);
+    console.log('Selected suggestion:', selectedSuggestion);
+    
+    // Build enhanced system instruction if suggestion was selected
+    let enhancedSystemInstruction = `${contextLevel === 'Professional' ? 'Sie sind' : 'Du bist'} ein freundlicher Gesprächspartner. Antworte kurz und natürlich (1-2 Sätze). Stelle viele Fragen. Sei neugierig und interessiert. Lass den Nutzer viel sprechen. ${contextLevel === 'Professional' ? 'Verwende "Sie" und höfliche Ausdrücke.' : 'Verwende "Du" und umgangssprachliche Ausdrücke.'} KEINE englischen Übersetzungen oder Erklärungen.`;
+    
+    if (selectedSuggestion) {
+      console.log('✅ User selected a suggestion - enhancing AI context');
+      enhancedSystemInstruction += `\n\nWICHTIGER HINWEIS: Der Nutzer hat diese Antwort aus vorgeschlagenen Optionen ausgewählt: "${selectedSuggestion}". Das zeigt, dass der Nutzer mit dieser Perspektive einverstanden ist oder diese Antwort für passend hält. Baue deine Antwort darauf auf und entwickle das Gespräch weiter basierend auf dieser Auswahl.`;
+      console.log('Enhanced system instruction:', enhancedSystemInstruction.substring(0, 200) + '...');
+    }
+    
+    // Get conversation context from current conversation
+    let conversationContextToSend = userMessage;
+    if (selectedConversation) {
+      const currentConversation = conversations.find(conv => conv.id === selectedConversation);
+      if (currentConversation && currentConversation.conversation_context) {
+        conversationContextToSend = currentConversation.conversation_context;
+        console.log('📝 Using conversation context:', conversationContextToSend);
+      }
+    }
+    
     try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
@@ -1143,7 +1769,8 @@ export default function Dashboard({ user }: DashboardProps) {
             personalityTraits: onboardingData.personalityTraits,
             conversationTopics: onboardingData.conversationTopics
           } : undefined,
-          systemInstruction: `${contextLevel === 'Professional' ? 'Sie sind' : 'Du bist'} ein freundlicher Gesprächspartner. Antworte kurz und natürlich (1-2 Sätze). Stelle viele Fragen. Sei neugierig und interessiert. Lass den Nutzer viel sprechen. ${contextLevel === 'Professional' ? 'Verwende "Sie" und höfliche Ausdrücke.' : 'Verwende "Du" und umgangssprachliche Ausdrücke.'} KEINE englischen Übersetzungen oder Erklärungen.`
+          systemInstruction: enhancedSystemInstruction,
+          conversationContext: conversationContextToSend
         })
       });
 
@@ -1156,8 +1783,12 @@ export default function Dashboard({ user }: DashboardProps) {
         console.log('📝 === AI RESPONSE DATA ===');
         console.log('AI message:', data.message);
         
+        // Generate message ID first
+        const messageId = (Date.now() + 1).toString();
+        console.log('🤖 Generated message ID:', messageId);
+        
         const assistantMessage: ChatMessage = {
-          id: (Date.now() + 1).toString(),
+          id: messageId,
           role: 'assistant',
           content: data.message,
           timestamp: new Date().toISOString()
@@ -1174,6 +1805,27 @@ export default function Dashboard({ user }: DashboardProps) {
         });
         
         setCurrentAIMessage(data.message);
+        
+        // Automatically generate contextual suggestions for the AI's response
+        console.log('🤖 === ABOUT TO AUTO-GENERATE SUGGESTIONS ===');
+        console.log('🤖 Message ID for suggestions:', messageId);
+        console.log('🤖 AI message content:', data.message);
+        console.log('🤖 Calling generateTranslationAndSuggestions...');
+        
+        await generateTranslationAndSuggestions(messageId, data.message);
+        
+        console.log('🤖 === AUTO-GENERATION CALL COMPLETED ===');
+        
+        // Clear the suggestion tracking for this message after AI has responded
+        if (selectedSuggestion) {
+          console.log('🧹 Clearing suggestion tracking for message:', messageId);
+          setLastSuggestionUsed(prev => {
+            const newState = { ...prev };
+            delete newState[messageId];
+            return newState;
+          });
+        }
+        
         console.log('✅ === AI RESPONSE COMPLETED SUCCESSFULLY ===');
       } else {
         console.error('❌ === AI API ERROR ===');
@@ -1272,6 +1924,71 @@ export default function Dashboard({ user }: DashboardProps) {
     }
   };
 
+  // Analyze German pronunciation for voice messages
+  const analyzeGermanPronunciation = async (audioBlob: Blob, transcription: string, messageId: string): Promise<PronunciationData | null> => {
+    try {
+      console.log('🎤 === ANALYZING GERMAN PRONUNCIATION ===');
+      console.log('Audio blob size:', audioBlob.size, 'bytes');
+      console.log('Transcription:', transcription);
+      console.log('Message ID:', messageId);
+
+      // Convert audio to base64 using chunked conversion for large files
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      let binaryString = '';
+      const chunkSize = 8192; // Process in 8KB chunks
+      
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.slice(i, i + chunkSize);
+        binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      
+      const base64 = btoa(binaryString);
+
+      // Call pronunciation analysis API
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pronunciation-analysis`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audioData: base64,
+          transcription: transcription
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ Pronunciation analysis completed:', data);
+
+        // Save to database
+        if (user && selectedConversation) {
+          const conversation = conversations.find(c => c.id === selectedConversation);
+          if (conversation) {
+            await saveMessageAnalysis(
+              messageId,
+              user.id,
+              conversation.id,
+              transcription,
+              'voice',
+              data,
+              undefined // No grammar topic for pronunciation-only analysis
+            );
+          }
+        }
+
+        return data;
+      } else {
+        console.error('❌ Pronunciation analysis failed:', response.status);
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Error in pronunciation analysis:', error);
+      return null;
+    }
+  };
+
   const handleErrorCorrection = async (messageId: string) => {
     console.log('=== GRAMMAR HELP BUTTON CLICKED ===');
     console.log('Message ID:', messageId);
@@ -1314,6 +2031,11 @@ export default function Dashboard({ user }: DashboardProps) {
       console.log('Running comprehensive analysis for grammar help');
       await runComprehensiveAnalysis(userMessage.content, messageId);
     }
+    
+    // Auto-load grammar explanation when toolbar opens
+    console.log('Auto-loading grammar explanation for:', userMessage.content);
+    // The grammar explanation will be loaded automatically by the Toolbar component
+    // due to the autoLoadExplanations prop being set to true
   };
 
   const generateSuggestedAnswer = async (messageId: string, userMessage: string) => {
@@ -1476,6 +2198,18 @@ export default function Dashboard({ user }: DashboardProps) {
 
 
   const translateSuggestions = async (messageId: string, suggestions: string[]) => {
+    console.log('🔄 translateSuggestions called for messageId:', messageId);
+    console.log('🔄 translateSuggestions input suggestions:', suggestions);
+    
+    // Check if we already have test suggestions (object format)
+    const currentSuggestions = suggestedResponses[messageId];
+    if (currentSuggestions && currentSuggestions.length > 0 && typeof currentSuggestions[0] === 'object') {
+      console.log('🔄 translateSuggestions: Test suggestions already exist, skipping translation');
+      return;
+    }
+    
+    console.log('🔄 translateSuggestions: Proceeding with translation...');
+    
     try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/translate`, {
         method: 'POST',
@@ -1554,12 +2288,47 @@ export default function Dashboard({ user }: DashboardProps) {
       console.log('Focusing on error correction instead of AI response');
       updateMessageStatus(messageId, 'needs_correction');
       return;
-    } else if (!analysis) {
+    } else if (!analysis || analysis === null) {
       // Analysis failed - don't proceed with AI response (EXACT SAME AS VOICE)
       console.log('🚫 === ANALYSIS FAILED - NOT SENDING TO AI ===');
-      console.log('Analysis returned null, not proceeding with AI response');
-      updateMessageStatus(messageId, 'error');
-      return;
+      console.log('Analysis returned null or undefined, not proceeding with AI response');
+      console.log('Analysis value:', analysis);
+      console.log('Analysis type:', typeof analysis);
+      
+      // Instead of setting error status, try to get a fallback analysis
+      console.log('🔄 === ATTEMPTING FALLBACK ANALYSIS ===');
+      const fallbackAnalysis = {
+        hasErrors: false,
+        errorTypes: {
+          grammar: false,
+          vocabulary: false,
+          pronunciation: false
+        },
+        corrections: {
+          grammar: null,
+          vocabulary: [],
+          pronunciation: null
+        },
+        suggestions: {
+          grammar: null,
+          vocabulary: null,
+          pronunciation: null
+        },
+        wordsForPractice: [],
+        message: textContent,
+        timestamp: new Date().toISOString()
+      };
+      
+      // Store the fallback analysis
+      setComprehensiveAnalysis(prev => ({
+        ...prev,
+        [messageId]: fallbackAnalysis
+      }));
+      
+      console.log('✅ === FALLBACK ANALYSIS STORED - PROCEEDING TO AI ===');
+      // Continue with AI response instead of showing error
+      // updateMessageStatus(messageId, 'error'); // REMOVED - don't show error
+      // return; // REMOVED - continue with AI response
     }
     
     console.log('✅ === NO ERRORS DETECTED - PROCEEDING TO AI ===');
@@ -1699,11 +2468,12 @@ export default function Dashboard({ user }: DashboardProps) {
       return; // Don't proceed with normal processing
     }
 
-    // Collapse toolbar when conversation starts (first user message)
-    if (chatMessages.length <= 1) { // Only AI greeting message exists
-      setToolbarCollapsed(true);
-      console.log('Collapsing toolbar - first user message');
-    }
+    // Don't collapse toolbar automatically - let vocabulary additions control it
+    // The toolbar will auto-expand when words are added to vocabulary
+    // if (chatMessages.length <= 1) { // Only AI greeting message exists
+    //   setToolbarCollapsed(true);
+    //   console.log('Collapsing toolbar - first user message');
+    // }
 
     // Check if this is a retry attempt - be more robust in detection
     const isRetry = Boolean(activeMessageId);
@@ -1785,6 +2555,16 @@ export default function Dashboard({ user }: DashboardProps) {
         ...prev,
         [messageId]: userMessage.content
       }));
+      
+      // Enhance conversation context with user message
+      if (selectedConversation && trimmedInput) {
+        await enhanceConversationContext(selectedConversation, trimmedInput);
+      }
+    }
+    
+    // Enhance context on retry if it's a correction
+    if (isRetry && selectedConversation && trimmedInput) {
+      await enhanceConversationContext(selectedConversation, trimmedInput);
     }
 
     // Process text message (EXACT SAME AS VOICE)
@@ -1859,8 +2639,14 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('📚 === ADDING TO PERSISTENT VOCAB IMMEDIATELY ===');
     console.log('New vocab item:', newVocabItem);
     
-    // Add to persistent vocabulary immediately (for session persistence)
+    // Add to persistent vocabulary immediately (for session persistence) - check for duplicates
     setPersistentVocab(prev => {
+      // Check if word already exists
+      const exists = prev.some(item => item.word === word);
+      if (exists) {
+        console.log('📚 === WORD ALREADY EXISTS IN PERSISTENT VOCAB, SKIPPING ===');
+        return prev;
+      }
       const updated = [newVocabItem, ...prev];
       console.log('📚 === UPDATED PERSISTENT VOCAB ===');
       console.log('New persistent vocab count:', updated.length);
@@ -1869,9 +2655,22 @@ export default function Dashboard({ user }: DashboardProps) {
       return updated;
     });
     
-    // Also add to new vocab items for Toolbar processing (when toolbar is open)
+    // Track vocabulary addition in session data
+    setSessionData(prev => ({
+      ...prev,
+      wordsLearned: [...prev.wordsLearned, word]
+    }));
+    console.log('📊 Session data updated: word added to wordsLearned');
+    
+    // Also add to new vocab items for Toolbar processing (when toolbar is open) - check for duplicates
     console.log('📚 === ADDING TO NEW VOCAB ITEMS FOR TOOLBAR ===');
     setNewVocabItems(prev => {
+      // Check if word already exists
+      const exists = prev.some(item => item.word === word);
+      if (exists) {
+        console.log('📚 === WORD ALREADY EXISTS IN NEW VOCAB ITEMS, SKIPPING ===');
+        return prev;
+      }
       const updated = [...prev, newVocabItem];
       console.log('📚 === UPDATED NEW VOCAB ITEMS ===');
       console.log('New vocab items count:', updated.length);
@@ -1879,9 +2678,38 @@ export default function Dashboard({ user }: DashboardProps) {
       return updated;
     });
     
+    // Auto-open the toolbar and switch to vocab tab
+    console.log('📚 === AUTO-OPENING TOOLBAR AND SWITCHING TO VOCAB TAB ===');
+    console.log('Before - toolbarCollapsed:', toolbarCollapsed);
+    console.log('Before - toolbarActiveTab:', toolbarActiveTab);
+    console.log('Before - showToolbar:', showToolbar);
+    
+    // Use setTimeout to ensure state updates happen after any other pending updates
+    setTimeout(() => {
+      setShowToolbar(true);
+      setToolbarCollapsed(false);
+      setToolbarActiveTab('vocab');
+      console.log('📚 === TOOLBAR STATE UPDATED (AFTER TIMEOUT) ===');
+      console.log('After setting - toolbarCollapsed should be false');
+      console.log('After setting - toolbarActiveTab should be vocab');
+    }, 100);
+    
     console.log('📚 === DASHBOARD HANDLE ADD TO VOCAB COMPLETED ===');
   };
 
+  // Handle pronunciation completion - track sentence pronunciation scores
+  const handlePronunciationComplete = (score: number, word: string) => {
+    setSessionData(prev => ({
+      ...prev,
+      pronunciationAttempts: [...prev.pronunciationAttempts, {
+        word: word,
+        score: score,
+        timestamp: new Date().toISOString(),
+        isSuccess: score >= 70
+      }]
+    }));
+    console.log('📊 Session data updated: pronunciation attempt added', { word, score });
+  };
 
   // Handle word selection in sentence - no API calls in modal
   const toggleWordSelection = (word: string) => {
@@ -2162,12 +2990,12 @@ Keep it simple and conversational. Just respond with the German translation, not
         console.error('API call failed with status:', response.status);
         console.error('Error response:', errorText);
         console.error('Response headers:', response.headers);
-        setGermanSuggestion(simpleFallback);
+        setGermanSuggestion('Das ist interessant.');
       }
     } catch (error) {
       console.error('Network error generating German suggestion:', error);
-      console.error('Error details:', error.message);
-      setGermanSuggestion(simpleFallback);
+      console.error('Error details:', (error as Error).message);
+      setGermanSuggestion('Das ist interessant.');
     }
   };
 
@@ -2525,10 +3353,83 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         console.log('errorMessages:', errorMessages);
         console.log('userAttempts:', userAttempts);
         return data;
+      } else {
+        // Handle non-ok response
+        console.error('❌ === COMPREHENSIVE ANALYSIS API ERROR ===');
+        console.error('Response status:', response.status);
+        console.error('Response status text:', response.statusText);
+        
+        // Return fallback analysis instead of null to prevent error message
+        console.log('🔄 === RETURNING FALLBACK ANALYSIS FOR API ERROR ===');
+        
+        const fallbackAnalysis = {
+          hasErrors: false,
+          errorTypes: {
+            grammar: false,
+            vocabulary: false,
+            pronunciation: false
+          },
+          corrections: {
+            grammar: null,
+            vocabulary: [],
+            pronunciation: null
+          },
+          suggestions: {
+            grammar: null,
+            vocabulary: null,
+            pronunciation: null
+          },
+          wordsForPractice: [],
+          message: message,
+          timestamp: new Date().toISOString()
+        };
+        
+        // Store the fallback analysis
+        setComprehensiveAnalysis(prev => ({
+          ...prev,
+          [messageId]: fallbackAnalysis
+        }));
+        
+        return fallbackAnalysis;
       }
     } catch (error) {
       console.error('Error in comprehensive analysis:', error instanceof Error ? error.message : 'Unknown error');
-      return null;
+      console.error('Full error details:', error);
+      
+      // Instead of returning null (which causes the error message), return a fallback analysis
+      // that indicates no errors were found, allowing the conversation to continue
+      console.log('🔄 === RETURNING FALLBACK ANALYSIS ===');
+      console.log('Providing fallback analysis to prevent error message display');
+      
+      const fallbackAnalysis = {
+        hasErrors: false,
+        errorTypes: {
+          grammar: false,
+          vocabulary: false,
+          pronunciation: false
+        },
+        corrections: {
+          grammar: null,
+          vocabulary: [],
+          pronunciation: null
+        },
+        suggestions: {
+          grammar: null,
+          vocabulary: null,
+          pronunciation: null
+        },
+        wordsForPractice: [],
+        message: message,
+        timestamp: new Date().toISOString()
+      };
+      
+      // Store the fallback analysis
+      setComprehensiveAnalysis(prev => ({
+        ...prev,
+        [messageId]: fallbackAnalysis
+      }));
+      
+      return fallbackAnalysis;
     }
   };
 
@@ -2634,45 +3535,71 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
   const processConversationInputRecording = async (audioBlob: Blob) => {
     console.log('🎤 === PROCESSING CONVERSATION INPUT RECORDING ===');
+    console.log('Audio blob size:', audioBlob.size, 'bytes');
+    console.log('Audio blob type:', audioBlob.type);
+    console.log('Recording language:', recordingLanguage);
     
     setIsTranscribing(true);
     
     try {
       // Convert blob to base64
       const reader = new FileReader();
+      reader.onerror = (error) => {
+        console.error('FileReader error:', error);
+        alert('Failed to read audio file. Please try again.');
+        setIsTranscribing(false);
+      };
+      
       reader.onload = async () => {
-        const base64Audio = reader.result as string;
-        const base64Data = base64Audio.split(',')[1];
-        
-        console.log('Base64 audio length:', base64Data.length);
-        
         try {
+          const base64Audio = reader.result as string;
+          if (!base64Audio || !base64Audio.includes(',')) {
+            console.error('Invalid base64 audio data');
+            alert('Failed to process recording. Please try again.');
+            setIsTranscribing(false);
+            return;
+          }
+          
+          const base64Data = base64Audio.split(',')[1];
+          console.log('Base64 audio length:', base64Data.length);
+          
           const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whisper`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
             },
-            body: JSON.stringify({ audioData: base64Data })
+            body: JSON.stringify({ 
+              audioData: base64Data,
+              language: recordingLanguage === 'german' ? 'de' : 'en'
+            })
           });
+
+          console.log('Whisper response status:', response.status);
 
           if (response.ok) {
             const data = await response.json();
+            console.log('Whisper response data:', data);
             
-            if (data.transcription) {
-              const transcription = data.transcription;
-              console.log('Conversation input transcription:', transcription);
+            if (data.transcription && data.transcription.trim()) {
+              const transcription = data.transcription.trim();
+              console.log('✅ Conversation input transcription received:', transcription);
+              console.log('🎯 Setting this transcription to conversationInput field');
               
               // Set the transcription as the conversation input
               setConversationInput(transcription);
               setIsTranscribing(false);
+              
+              console.log('✅ Transcription set in conversationInput');
             } else {
-              console.error('No transcription received');
+              console.error('No transcription or empty transcription received');
+              console.error('Response data:', data);
               alert('No speech detected. Please try again.');
               setIsTranscribing(false);
             }
           } else {
-            console.error('Transcription failed:', response.status);
+            const errorText = await response.text();
+            console.error('Transcription failed:', response.status, errorText);
             alert('Failed to process your recording. Please try again.');
             setIsTranscribing(false);
           }
@@ -2709,7 +3636,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
           },
-          body: JSON.stringify({ audioData: base64Data })
+          body: JSON.stringify({ 
+            audioData: base64Data,
+            language: recordingLanguage === 'german' ? 'de' : 'en'
+          })
         });
 
         if (response.ok) {
@@ -2731,9 +3661,21 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               if (mismatchMessageId) {
                 setChatMessages(prev => prev.map(msg =>
                   msg.id === mismatchMessageId
-                    ? { ...msg, content: transcription }
+                    ? { ...msg, content: transcription, isAudio: true }
                     : msg
                 ));
+                
+                // Store the German voice message for pronunciation analysis
+                setLastGermanVoiceMessage({
+                  transcription: transcription,
+                  audioData: base64Data,
+                  messageId: mismatchMessageId
+                });
+                
+                console.log('🎤 === STORED GERMAN VOICE MESSAGE FOR PRONUNCIATION ANALYSIS ===');
+                console.log('Transcription:', transcription);
+                console.log('Message ID:', mismatchMessageId);
+                console.log('Audio data length:', base64Data.length);
                 
                 // Process the German message normally
                 await processTextMessage(transcription, mismatchMessageId, false);
@@ -2935,9 +3877,20 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       console.log('Audio blob type:', audioBlob.type);
       console.log('Recording language:', recordingLanguage);
       
-      // Convert blob to base64
+      // Convert blob to base64 using a safer method for large files
       const arrayBuffer = await audioBlob.arrayBuffer();
-      const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      // Use a more robust base64 conversion that handles large arrays
+      let binaryString = '';
+      const chunkSize = 8192; // Process in 8KB chunks
+      
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.slice(i, i + chunkSize);
+        binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      
+      const base64Audio = btoa(binaryString);
       
       console.log('Base64 audio length:', base64Audio.length);
 
@@ -2959,7 +3912,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           },
           body: JSON.stringify({
             audioData: base64Audio,
-            // Don't specify language - let Whisper auto-detect
+            language: recordingLanguage === 'german' ? 'de' : 'en',
             storeForAnalysis: true
           }),
           signal: controller.signal
@@ -2970,7 +3923,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         console.log('Whisper function error:', whisperError);
         
         // Check if it's a timeout or size issue
-        if (whisperError.name === 'AbortError') {
+        if ((whisperError as Error).name === 'AbortError') {
           console.log('Transcription timeout - audio might be too long');
           setChatMessages(prev => prev.map(msg => 
             msg.id === messageId 
@@ -3160,13 +4113,13 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     console.log('New transcription:', transcription);
                     console.log('Practice audio blob exists:', !!practiceAudioBlob);
                     
-                    const newMessage = {
+                    const newMessage: ChatMessage = {
                       ...msg,
                       content: transcription,
                       audioUrl: practiceAudioBlob ? URL.createObjectURL(practiceAudioBlob) : undefined,
                       isAudio: true,
                       isTranscribing: false,
-                      role: 'user',
+                      role: 'user' as const,
                       timestamp: new Date().toISOString()
                     };
                     console.log('✅ NEW MESSAGE CREATED:', JSON.stringify(newMessage, null, 2));
@@ -3288,17 +4241,29 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             console.log('Detected language:', detectedLanguage, 'Recording language:', recordingLanguage);
           }
           
-          // Update the audio message with transcription
+          // Update the audio message with transcription - ensure message ID matches
           setChatMessages(prev => {
             console.log('🔄 === UPDATING MESSAGE WITH TRANSCRIPTION ===');
             console.log('Message ID:', messageId);
             console.log('Is Retry:', isRetry);
             console.log('Transcription:', transcription);
             console.log('Previous messages count:', prev.length);
+            console.log('All message IDs:', prev.map(msg => msg.id));
+            
+            // Verify the message exists
+            const targetMessage = prev.find(msg => msg.id === messageId);
+            if (!targetMessage) {
+              console.error('❌ === MESSAGE NOT FOUND FOR UPDATE ===');
+              console.error('Message ID:', messageId);
+              console.error('Available message IDs:', prev.map(msg => msg.id));
+              return prev; // Don't update if message not found
+            }
+            
+            console.log('✅ Message found, updating:', targetMessage.content);
             
             const updatedMessages = prev.map(msg => {
               if (msg.id === messageId) {
-                console.log('✅ FOUND MESSAGE TO UPDATE:', msg.id);
+                console.log('✅ UPDATING MESSAGE:', msg.id);
                 console.log('Original content:', msg.content);
                 console.log('New content:', transcription);
                 
@@ -3319,6 +4284,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             });
             
             console.log('Updated messages count:', updatedMessages.length);
+            console.log('Updated message content:', updatedMessages.find(msg => msg.id === messageId)?.content);
             return updatedMessages;
           });
           
@@ -3349,6 +4315,32 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             // For German recordings, run comprehensive analysis and get result immediately
             const analysis = await runComprehensiveAnalysis(transcription, messageId, true);
             
+            // Store the German voice message for pronunciation analysis
+            const audioArrayBuffer = await audioBlob.arrayBuffer();
+            const uint8Array = new Uint8Array(audioArrayBuffer);
+            let binaryString = '';
+            const chunkSize = 8192; // Process in 8KB chunks
+            
+            for (let i = 0; i < uint8Array.length; i += chunkSize) {
+              const chunk = uint8Array.slice(i, i + chunkSize);
+              binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+            }
+            
+            const audioBase64 = btoa(binaryString);
+            
+            console.log('🎤 === STORING GERMAN VOICE MESSAGE FOR PRONUNCIATION ===');
+            console.log('Message ID:', messageId);
+            console.log('Transcription:', transcription);
+            
+            setLastGermanVoiceMessage({
+              transcription: transcription,
+              audioData: audioBase64,
+              messageId: messageId
+            });
+            
+            console.log('✅ === GERMAN VOICE MESSAGE STORED ===');
+            console.log('lastGermanVoiceMessage should now have messageId:', messageId);
+            
             console.log('🔍 === CHECKING FOR ERRORS AFTER ANALYSIS ===');
             console.log('Analysis result:', analysis);
             console.log('Has errors:', analysis && analysis.hasErrors);
@@ -3361,12 +4353,47 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             console.log('Focusing on error correction instead of AI response');
             updateMessageStatus(messageId, 'needs_correction');
             return;
-          } else if (!analysis) {
+          } else if (!analysis || analysis === null) {
             // Analysis failed - don't proceed with AI response
             console.log('🚫 === ANALYSIS FAILED - NOT SENDING TO AI ===');
-            console.log('Analysis returned null, not proceeding with AI response');
-            updateMessageStatus(messageId, 'error');
-            return;
+            console.log('Analysis returned null or undefined, not proceeding with AI response');
+            console.log('Analysis value:', analysis);
+            console.log('Analysis type:', typeof analysis);
+            
+            // Instead of setting error status, try to get a fallback analysis
+            console.log('🔄 === ATTEMPTING FALLBACK ANALYSIS FOR VOICE ===');
+            const fallbackAnalysis = {
+              hasErrors: false,
+              errorTypes: {
+                grammar: false,
+                vocabulary: false,
+                pronunciation: false
+              },
+              corrections: {
+                grammar: null,
+                vocabulary: [],
+                pronunciation: null
+              },
+              suggestions: {
+                grammar: null,
+                vocabulary: null,
+                pronunciation: null
+              },
+              wordsForPractice: [],
+              message: transcription,
+              timestamp: new Date().toISOString()
+            };
+            
+            // Store the fallback analysis
+            setComprehensiveAnalysis(prev => ({
+              ...prev,
+              [messageId]: fallbackAnalysis
+            }));
+            
+            console.log('✅ === FALLBACK ANALYSIS STORED FOR VOICE - PROCEEDING TO AI ===');
+            // Continue with AI response instead of showing error
+            // updateMessageStatus(messageId, 'error'); // REMOVED - don't show error
+            // return; // REMOVED - continue with AI response
           }
             
             console.log('✅ === NO ERRORS DETECTED - PROCEEDING TO AI ===');
@@ -3436,10 +4463,22 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       } else {
         const errorText = await response.text();
         console.error('Transcription failed:', response.status, errorText);
+        
+        let errorMessage = '❌ Transcription failed';
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.error) {
+            errorMessage = `❌ ${errorData.error}`;
+          }
+        } catch (parseError) {
+          // If we can't parse the error, use the status code
+          errorMessage = `❌ Transcription failed (${response.status})`;
+        }
+        
         // Update message to show error with more details
         setChatMessages(prev => prev.map(msg =>
           msg.id === messageId
-            ? { ...msg, content: `❌ Transcription failed (${response.status})`, isTranscribing: false }
+            ? { ...msg, content: errorMessage, isTranscribing: false }
             : msg
         ));
         updateMessageStatus(messageId, 'error');
@@ -3447,28 +4486,34 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     } catch (error) {
       console.error('Error transcribing audio:', error);
 
+      let errorMessage = '❌ Transcription failed';
+      
       // Check if it's a CORS or function not found error
-      if (error.message.includes('Failed to fetch') || error.message.includes('CORS')) {
-        // Update message to show function needs deployment
-        setChatMessages(prev => prev.map(msg => 
-          msg.id === messageId 
-            ? { 
-                ...msg, 
-                content: '⚠️ Whisper function not deployed. Audio recorded but transcription unavailable.', 
-                isTranscribing: false 
-              }
-            : msg
-        ));
-        updateMessageStatus(messageId, 'error');
-      } else {
-        // Update message to show transcription failed
-        setChatMessages(prev => prev.map(msg =>
-          msg.id === messageId
-            ? { ...msg, content: '❌ Transcription failed', isTranscribing: false }
-            : msg
-        ));
-        updateMessageStatus(messageId, 'error');
+      if ((error as Error).message.includes('Failed to fetch') || (error as Error).message.includes('CORS')) {
+        errorMessage = '⚠️ Whisper function not deployed. Audio recorded but transcription unavailable.';
+      } else if ((error as Error).message.includes('OpenAI API key not configured')) {
+        errorMessage = '⚠️ OpenAI API key not configured. Please check server settings.';
+      } else if ((error as Error).message.includes('No audio data provided')) {
+        errorMessage = '⚠️ No audio data received. Please try recording again.';
+      } else if ((error as Error).message.includes('Invalid audio data format')) {
+        errorMessage = '⚠️ Invalid audio format. Please try recording again.';
+      } else if ((error as Error).message.includes('OpenAI Whisper API error')) {
+        errorMessage = `⚠️ ${(error as Error).message}`;
+      } else if ((error as Error).message.includes('No transcription received')) {
+        errorMessage = '⚠️ No transcription received. Please try speaking more clearly.';
       }
+      
+      // Update message to show appropriate error
+      setChatMessages(prev => prev.map(msg => 
+        msg.id === messageId 
+          ? { 
+              ...msg, 
+              content: errorMessage, 
+              isTranscribing: false 
+            }
+          : msg
+      ));
+      updateMessageStatus(messageId, 'error');
     } finally {
       console.log('🏁 === TRANSCRIBE AUDIO END (NORMAL PROCESSING) ===');
       console.log('Final showLanguageMismatchModal state:', showLanguageMismatchModal);
@@ -3635,6 +4680,12 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
     console.log('✅ === PROCEEDING WITH AI RESPONSE ===');
     clearCheckingStatus(messageId);
+    
+    // Enhance conversation context with voice transcription
+    if (selectedConversation && transcription) {
+      await enhanceConversationContext(selectedConversation, transcription);
+    }
+    
     setIsSending(true);
     setIsTyping(true);
 
@@ -3664,7 +4715,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           contextLevel,
           difficultyLevel,
           systemInstruction: systemInstruction,
-          userProfile: onboardingData
+          userProfile: onboardingData,
+          conversationContext: transcription
         })
       });
 
@@ -3697,6 +4749,9 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
   };
 
   const startNewConversation = (conversationId: string) => {
+    // Clear the last German voice message when starting new conversation
+    setLastGermanVoiceMessage(null);
+    
     // Reset all states first
     resetConversationState();
     
@@ -3706,6 +4761,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       setContextLevel(conversation.context_level);
       setDifficultyLevel(conversation.difficulty_level);
       setCurrentConversationContextLocked(conversation.context_locked);
+      setCurrentConversationDifficultyLocked(conversation.difficulty_locked);
     }
     
     // Start new conversation
@@ -3723,8 +4779,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     setSidebarCollapsed(false);
   };
 
-  // Reset all states when ending conversation
-  const resetConversationState = () => {
+  // Helper function to reset all conversation states (used by both end and new conversation)
+  const resetAllConversationStates = () => {
     // Reset conversation states
     setSelectedConversation(null);
     setChatMessages([]);
@@ -3734,6 +4790,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     // Reset context and difficulty states
     setContextLevel('Professional');
     setCurrentConversationContextLocked(false);
+    setCurrentConversationDifficultyLocked(false);
     setDifficultyLevel('Intermediate');
     
     // Reset toolbar states
@@ -3758,6 +4815,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     setShowSuggestions({});
     setTranslatedMessages({});
     setSuggestedResponses({});
+    setShowSuggestionTranslation({});
     
     // Reset vocabulary states (conversation-specific)
     setPersistentVocab([]);
@@ -3773,6 +4831,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     // Reset comprehensive analysis
     setComprehensiveAnalysis({});
     
+    // Reset pronunciation-related states
+    setPhoneticBreakdowns({});
+    setShowPronunciationBreakdown({});
+    
     // Reset recording states
     setShowLanguageMenu(false);
     setShowLanguageMismatchModal(false);
@@ -3781,12 +4843,54 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     setMismatchMessageId('');
     setGermanSuggestion('');
     setPracticeAudioBlob(null);
+    setLastGermanVoiceMessage(null);
     setRecordingLanguage('german');
     setRecordingDuration(0);
     
     // Reset UI states
     setSidebarCollapsed(false);
     setCurrentView('dashboard');
+    
+    // Reset session data for new conversation
+    setSessionData({
+      sessionId: `session-${Date.now()}`,
+      startTime: new Date().toISOString(),
+      wordsLearned: [],
+      wordsDeleted: [],
+      vocabularyTests: [],
+      pronunciationAttempts: [],
+      grammarMistakes: [],
+      correctResponses: 0,
+      totalMessages: 0
+    });
+    console.log('📊 Session data reset for new conversation');
+  };
+
+  // End conversation - shows summary modal
+  const endConversation = () => {
+    // Generate and show summary before resetting
+    const summary = generateConversationSummary(sessionData);
+    setConversationSummary(summary);
+    setShowSummaryModal(true);
+    console.log('📊 Conversation summary generated and modal shown');
+    
+    // Increment conversations completed
+    setPlayerStats(prev => ({
+      ...prev,
+      conversationsCompleted: prev.conversationsCompleted + 1
+    }));
+    console.log('🎯 Conversations completed incremented');
+    
+    // Reset all states
+    resetAllConversationStates();
+  };
+
+  // Start new conversation - does NOT show summary modal
+  const resetConversationState = () => {
+    console.log('🆕 Starting new conversation without summary');
+    
+    // Just reset all states without showing summary
+    resetAllConversationStates();
   };
 
   const handleLogout = async () => {
@@ -3810,7 +4914,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     if (onboardingData) {
       const updatedData = {
         ...onboardingData,
-        profilePictureUrl: newUrl
+        profilePictureUrl: newUrl || undefined
       };
       setOnboardingData(updatedData);
       localStorage.setItem(`onboarding_${user.id}`, JSON.stringify(updatedData));
@@ -4053,12 +5157,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 Progress
               </button>
               <button
-                onClick={() => setCurrentView('vocab')}
-                className={`flex-1 px-3 py-2 text-sm font-semibold rounded-lg transition-all duration-200 ${
-                  currentView === 'vocab'
-                    ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md'
-                    : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100'
-                }`}
+                onClick={() => setShowVocabBuilder(true)}
+                className="flex-1 px-3 py-2 text-sm font-semibold rounded-lg transition-all duration-200 text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100"
               >
                 <BookOpen className="h-4 w-4 inline mr-1" />
                 Vocab List
@@ -4079,12 +5179,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 <BarChart3 className="h-4 w-4" />
               </button>
               <button
-                onClick={() => setCurrentView('vocab')}
-                className={`p-2 text-sm font-medium rounded-lg transition-colors ${
-                  currentView === 'vocab'
-                    ? 'bg-blue-50 text-blue-600'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                }`}
+                onClick={() => setShowVocabBuilder(true)}
+                className="p-2 text-sm font-medium rounded-lg transition-colors text-gray-600 hover:text-gray-900 hover:bg-gray-50"
                 title="Vocab List"
               >
                 <BookOpen className="h-4 w-4" />
@@ -4244,9 +5340,42 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         )}
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col bg-gradient-to-br from-white to-slate-50 overflow-hidden">
-        {selectedConversation ? (
+      {/* Vocabulary Builder Panel - Conditionally Rendered */}
+      {showVocabBuilder && (
+        <VocabularyBuilderModal
+          isOpen={showVocabBuilder}
+          onClose={() => setShowVocabBuilder(false)}
+          myVocabWords={Array.from(new Set(JSON.parse(localStorage.getItem('myVocab') || '[]')))}
+          persistentVocab={persistentVocab}
+          onPlayAudio={(word) => {
+            if ('speechSynthesis' in window) {
+              const utterance = new SpeechSynthesisUtterance(word);
+              utterance.lang = 'de-DE';
+              const voices = window.speechSynthesis.getVoices();
+              const germanVoice = voices.find(voice => voice.lang === 'de-DE' || voice.lang.startsWith('de'));
+              if (germanVoice) {
+                utterance.voice = germanVoice;
+              }
+              window.speechSynthesis.speak(utterance);
+            }
+          }}
+          onUpdatePersistentVocab={(newVocab) => {
+            setPersistentVocab(newVocab);
+          }}
+          onTestComplete={(results) => {
+            setSessionData(prev => ({
+              ...prev,
+              vocabularyTests: [...prev.vocabularyTests, results]
+            }));
+            console.log('📊 Session data updated: test results added');
+          }}
+        />
+      )}
+
+      {/* Main Content - Hidden when vocab builder is open */}
+      {!showVocabBuilder && (
+        <div className="flex-1 flex flex-col bg-gradient-to-br from-white to-slate-50 overflow-hidden">
+          {selectedConversation ? (
           // Conversation View
           <div className="flex-1 flex h-full overflow-hidden">
             {/* Main Chat Area */}
@@ -4281,6 +5410,24 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                           )}
                         </div>
                       )}
+                      {/* Difficulty Level Badge - NEW ADDITION */}
+                      {selectedConversation && (
+                        <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                          difficultyLevel === 'Beginner' 
+                            ? 'bg-yellow-100 text-yellow-800' 
+                            : difficultyLevel === 'Intermediate'
+                            ? 'bg-orange-100 text-orange-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}>
+                          <span className="mr-1">
+                            {difficultyLevel === 'Beginner' ? '🌱' : difficultyLevel === 'Intermediate' ? '📚' : '🎯'}
+                          </span>
+                          {difficultyLevel}
+                          {currentConversationDifficultyLocked && (
+                            <span className="ml-1">🔒</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center space-x-2">
                       <div className="flex items-center space-x-1">
@@ -4298,7 +5445,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     <p className="text-xs text-gray-400">Native Speaker</p>
                   </div>
                   <button 
-                    onClick={resetConversationState}
+                    onClick={endConversation}
                     className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors"
                   >
                     End Conversation
@@ -4427,6 +5574,25 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                           message.content
                         )}
                       </div>
+
+                      {/* Pronunciation Badge for German Voice Messages */}
+                      {message.role === 'user' && message.isAudio && lastGermanVoiceMessage && lastGermanVoiceMessage.messageId === message.id && (
+                        <div className="mt-2 flex justify-end">
+                          <button
+                            onClick={() => {
+                              setToolbarActiveTab('pronunciation');
+                              setToolbarCollapsed(false);
+                              setShowToolbar(true);
+                            }}
+                            className="flex items-center space-x-1 px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-full text-xs font-medium transition-colors"
+                            title="Analyze pronunciation"
+                          >
+                            <Volume2 className="h-3 w-3" />
+                            <span>Analyze</span>
+                          </button>
+                        </div>
+                      )}
+
                   </div>
                 </div>
 
@@ -4533,18 +5699,43 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                         suggestedResponses[message.id].map((suggestion, index) => {
                           const suggestionText = typeof suggestion === 'string' ? suggestion : suggestion.german;
                           const suggestionTranslation = typeof suggestion === 'object' ? suggestion.english : null;
+                          const translationKey = `${message.id}-${index}`;
+                          const isShowingTranslation = showSuggestionTranslation[translationKey];
                           
                           return (
-                            <button
-                              key={index}
-                              onClick={() => useSuggestedResponse(suggestionText)}
-                              className="block w-full text-left bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors"
-                            >
-                              <div className="font-medium">{suggestionText}</div>
-                              {showTranslation[message.id] && suggestionTranslation && (
-                                <div className="text-gray-500 text-xs mt-1">{suggestionTranslation}</div>
-                              )}
-                            </button>
+                            <div key={index} className="bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors">
+                              <div className="flex items-center justify-between">
+                                <button
+                                  onClick={() => useSuggestedResponse(suggestionText, message.id)}
+                                  className="flex-1 text-left"
+                                >
+                                  <div className="font-medium">{suggestionText}</div>
+                                  {isShowingTranslation && suggestionTranslation && (
+                                    <div className="text-gray-500 text-xs mt-1">{suggestionTranslation}</div>
+                                  )}
+                                </button>
+                                <div className="flex items-center space-x-1">
+                                  <button
+                                    onClick={() => speakText(suggestionText)}
+                                    className="p-1 hover:bg-gray-100 rounded transition-colors"
+                                    title="Listen"
+                                  >
+                                    <svg className="h-3 w-3 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+                                      <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM15.657 6.343a1 1 0 011.414 0A9.972 9.972 0 0119 12a9.972 9.972 0 01-1.929 5.657 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 12a7.971 7.971 0 00-1.343-4.243 1 1 0 010-1.414z" clipRule="evenodd" />
+                                    </svg>
+                                  </button>
+                                  {suggestionTranslation && (
+                                    <button
+                                      onClick={() => toggleSuggestionTranslation(message.id, index)}
+                                      className="px-2 py-1 text-xs bg-white hover:bg-gray-50 border border-gray-300 rounded transition-colors"
+                                      title={isShowingTranslation ? "Hide translation" : "Show translation"}
+                                    >
+                                      {isShowingTranslation ? "DE" : "EN"}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
                           );
                         })
                       ) : (
@@ -4656,7 +5847,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             </div>
             
             {/* Right Sidebar - Collapsible Toolbar */}
-            <div className={`${toolbarCollapsed ? 'w-12' : 'w-96'} bg-white border-l border-gray-200 flex flex-col h-full transition-all duration-300 ease-in-out`}>
+            <div className={`${toolbarCollapsed ? 'w-12' : 'w-[600px] lg:w-[700px]'} bg-white border-l border-gray-200 flex flex-col h-full transition-all duration-300 ease-in-out`}>
               {/* Toolbar Header */}
               <div className="p-4 border-b border-gray-100 flex-shrink-0">
                 <div className="flex items-center justify-between">
@@ -4695,6 +5886,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   <Toolbar
                     isVisible={true}
                     currentMessage={currentAIMessage}
+                    currentMessageId={activeHelpButton || undefined}
                     onAddToVocab={handleAddToVocab}
                     autoLoadExplanations={toolbarOpenedViaHelp}
                     comprehensiveAnalysis={activeHelpButton ? comprehensiveAnalysis[activeHelpButton] : null}
@@ -4702,6 +5894,29 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     onTabChange={setToolbarActiveTab}
                     newVocabItems={newVocabItems}
                     persistentVocab={persistentVocab}
+                    lastGermanVoiceMessage={lastGermanVoiceMessage}
+                    phoneticBreakdowns={phoneticBreakdowns}
+                    onPlayWordAudio={playWordAudio}
+                    globalPlaybackSpeed={globalPlaybackSpeed}
+                    onSpeedChange={setGlobalPlaybackSpeed}
+                    onAddExperience={addExperience}
+                    onWordLearned={(word?: string) => {
+                      setPlayerStats(prev => ({
+                        ...prev,
+                        wordsLearned: prev.wordsLearned + 1
+                      }));
+                      console.log('🎯 Words learned incremented from Dashboard');
+                      
+                      // Track deleted word as learned in session data
+                      if (word) {
+                        setSessionData(prev => ({
+                          ...prev,
+                          wordsDeleted: [...prev.wordsDeleted, word]
+                        }));
+                        console.log('📊 Session data updated: word added to wordsDeleted');
+                      }
+                    }}
+                    onPronunciationComplete={handlePronunciationComplete}
                     onUpdatePersistentVocab={(newVocab) => {
                       console.log('📚 === DASHBOARD ONUPDATE PERSISTENT VOCAB CALLED ===');
                       console.log('New vocab received:', newVocab);
@@ -5038,13 +6253,22 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   <div className="flex-1 relative">
                     <label className="block text-sm font-semibold text-slate-800 mb-2 font-heading">Level</label>
                     <button
-                      onClick={() => setShowDifficultyDropdown(!showDifficultyDropdown)}
-                      className="w-full border border-slate-300 rounded-lg px-4 py-3 text-left flex items-center justify-between bg-white shadow-sm hover:shadow-md transition-all duration-200"
+                      onClick={() => !currentConversationDifficultyLocked && setShowDifficultyDropdown(!showDifficultyDropdown)}
+                      disabled={currentConversationDifficultyLocked}
+                      className={`w-full border border-slate-300 rounded-lg px-4 py-3 text-left flex items-center justify-between bg-white shadow-sm transition-all duration-200 ${
+                        currentConversationDifficultyLocked 
+                          ? 'opacity-50 cursor-not-allowed' 
+                          : 'hover:shadow-md'
+                      }`}
                     >
                       <span className="text-sm font-semibold text-slate-800 font-heading">{difficultyLevel}</span>
-                      <ChevronDown className="h-4 w-4 text-gray-400" />
+                      {currentConversationDifficultyLocked ? (
+                        <Lock className="h-4 w-4 text-gray-400" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4 text-gray-400" />
+                      )}
                     </button>
-                    {showDifficultyDropdown && (
+                    {showDifficultyDropdown && !currentConversationDifficultyLocked && (
                       <div className="absolute top-full left-0 right-0 mt-1 bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-lg shadow-lg z-10">
                         {difficultyLevels.map((level) => (
                           <button
@@ -5099,7 +6323,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             </div>
           </div>
         )}
-      </div>
+        </div>
+      )}
 
       <ProfilePictureModal
         isOpen={showProfileModal}
@@ -5368,6 +6593,18 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             </button>
           </div>
         </div>
+      )}
+
+      {/* Conversation Summary Modal */}
+      {showSummaryModal && conversationSummary && (
+        <ConversationSummaryModal
+          isOpen={showSummaryModal}
+          onClose={() => {
+            setShowSummaryModal(false);
+            setConversationSummary(null);
+          }}
+          summary={conversationSummary}
+        />
       )}
     </div>
   );

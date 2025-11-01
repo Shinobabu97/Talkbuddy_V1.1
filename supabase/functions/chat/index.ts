@@ -23,6 +23,7 @@ interface ChatRequest {
     personalityTraits: string[]
     conversationTopics: string[]
   }
+  conversationContext?: string
 }
 
 // Formality detection function
@@ -51,6 +52,47 @@ function detectFormalityMismatch(userMessage: string, contextLevel: string): str
   return null;
 }
 
+// Difficulty level instructions function
+function getDifficultyInstructions(difficultyLevel: string): string {
+  switch (difficultyLevel.toLowerCase()) {
+    case 'beginner':
+      return `ANFÄNGER-NIVEAU (A1-A2):
+- Verwende einfaches, alltägliches Vokabular
+- Halte Sätze kurz und einfach (5-10 Wörter)
+- Verwende nur grundlegende Grammatikstrukturen (Präsens, einfaches Perfekt)
+- Vermeide komplexe Nebensätze und Konjunktiv
+- Sprich über vertraute Alltagsthemen (Essen, Familie, Hobbies, Wetter)
+- Wiederhole wichtige Wörter zur Verstärkung
+- Verwende langsames, klares Sprechtempo
+- Beispiel-Antworten: "Ja, das ist gut.", "Was magst du gern?", "Ich verstehe."`;
+    
+    case 'intermediate':
+      return `MITTELSTUFE (B1-B2):
+- Verwende erweitertes Alltagsvokabular und etwas Fachsprache
+- Verwende mittellange Sätze (10-15 Wörter)
+- Nutze verschiedene Zeitformen (Präsens, Perfekt, Präteritum, Futur)
+- Verwende Nebensätze mit weil, dass, wenn, obwohl
+- Sprich über breitere Themen (Arbeit, Reisen, Kultur, aktuelle Ereignisse)
+- Nutze einfache idiomatische Ausdrücke
+- Verwende moderates Sprechtempo
+- Beispiel-Antworten: "Das finde ich interessant, weil...", "Wenn ich darüber nachdenke...", "Meiner Meinung nach..."`;
+    
+    case 'advanced':
+      return `FORTGESCHRITTEN (C1-C2):
+- Verwende anspruchsvolles Vokabular, Fachterminologie und abstrakte Begriffe
+- Verwende komplexe, längere Sätze (15-25 Wörter)
+- Nutze alle Zeitformen und Modi (Konjunktiv I und II, Passiv)
+- Verwende komplexe Satzstrukturen mit mehreren Nebensätzen
+- Sprich über komplexe Themen (Politik, Philosophie, Wissenschaft, Wirtschaft)
+- Nutze idiomatische Wendungen und Redewendungen
+- Verwende natürliches, fließendes Sprechtempo
+- Beispiel-Antworten: "Unter Berücksichtigung dessen...", "Es lässt sich argumentieren, dass...", "Im Hinblick auf..."`;
+    
+    default:
+      return '';
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -58,7 +100,7 @@ serve(async (req) => {
   }
 
   try {
-    const { messages, conversationId, contextLevel, difficultyLevel, systemInstruction, userProfile }: ChatRequest = await req.json()
+    const { messages, conversationId, contextLevel, difficultyLevel, systemInstruction, userProfile, conversationContext }: ChatRequest = await req.json()
 
     // Get OpenAI API key from environment
     const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
@@ -67,11 +109,14 @@ serve(async (req) => {
     }
 
     // Create system prompt based on user profile and settings
-    let systemPrompt = createSystemPrompt(contextLevel, difficultyLevel, userProfile)
+    let systemPrompt = createSystemPrompt(contextLevel, difficultyLevel, userProfile, conversationContext)
     
-    // Override system prompt with system instruction if provided (for stricter German-only responses)
+    // Override system prompt with system instruction if provided
     if (systemInstruction) {
-      systemPrompt = `${systemInstruction}\n\nContext Level: ${contextLevel}\nDifficulty Level: ${difficultyLevel}\n\n${contextLevel === 'Professional' ? 'Sie sind' : 'Du bist'} ein freundlicher, geduldiger deutscher Gesprächspartner. Ihre Aufgabe ist es, Nutzern beim Üben deutscher Gespräche in einer unterstützenden, ermutigenden Umgebung zu helfen.
+      // Use the systemInstruction as is for all cases (translation or suggestions)
+      systemPrompt = systemInstruction;
+    } else {
+      systemPrompt = `${contextLevel === 'Professional' ? 'Sie sind' : 'Du bist'} ein freundlicher, geduldiger deutscher Gesprächspartner. Ihre Aufgabe ist es, Nutzern beim Üben deutscher Gespräche in einer unterstützenden, ermutigenden Umgebung zu helfen.
 
 WICHTIGE REGELN:
 - Antworte NUR auf Deutsch
@@ -176,11 +221,20 @@ CASUAL KONTEXT:
   }
 })
 
-function createSystemPrompt(contextLevel: string, difficultyLevel: string, userProfile?: any): string {
+function createSystemPrompt(contextLevel: string, difficultyLevel: string, userProfile?: any, conversationContext?: string): string {
+  const contextSection = conversationContext 
+    ? `\n\nKONVERSATIONS-KONTEXT: "${conversationContext}"
+WICHTIG: 
+- Dies ist das Hauptthema dieser Unterhaltung
+- Alle Ihre Antworten müssen in diesem Kontext bleiben
+- Reagieren Sie DIREKT auf die vorherige Nachricht des Benutzers
+- Entwickeln Sie das Gespräch natürlich in Bezug auf diesen Kontext weiter`
+    : '';
+  
   const basePrompt = `${contextLevel === 'Professional' ? 'Sie sind' : 'Du bist'} ein freundlicher, natürlicher Gesprächspartner auf Deutsch. Sprich wie ein echter Mensch, nicht wie ein Lehrer oder Lehrbuch.
 
 Kontext: ${contextLevel}
-Schwierigkeit: ${difficultyLevel}
+Schwierigkeit: ${difficultyLevel}${contextSection}
 
 WICHTIGE REGELN:
 - Antworte NUR auf Deutsch
@@ -188,6 +242,9 @@ WICHTIGE REGELN:
 - KEINE englischen Erklärungen
 - Sprich natürlich und locker
 - Sei wie ein echter Freund
+
+SCHWIERIGKEITSGRAD-ANPASSUNG:
+${getDifficultyInstructions(difficultyLevel)}
 
 KONTEXT-ÜBERWACHUNG:
 Du musst den Gesprächsstil des Nutzers überwachen und EXPLIZITE Erinnerungen geben, wenn der Stil nicht zum gewählten Kontext passt:

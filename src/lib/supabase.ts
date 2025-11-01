@@ -22,6 +22,8 @@ export type Conversation = {
   context_level: string
   difficulty_level: string
   context_locked: boolean
+  difficulty_locked: boolean
+  conversation_context?: string
   created_at: string
   updated_at: string
 }

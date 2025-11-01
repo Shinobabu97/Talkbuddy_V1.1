@@ -6,7 +6,7 @@ interface ProfilePictureModalProps {
   isOpen: boolean;
   onClose: () => void;
   user: AuthUser;
-  currentPictureUrl?: string;
+  currentPictureUrl?: string | null;
   onPictureUpdate: (newUrl: string | null) => void;
 }
 
