@@ -19,7 +19,7 @@ const ConversationSummaryModal: React.FC<ConversationSummaryModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+        <div className="p-6 border-b border-gray-200 bg-background-light">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold text-gray-900">Conversation Summary</h2>
@@ -37,7 +37,7 @@ const ConversationSummaryModal: React.FC<ConversationSummaryModalProps> = ({
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Praise Section */}
-          <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-lg p-4 border border-green-200">
+          <div className="bg-background-light rounded-lg p-4 border border-gray-200">
             <div className="flex items-start space-x-3">
               <Award className="h-6 w-6 text-green-600 flex-shrink-0 mt-1" />
               <p className="text-gray-800 font-medium">{summary.praise}</p>
@@ -46,12 +46,12 @@ const ConversationSummaryModal: React.FC<ConversationSummaryModalProps> = ({
 
           {/* Stats Grid */}
           <div className="grid grid-cols-2 gap-4">
-            <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+            <div className="bg-primary-50 rounded-lg p-4 border border-primary-200">
               <div className="flex items-center space-x-2 mb-2">
-                <BookOpen className="h-5 w-5 text-blue-600" />
+                <BookOpen className="h-5 w-5 text-primary-600" />
                 <h3 className="font-semibold text-gray-900">Vocabulary</h3>
               </div>
-              <p className="text-2xl font-bold text-blue-600">{summary.stats.wordsLearned + summary.stats.wordsDeleted}</p>
+              <p className="text-2xl font-bold text-primary-600">{summary.stats.wordsLearned + summary.stats.wordsDeleted}</p>
               <p className="text-xs text-gray-600">words practiced</p>
             </div>
 
@@ -96,7 +96,7 @@ const ConversationSummaryModal: React.FC<ConversationSummaryModalProps> = ({
             {/* Vocabulary Feedback */}
             <div className="bg-white rounded-lg p-4 border border-gray-200">
               <h3 className="font-semibold text-gray-900 mb-2 flex items-center">
-                <BookOpen className="h-4 w-4 mr-2 text-blue-600" />
+                <BookOpen className="h-4 w-4 mr-2 text-primary-600" />
                 Vocabulary Progress
               </h3>
               <p className="text-sm text-gray-700">{summary.vocabularyFeedback}</p>
@@ -135,7 +135,7 @@ const ConversationSummaryModal: React.FC<ConversationSummaryModalProps> = ({
           </div>
 
           {/* Encouragement */}
-          <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-lg p-4 border border-yellow-200">
+          <div className="bg-background-light rounded-lg p-4 border border-gray-200">
             <p className="text-gray-800 font-medium text-center">{summary.encouragement}</p>
           </div>
         </div>
@@ -144,7 +144,7 @@ const ConversationSummaryModal: React.FC<ConversationSummaryModalProps> = ({
         <div className="p-6 border-t border-gray-200 bg-gray-50">
           <button
             onClick={onClose}
-            className="w-full px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-indigo-700 transition-all shadow-md hover:shadow-lg"
+            className="w-full px-6 py-3 btn-glossy font-bold rounded-full text-base"
           >
             Start New Conversation
           </button>

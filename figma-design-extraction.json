@@ -1,0 +1,648 @@
+{
+  "summary": {
+    "totalColors": 7,
+    "totalTypography": 5,
+    "totalShadows": 38,
+    "uniqueBorderRadius": 1,
+    "buttonsFound": 9,
+    "inputsFound": 4,
+    "cardsFound": 2
+  },
+  "colors": [
+    "rgb(0, 0, 0, 0.03999999910593033) | #000000",
+    "rgb(0, 0, 0, 0.05999999865889549) | #000000",
+    "rgb(0, 0, 0, 0.11500000208616257) | #000000",
+    "rgb(0, 0, 0, 0.23000000417232513) | #000000",
+    "rgb(0, 0, 0, 1) | #000000",
+    "rgb(196, 196, 196, 1) | #c4c4c4",
+    "rgb(255, 255, 255, 1) | #ffffff"
+  ],
+  "typography": [
+    {
+      "fontFamily": "Poppins",
+      "fontWeight": 600,
+      "fontSize": 24,
+      "lineHeight": 33.407997131347656,
+      "letterSpacing": 0,
+      "text": "I speak...",
+      "path": ".nodes.0:1.document.children.0.children.6.children.1.children.4"
+    },
+    {
+      "fontFamily": "Poppins",
+      "fontWeight": 600,
+      "fontSize": 24,
+      "lineHeight": 33.407997131347656,
+      "letterSpacing": 0,
+      "text": "Choose your level...",
+      "path": ".nodes.0:1.document.children.0.children.7.children.1.children.4"
+    },
+    {
+      "fontFamily": "Poppins",
+      "fontWeight": 600,
+      "fontSize": 24,
+      "lineHeight": 33.407997131347656,
+      "letterSpacing": 0,
+      "text": "Choose your level...",
+      "path": ".nodes.0:1.document.children.0.children.8.children.1.children.4"
+    },
+    {
+      "fontFamily": "Poppins",
+      "fontWeight": 600,
+      "fontSize": 24,
+      "lineHeight": 33.407997131347656,
+      "letterSpacing": 0,
+      "text": "I want to learn...",
+      "path": ".nodes.0:1.document.children.0.children.10.children.1.children.4"
+    },
+    {
+      "fontFamily": "Poppins",
+      "fontWeight": 600,
+      "fontSize": 24,
+      "lineHeight": 33.407997131347656,
+      "letterSpacing": 0,
+      "text": "I want to learn...",
+      "path": ".nodes.0:1.document.children.0.children.11.children.1.children.4"
+    }
+  ],
+  "shadows": [
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.23000000417232513)",
+      "offset": "0px, 26.40288734436035px",
+      "radius": "54.719181060791016px",
+      "opacity": 0.23000000417232513
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.11500000208616257)",
+      "offset": "0px, 234px",
+      "radius": "437px",
+      "opacity": 0.11500000208616257
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 0px",
+      "radius": "1px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 2px",
+      "radius": "6px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.05999999865889549)",
+      "offset": "0px, 16px",
+      "radius": "24px",
+      "opacity": 0.05999999865889549
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 0px",
+      "radius": "1px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 2px",
+      "radius": "6px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.05999999865889549)",
+      "offset": "0px, 16px",
+      "radius": "24px",
+      "opacity": 0.05999999865889549
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 0px",
+      "radius": "1px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 2px",
+      "radius": "6px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.05999999865889549)",
+      "offset": "0px, 16px",
+      "radius": "24px",
+      "opacity": 0.05999999865889549
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 0px",
+      "radius": "1px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 2px",
+      "radius": "6px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.05999999865889549)",
+      "offset": "0px, 16px",
+      "radius": "24px",
+      "opacity": 0.05999999865889549
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 0px",
+      "radius": "1px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 2px",
+      "radius": "6px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.05999999865889549)",
+      "offset": "0px, 16px",
+      "radius": "24px",
+      "opacity": 0.05999999865889549
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 0px",
+      "radius": "1px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 2px",
+      "radius": "6px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.05999999865889549)",
+      "offset": "0px, 16px",
+      "radius": "24px",
+      "opacity": 0.05999999865889549
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 0px",
+      "radius": "1px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 2px",
+      "radius": "6px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.05999999865889549)",
+      "offset": "0px, 16px",
+      "radius": "24px",
+      "opacity": 0.05999999865889549
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 0px",
+      "radius": "1px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 2px",
+      "radius": "6px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.05999999865889549)",
+      "offset": "0px, 16px",
+      "radius": "24px",
+      "opacity": 0.05999999865889549
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 0px",
+      "radius": "1px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 2px",
+      "radius": "6px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.05999999865889549)",
+      "offset": "0px, 16px",
+      "radius": "24px",
+      "opacity": 0.05999999865889549
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 0px",
+      "radius": "1px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 2px",
+      "radius": "6px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.05999999865889549)",
+      "offset": "0px, 16px",
+      "radius": "24px",
+      "opacity": 0.05999999865889549
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 0px",
+      "radius": "1px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 2px",
+      "radius": "6px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.05999999865889549)",
+      "offset": "0px, 16px",
+      "radius": "24px",
+      "opacity": 0.05999999865889549
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 0px",
+      "radius": "1px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.03999999910593033)",
+      "offset": "0px, 2px",
+      "radius": "6px",
+      "opacity": 0.03999999910593033
+    },
+    {
+      "type": "DROP_SHADOW",
+      "color": "rgba(0, 0, 0, 0.05999999865889549)",
+      "offset": "0px, 16px",
+      "radius": "24px",
+      "opacity": 0.05999999865889549
+    }
+  ],
+  "borderRadius": [
+    "14px"
+  ],
+  "spacing": [
+    "width: 1600px",
+    "height: 1200px",
+    "width: 781.2242332100868px",
+    "height: 616.3544571101665px",
+    "width: 694.2758858348243px",
+    "height: 556.4218619059202px",
+    "width: 64.89533263654675px",
+    "height: 22.34005492004667px",
+    "width: 313.1174611443348px",
+    "height: 137.86285614942517px",
+    "width: 319.47495675086975px",
+    "height: 168.18636998534203px",
+    "width: 441.45054395545594px",
+    "height: 243.4180596733977px",
+    "width: 337.0768818259239px",
+    "height: 113.26537457108498px",
+    "width: 1355.6123247805335px",
+    "height: 852.2165880362227px",
+    "width: 353.0769519805908px",
+    "height: 134.00936448574066px",
+    "width: 225.09272283315659px",
+    "height: 107.47009095549583px",
+    "width: 708.7604633805167px",
+    "height: 560.3210644752853px",
+    "width: 64.89567388462342px",
+    "height: 22.34007769624003px",
+    "width: 126.72357128769272px",
+    "height: 63.33485056238737px",
+    "width: 571.1497277114977px",
+    "height: 389.955749289642px",
+    "width: 352.48068857192993px",
+    "height: 119.2383785545826px",
+    "width: 118.26381087303162px",
+    "height: 51.92594590783119px",
+    "width: 685.8483739230724px",
+    "height: 531.0198603788695px",
+    "width: 408.7419061404489px",
+    "height: 187.9555880085104px",
+    "width: 244.76047348976135px",
+    "height: 85.9787728190422px",
+    "width: 842.0767279478605px",
+    "height: 606.558770778779px",
+    "width: 708.7607051939558px",
+    "height: 560.3212781967186px",
+    "width: 64.89562155874137px",
+    "height: 22.340166370672705px",
+    "width: 571.150124341897px",
+    "height: 389.95609757858347px",
+    "width: 203.23866820335388px",
+    "height: 74.80112734436989px"
+  ],
+  "components": {
+    "buttons": [
+      {
+        "name": "Buttons",
+        "type": "GROUP",
+        "fills": [],
+        "effects": [],
+        "boundingBox": {
+          "x": 437.5874838471864,
+          "y": -828.6648559570312,
+          "width": 313.1174611443348,
+          "height": 137.86285614942517
+        }
+      },
+      {
+        "name": "Buttons",
+        "type": "GROUP",
+        "fills": [],
+        "effects": [],
+        "boundingBox": {
+          "x": 97.58746858839731,
+          "y": -1576.6649169921875,
+          "width": 313.1174611443348,
+          "height": 137.86285614942517
+        }
+      },
+      {
+        "name": "Button",
+        "type": "GROUP",
+        "fills": [],
+        "effects": [],
+        "boundingBox": {
+          "x": 11.842139303684235,
+          "y": -878.0849609375,
+          "width": 337.0768818259239,
+          "height": 113.26537457108498
+        }
+      },
+      {
+        "name": "Button",
+        "type": "GROUP",
+        "fills": [],
+        "effects": [],
+        "boundingBox": {
+          "x": 768.8421469330788,
+          "y": 7.915040016174316,
+          "width": 337.0768818259239,
+          "height": 113.26537457108498
+        }
+      },
+      {
+        "name": "Button",
+        "type": "GROUP",
+        "fills": [],
+        "effects": [],
+        "boundingBox": {
+          "x": 1442.3531708845485,
+          "y": -497.2231750488281,
+          "width": 126.72357128769272,
+          "height": 63.33485056238737
+        }
+      },
+      {
+        "name": "Button",
+        "type": "GROUP",
+        "fills": [],
+        "effects": [],
+        "boundingBox": {
+          "x": 589.5757660993922,
+          "y": -47.51898956298828,
+          "width": 126.72357128769272,
+          "height": 63.33485056238737
+        }
+      },
+      {
+        "name": "Button",
+        "type": "GROUP",
+        "fills": [],
+        "effects": [],
+        "boundingBox": {
+          "x": -157.42426441818589,
+          "y": -932.51904296875,
+          "width": 126.72357128769272,
+          "height": 63.33485056238737
+        }
+      },
+      {
+        "name": "Button",
+        "type": "GROUP",
+        "fills": [],
+        "effects": [],
+        "boundingBox": {
+          "x": -218.3904051652562,
+          "y": -265.7785339355469,
+          "width": 126.72357128769272,
+          "height": 63.33485056238737
+        }
+      },
+      {
+        "name": "Button",
+        "type": "GROUP",
+        "fills": [],
+        "effects": [],
+        "boundingBox": {
+          "x": 1494.609640611111,
+          "y": -1167.778564453125,
+          "width": 126.72357128769272,
+          "height": 63.33485056238737
+        }
+      }
+    ],
+    "inputs": [
+      {
+        "name": "pass",
+        "type": "GROUP",
+        "fills": [],
+        "boundingBox": {
+          "x": 66.03359603881836,
+          "y": -976.3670654296875,
+          "width": 353.0769519805908,
+          "height": 134.00936448574066
+        }
+      },
+      {
+        "name": "username",
+        "type": "GROUP",
+        "fills": [],
+        "boundingBox": {
+          "x": 118.81575393676758,
+          "y": -1041.712646484375,
+          "width": 353.0769519805908,
+          "height": 134.00936448574066
+        }
+      },
+      {
+        "name": "pass",
+        "type": "GROUP",
+        "fills": [],
+        "boundingBox": {
+          "x": 823.033618927002,
+          "y": -90.36709594726562,
+          "width": 353.0769519805908,
+          "height": 134.00936448574066
+        }
+      },
+      {
+        "name": "username",
+        "type": "GROUP",
+        "fills": [],
+        "boundingBox": {
+          "x": 875.8157844543457,
+          "y": -155.71267700195312,
+          "width": 353.0769519805908,
+          "height": 134.00936448574066
+        }
+      }
+    ],
+    "cards": [
+      {
+        "name": "SingupPage02",
+        "cornerRadius": 14,
+        "fills": [
+          {
+            "blendMode": "NORMAL",
+            "type": "SOLID",
+            "color": {
+              "r": 1,
+              "g": 1,
+              "b": 1,
+              "a": 1
+            }
+          }
+        ],
+        "effects": [
+          {
+            "type": "DROP_SHADOW",
+            "visible": true,
+            "color": {
+              "r": 0,
+              "g": 0,
+              "b": 0,
+              "a": 0.03999999910593033
+            },
+            "blendMode": "NORMAL",
+            "offset": {
+              "x": 0,
+              "y": 0
+            },
+            "radius": 1,
+            "showShadowBehindNode": true
+          },
+          {
+            "type": "DROP_SHADOW",
+            "visible": true,
+            "color": {
+              "r": 0,
+              "g": 0,
+              "b": 0,
+              "a": 0.03999999910593033
+            },
+            "blendMode": "NORMAL",
+            "offset": {
+              "x": 0,
+              "y": 2
+            },
+            "radius": 6,
+            "showShadowBehindNode": true
+          },
+          {
+            "type": "DROP_SHADOW",
+            "visible": true,
+            "color": {
+              "r": 0,
+              "g": 0,
+              "b": 0,
+              "a": 0.05999999865889549
+            },
+            "blendMode": "NORMAL",
+            "offset": {
+              "x": 0,
+              "y": 16
+            },
+            "radius": 24,
+            "showShadowBehindNode": true
+          }
+        ],
+        "boundingBox": {
+          "x": -49.99998766183853,
+          "y": -1328,
+          "width": 781.2242332100868,
+          "height": 616.3544571101665
+        }
+      },
+      {
+        "name": "SingupPage02",
+        "cornerRadius": 14,
+        "fills": [
+          {
+            "blendMode": "NORMAL",
+            "type": "SOLID",
+            "color": {
+              "r": 1,
+              "g": 1,
+              "b": 1,
+              "a": 1
+            }
+          }
+        ],
+        "effects": [],
+        "boundingBox": {
+          "x": 707.0000123381615,
+          "y": -442,
+          "width": 781.2242332100868,
+          "height": 616.3544571101665
+        }
+      }
+    ]
+  }
+}

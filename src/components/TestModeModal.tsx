@@ -213,7 +213,7 @@ const TestModeModal: React.FC<TestModeModalProps> = ({
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
-                  className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                  className="bg-primary-500 h-2 rounded-full transition-all duration-300"
                   style={{ width: `${((currentQuestionIndex + 1) / questions.length) * 100}%` }}
                 />
               </div>
@@ -243,7 +243,7 @@ const TestModeModal: React.FC<TestModeModalProps> = ({
                     buttonClass += "border-gray-200 bg-gray-50 ";
                   }
                 } else {
-                  buttonClass += "border-gray-300 bg-white hover:border-blue-500 hover:bg-blue-50 cursor-pointer ";
+                  buttonClass += "border-gray-300 bg-white hover:border-primary-500 hover:bg-primary-50 cursor-pointer ";
                 }
 
                 return (
@@ -271,15 +271,15 @@ const TestModeModal: React.FC<TestModeModalProps> = ({
           /* Results Screen */
           <div className="p-8">
             <div className="text-center space-y-6">
-              <div className="inline-flex items-center justify-center w-24 h-24 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full">
+              <div className="inline-flex items-center justify-center w-24 h-24 bg-text rounded-full">
                 <Award className="h-12 w-12 text-white" />
               </div>
               
               <h3 className="text-3xl font-bold text-gray-900">Test Complete!</h3>
               
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl p-8 space-y-4">
+              <div className="bg-background-light border border-gray-200 rounded-lg p-8 space-y-4">
                 <p className="text-lg text-gray-700">Your Score</p>
-                <p className="text-6xl font-bold text-blue-600">{finalScore.percentage}%</p>
+                <p className="text-6xl font-bold text-text">{finalScore.percentage}%</p>
                 <p className="text-xl text-gray-700">
                   {finalScore.correct} out of {finalScore.total} correct
                 </p>
@@ -291,10 +291,10 @@ const TestModeModal: React.FC<TestModeModalProps> = ({
                   <p className="text-lg text-green-600 font-semibold">🎉 Perfect score! You're amazing! Ausgezeichnet!</p>
                 )}
                 {finalScore.percentage >= 90 && finalScore.percentage < 100 && (
-                  <p className="text-lg text-blue-600 font-semibold">⭐ Fantastic! You're mastering German vocabulary!</p>
+                  <p className="text-lg text-text font-semibold">⭐ Fantastic! You're mastering German vocabulary!</p>
                 )}
                 {finalScore.percentage >= 80 && finalScore.percentage < 90 && (
-                  <p className="text-lg text-blue-600 font-semibold">👏 Great job! You're doing really well!</p>
+                  <p className="text-lg text-text font-semibold">👏 Great job! You're doing really well!</p>
                 )}
                 {finalScore.percentage >= 70 && finalScore.percentage < 80 && (
                   <p className="text-lg text-yellow-600 font-semibold">💪 Good work! Keep it up and you'll be fluent soon!</p>
@@ -319,7 +319,7 @@ const TestModeModal: React.FC<TestModeModalProps> = ({
             <div className="flex gap-4">
               <button
                 onClick={() => onReturnToFlashcards(incorrectWords.length > 0 ? incorrectWords : undefined)}
-                className="flex-1 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-semibold transition-all shadow-md hover:shadow-lg"
+                className="flex-1 px-6 py-3 btn-glossy rounded-full hover:opacity-90 font-semibold transition-opacity text-sm"
               >
                 {incorrectWords.length > 0 
                   ? `Review ${incorrectWords.length} Incorrect Word${incorrectWords.length !== 1 ? 's' : ''}`
@@ -327,7 +327,7 @@ const TestModeModal: React.FC<TestModeModalProps> = ({
               </button>
               <button
                 onClick={onClose}
-                className="flex-1 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg hover:from-green-600 hover:to-emerald-700 font-semibold transition-all shadow-md hover:shadow-lg"
+                className="flex-1 px-6 py-3 btn-glossy rounded-full hover:opacity-90 font-semibold transition-opacity text-sm"
               >
                 Return to Vocabulary Builder
               </button>
@@ -335,7 +335,7 @@ const TestModeModal: React.FC<TestModeModalProps> = ({
           ) : (
             <button
               onClick={onClose}
-              className="w-full px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold rounded-lg hover:from-blue-600 hover:to-indigo-700 transition-all duration-200 shadow-md hover:shadow-lg"
+              className="w-full px-6 py-3 btn-glossy font-semibold rounded-full hover:opacity-90 transition-opacity text-sm"
             >
               Return to Vocabulary Builder
             </button>

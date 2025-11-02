@@ -301,13 +301,13 @@ Vermeide:
 
   if (userProfile) {
     const profileInfo = `
-
+ 
 User Profile:
 - German Level: ${userProfile.germanLevel || 'Not specified'}
-- Goals: ${userProfile.goals?.join(', ') || 'General conversation practice'}
-- Personality: ${userProfile.personalityTraits?.join(', ') || 'Not specified'}
-- Preferred Topics: ${userProfile.conversationTopics?.join(', ') || 'General topics'}
-
+- Goals: ${Array.isArray(userProfile.goals) && userProfile.goals.length > 0 ? userProfile.goals.join(', ') : 'General conversation practice'}
+- Personality: ${Array.isArray(userProfile.personalityTraits) && userProfile.personalityTraits.length > 0 ? userProfile.personalityTraits.join(', ') : 'Not specified'}
+- Preferred Topics: ${Array.isArray(userProfile.conversationTopics) && userProfile.conversationTopics.length > 0 ? userProfile.conversationTopics.join(', ') : 'General topics'}
+ 
 Tailor your responses to match the user's goals and interests while maintaining the specified context and difficulty level.`
     
     return basePrompt + profileInfo
