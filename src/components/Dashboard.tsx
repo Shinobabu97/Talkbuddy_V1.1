@@ -622,7 +622,24 @@ export default function Dashboard({ user }: DashboardProps) {
         const hasCompletedOnboarding = localStorage.getItem(`onboarding_${user.id}`);
         if (hasCompletedOnboarding) {
           setIsNewUser(false);
-          setOnboardingData(JSON.parse(hasCompletedOnboarding));
+          const localData = JSON.parse(hasCompletedOnboarding);
+          // Normalize data from localStorage to ensure arrays are arrays
+          const normalizedData: OnboardingData = {
+            ...localData,
+            goals: Array.isArray(localData.goals) ? localData.goals : [],
+            personalityTraits: Array.isArray(localData.personalityTraits) ? localData.personalityTraits : [],
+            conversationTopics: Array.isArray(localData.conversationTopics) ? localData.conversationTopics : [],
+            germanLevel: localData.germanLevel || 'beginner',
+          };
+          setOnboardingData(normalizedData);
+          
+          // Set context level based on focus group
+          if (normalizedData.focusGroup === 'travelers') {
+            setContextLevel('Casual');
+          } else if (normalizedData.focusGroup === 'business') {
+            setContextLevel('Professional');
+          }
+          
           setShowOnboarding(false);
         } else {
           setShowOnboarding(true);
@@ -753,10 +770,22 @@ export default function Dashboard({ user }: DashboardProps) {
     setSuggestedAnswers({});
 
     try {
+      // Get user session token for authenticated requests
+      const { data: { session } } = await supabase.auth.getSession();
+      const authToken = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+      
+      console.log('📡 === SENDING INITIAL MESSAGE TO API ===');
+      console.log('Conversation ID:', conversationId);
+      console.log('User message:', userMessage);
+      console.log('Context level:', contextLevel);
+      console.log('Difficulty level:', difficultyLevel);
+      console.log('Onboarding data exists:', !!onboardingData);
+      console.log('Has session token:', !!session?.access_token);
+      
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -767,21 +796,33 @@ export default function Dashboard({ user }: DashboardProps) {
           conversationId,
           contextLevel,
           difficultyLevel,
-          userProfile: onboardingData ? {
+          userProfile: onboardingData && onboardingData.germanLevel ? {
             germanLevel: onboardingData.germanLevel,
-            goals: onboardingData.goals,
-            personalityTraits: onboardingData.personalityTraits,
-            conversationTopics: onboardingData.conversationTopics
+            goals: Array.isArray(onboardingData.goals) ? onboardingData.goals : [],
+            personalityTraits: Array.isArray(onboardingData.personalityTraits) ? onboardingData.personalityTraits : [],
+            conversationTopics: Array.isArray(onboardingData.conversationTopics) ? onboardingData.conversationTopics : []
           } : undefined,
           conversationContext: userMessage
         })
       });
+      
+      console.log('📡 === API RESPONSE ===');
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
 
       if (!response.ok) {
-        throw new Error('Failed to get response');
+        const errorText = await response.text();
+        console.error('❌ API Error:', response.status, errorText);
+        throw new Error(`Failed to get response: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
+      
+      if (!data || !data.message) {
+        console.error('❌ Invalid API response - missing message field');
+        console.error('Response data:', data);
+        throw new Error('Invalid API response: missing message field');
+      }
       
       console.log('AI Response:', data.message);
       
@@ -813,7 +854,18 @@ export default function Dashboard({ user }: DashboardProps) {
       // Don't auto-generate suggestions - user must click button to show them
 
     } catch (error) {
-      console.error('Error sending initial message:', error);
+      console.error('❌ === ERROR SENDING INITIAL MESSAGE ===');
+      console.error('Error:', error);
+      console.error('Error details:', {
+        conversationId,
+        userMessage,
+        contextLevel,
+        difficultyLevel,
+        hasOnboardingData: !!onboardingData,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined
+      });
+      
       const errorMessage: ChatMessage = {
         id: '2',
         role: 'assistant',
@@ -821,6 +873,10 @@ export default function Dashboard({ user }: DashboardProps) {
         timestamp: new Date().toISOString()
       };
       setChatMessages(prev => [...prev, errorMessage]);
+      
+      // Show user-friendly error alert with more details
+      const userErrorMsg = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Failed to start conversation: ${userErrorMsg}\n\nPlease check:\n1. Your internet connection\n2. Browser console for details\n3. Try refreshing the page`);
     } finally {
       setIsSending(false);
       setIsTyping(false);
@@ -1792,10 +1848,20 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Ant
     }
     
     try {
+      // Get user session token for authenticated requests
+      const { data: { session } } = await supabase.auth.getSession();
+      const authToken = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+      
+      console.log('📡 === TRIGGERING AI RESPONSE ===');
+      console.log('Conversation ID:', selectedConversation);
+      console.log('User message:', userMessage);
+      console.log('Has session token:', !!session?.access_token);
+      console.log('Onboarding data exists:', !!onboardingData);
+      
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -1806,28 +1872,45 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Ant
           conversationId: selectedConversation,
           contextLevel,
           difficultyLevel,
-          userProfile: onboardingData ? {
+          userProfile: onboardingData && onboardingData.germanLevel ? {
             germanLevel: onboardingData.germanLevel,
-            goals: onboardingData.goals,
-            personalityTraits: onboardingData.personalityTraits,
-            conversationTopics: onboardingData.conversationTopics
+            goals: Array.isArray(onboardingData.goals) ? onboardingData.goals : [],
+            personalityTraits: Array.isArray(onboardingData.personalityTraits) ? onboardingData.personalityTraits : [],
+            conversationTopics: Array.isArray(onboardingData.conversationTopics) ? onboardingData.conversationTopics : []
           } : undefined,
           systemInstruction: enhancedSystemInstruction,
           conversationContext: conversationContextToSend
         })
       });
-
-      console.log('📡 === AI API RESPONSE ===');
+      
+      console.log('📡 === API RESPONSE RECEIVED ===');
       console.log('Response status:', response.status);
       console.log('Response ok:', response.ok);
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log('📝 === AI RESPONSE DATA ===');
-        console.log('AI message:', data.message);
-        
-        // Generate message ID first
-        const messageId = (Date.now() + 1).toString();
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ API Error Response:', response.status);
+        console.error('Error details:', errorText);
+        const errorMessage = errorText || `API request failed with status ${response.status}`;
+        setIsSending(false);
+        setIsTyping(false);
+        setErrorMessages(prev => ({ ...prev, [messageId]: errorMessage }));
+        return;
+      }
+      
+      const data = await response.json();
+      
+      if (!data || !data.message) {
+        console.error('❌ Invalid API response - missing message field');
+        console.error('Response data:', data);
+        throw new Error('Invalid API response: missing message field');
+      }
+      
+      console.log('📝 === AI RESPONSE DATA ===');
+      console.log('AI message:', data.message);
+      
+      // Generate message ID first
+      const messageId = (Date.now() + 1).toString();
         console.log('🤖 Generated message ID:', messageId);
         
         const assistantMessage: ChatMessage = {
@@ -1870,14 +1953,15 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Ant
         }
         
         console.log('✅ === AI RESPONSE COMPLETED SUCCESSFULLY ===');
-      } else {
-        console.error('❌ === AI API ERROR ===');
-        console.error('Response status:', response.status);
-        console.error('Response status text:', response.statusText);
-      }
+        setIsSending(false);
+        setIsTyping(false);
     } catch (error) {
       console.error('❌ === AI RESPONSE ERROR ===');
       console.error('Error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setIsSending(false);
+      setIsTyping(false);
+      setErrorMessages(prev => ({ ...prev, [messageId]: errorMessage }));
     } finally {
       console.log('🏁 === AI RESPONSE FINALLY BLOCK ===');
       setIsSending(false);
@@ -4960,16 +5044,29 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
   };
 
   const handleOnboardingComplete = (data: OnboardingData) => {
-    setOnboardingData(data);
+    // Ensure all array fields are properly initialized (same as existing users)
+    const normalizedData: OnboardingData = {
+      ...data,
+      goals: Array.isArray(data.goals) ? data.goals : [],
+      personalityTraits: Array.isArray(data.personalityTraits) ? data.personalityTraits : [],
+      conversationTopics: Array.isArray(data.conversationTopics) ? data.conversationTopics : [],
+      germanLevel: data.germanLevel || 'beginner', // Default to beginner if not set
+      // Keep backward compatibility fields
+      motivations: Array.isArray(data.motivations) ? data.motivations : [],
+      hobbies: Array.isArray(data.hobbies) ? data.hobbies : [],
+      speakingFears: Array.isArray(data.speakingFears) ? data.speakingFears : [],
+    };
+    
+    setOnboardingData(normalizedData);
     setShowOnboarding(false);
     setIsNewUser(false);
-    setCurrentProfilePicture(data.profilePictureUrl || null);
-    localStorage.setItem(`onboarding_${user.id}`, JSON.stringify(data));
+    setCurrentProfilePicture(normalizedData.profilePictureUrl || null);
+    localStorage.setItem(`onboarding_${user.id}`, JSON.stringify(normalizedData));
     
     // Set context level based on focus group
-    if (data.focusGroup === 'travelers') {
+    if (normalizedData.focusGroup === 'travelers') {
       setContextLevel('Casual');
-    } else if (data.focusGroup === 'business') {
+    } else if (normalizedData.focusGroup === 'business') {
       setContextLevel('Professional');
     }
     
