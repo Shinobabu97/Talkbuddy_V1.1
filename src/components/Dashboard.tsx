@@ -5104,7 +5104,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               className="w-full btn-glossy p-3 flex items-center justify-center mb-4 rounded-full"
               title="New Conversation"
             >
-              <Plus className="h-6 w-6 text-white font-bold" strokeWidth={3} />
+              <Plus className="h-6 w-6 text-white font-bold flex-shrink-0" strokeWidth={3} />
             </button>
           )}
 
