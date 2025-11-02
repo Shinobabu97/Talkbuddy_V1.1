@@ -26,9 +26,11 @@ import {
   Trash2,
   X,
   Menu,
+  Sparkles,
 } from 'lucide-react';
 import { supabase, AuthUser } from '../lib/supabase';
 import OnboardingFlow from './OnboardingFlow';
+import OnboardingHints, { dashboardHints, chatBubbleHints } from './OnboardingHints';
 import ProfilePictureModal from './ProfilePictureModal';
 import Toolbar from './Toolbar';
 import VocabularyBuilderModal from './VocabularyBuilderModal';
@@ -64,20 +66,24 @@ const getRandomLastSeen = () => {
 
 interface OnboardingData {
   profilePictureUrl?: string;
-  motivations: string[];
+  learningLanguage?: string;
+  nativeLanguage?: string;
+  focusGroup?: 'travelers' | 'business';
+  // Keep old fields for backward compatibility
+  motivations?: string[];
   customMotivation?: string;
-  hobbies: string[];
-  customHobbies: string[];
-  hasWork: boolean;
+  hobbies?: string[];
+  customHobbies?: string[];
+  hasWork?: boolean;
   workDomain?: string;
-  germanLevel: string;
-  speakingFears: string[];
-  customFears: string[];
-  timeline: string;
-  goals: string[];
-  personalityTraits: string[];
+  germanLevel?: string;
+  speakingFears?: string[];
+  customFears?: string[];
+  timeline?: string;
+  goals?: string[];
+  personalityTraits?: string[];
   secretDetails?: string;
-  conversationTopics: string[];
+  conversationTopics?: string[];
 }
 
 interface Conversation {
@@ -115,6 +121,12 @@ export default function Dashboard({ user }: DashboardProps) {
   const [showProfileModal, setShowProfileModal] = React.useState(false);
   const [currentProfilePicture, setCurrentProfilePicture] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Hints system state
+  const [showHints, setShowHints] = useState(false);
+  const [showChatHints, setShowChatHints] = useState(false);
+  const [hintsDismissed, setHintsDismissed] = useState(false);
+  const [hasSentFirstMessage, setHasSentFirstMessage] = useState(false);
 
   // 🎮 GAMIFICATION STATE
   const [playerStats, setPlayerStats] = React.useState({
@@ -567,6 +579,10 @@ export default function Dashboard({ user }: DashboardProps) {
       if (onboardingRecord && onboardingRecord.completed_at) {
         const data: OnboardingData = {
           profilePictureUrl: profileData?.profile_picture_url || null,
+          learningLanguage: onboardingRecord.learning_language,
+          nativeLanguage: onboardingRecord.native_language,
+          focusGroup: onboardingRecord.focus_group as 'travelers' | 'business' | undefined,
+          // Keep old fields for backward compatibility
           motivations: onboardingRecord.motivations || [],
           customMotivation: onboardingRecord.custom_motivation,
           hobbies: onboardingRecord.hobbies || [],
@@ -583,9 +599,24 @@ export default function Dashboard({ user }: DashboardProps) {
           conversationTopics: onboardingRecord.conversation_topics || []
         };
         
+        // Set context level based on focus group
+        if (data.focusGroup === 'travelers') {
+          setContextLevel('Casual');
+        } else if (data.focusGroup === 'business') {
+          setContextLevel('Professional');
+        }
+        
         setOnboardingData(data);
         setIsNewUser(false);
         setShowOnboarding(false);
+        
+        // Show hints if not dismissed
+        if (!onboardingRecord.hints_dismissed) {
+          setHintsDismissed(false);
+          setShowHints(true);
+        } else {
+          setHintsDismissed(true);
+        }
       } else {
         const hasCompletedOnboarding = localStorage.getItem(`onboarding_${user.id}`);
         if (hasCompletedOnboarding) {
@@ -2560,6 +2591,18 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Ant
         console.log('Previous messages count:', prev.length);
         const newMessages = [...prev, userMessage];
         console.log('New messages count:', newMessages.length);
+        
+        // Track first message for chat hints
+        if (!hasSentFirstMessage && prev.length <= 1) {
+          setHasSentFirstMessage(true);
+          if (!hintsDismissed && showHints === false) {
+            // Show chat hints after a short delay
+            setTimeout(() => {
+              setShowChatHints(true);
+            }, 1000);
+          }
+        }
+        
         return newMessages;
       });
 
@@ -4918,6 +4961,20 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     setCurrentProfilePicture(data.profilePictureUrl || null);
     localStorage.setItem(`onboarding_${user.id}`, JSON.stringify(data));
     
+    // Set context level based on focus group
+    if (data.focusGroup === 'travelers') {
+      setContextLevel('Casual');
+    } else if (data.focusGroup === 'business') {
+      setContextLevel('Professional');
+    }
+    
+    // Show hints after onboarding (if not already dismissed)
+    setTimeout(() => {
+      if (!hintsDismissed) {
+        setShowHints(true);
+      }
+    }, 500);
+    
     // 🎮 Give XP for completing onboarding
     addExperience(50, 'onboarding_complete');
     addAchievement('onboarding_complete', '🚀 Getting Started', 'Completed your profile setup!');
@@ -4937,6 +4994,47 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
   const handleRestartOnboarding = () => {
     setShowOnboarding(true);
+  };
+
+  // Hints handlers
+  const handleDismissHints = async () => {
+    setShowHints(false);
+    setHintsDismissed(true);
+    
+    // Save to database
+    try {
+      await supabase
+        .from('user_onboarding')
+        .update({ hints_dismissed: true })
+        .eq('user_id', user.id);
+    } catch (error) {
+      console.error('Error saving hints dismissal:', error);
+    }
+  };
+
+  const handleSkipAllHints = async () => {
+    setShowHints(false);
+    setShowChatHints(false);
+    setHintsDismissed(true);
+    
+    // Save to database
+    try {
+      await supabase
+        .from('user_onboarding')
+        .update({ hints_dismissed: true })
+        .eq('user_id', user.id);
+    } catch (error) {
+      console.error('Error saving hints dismissal:', error);
+    }
+  };
+
+  const handleShowHints = () => {
+    setShowHints(true);
+    setShowChatHints(false);
+  };
+
+  const handleDismissChatHints = () => {
+    setShowChatHints(false);
   };
 
   const deleteConversation = async (conversationId: string) => {
@@ -5065,6 +5163,13 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                         <User className="h-4 w-4 text-primary" />
                       </div>
                     )}
+                  </button>
+                  <button
+                    onClick={handleShowHints}
+                    className="p-2 text-gray-400 hover:text-primary hover:bg-primary/10 rounded-xl transition-all duration-200"
+                    title="Show Hints"
+                  >
+                    <Sparkles className="h-4 w-4" />
                   </button>
                   <button
                     onClick={handleRestartOnboarding}
@@ -5230,76 +5335,76 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           )}
         </div>
 
-        {/* Search - Elingo Purple Theme - Compact */}
+        {/* Search and Conversations Section - For Hint Targeting */}
         {!sidebarCollapsed && (
-          <div className="px-4 py-3 border-b border-gray-200" style={{ backgroundColor: '#faf9ff' }}>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search conversations..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all duration-200 font-body"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Recent Conversations - Elingo Purple Theme - Maximized Space */}
-        {!sidebarCollapsed && (
-          <div className="flex-1 overflow-hidden flex flex-col min-h-0" style={{ backgroundColor: '#faf9ff' }}>
-          <div className="px-4 py-2.5 border-b border-gray-100" style={{ backgroundColor: '#faf9ff' }}>
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs font-bold text-text font-display uppercase tracking-wide">Conversations</h3>
+          <div data-hint-target="conversation-sidebar" className="flex-1 overflow-hidden flex flex-col min-h-0">
+            {/* Search - Elingo Purple Theme - Compact */}
+            <div className="px-4 py-3 border-b border-gray-200" style={{ backgroundColor: '#faf9ff' }}>
               <div className="relative">
-                <button
-                  onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
-                  className="flex items-center space-x-1 text-[10px] text-gray-600 hover:text-primary font-semibold px-2 py-1 rounded-lg hover:bg-primary/10 border border-gray-200 transition-all duration-200"
-                >
-                  <span className="truncate max-w-[80px]">{selectedCategory || 'All'}</span>
-                  <ChevronDown className="h-3 w-3 flex-shrink-0" />
-                </button>
-                {showCategoryDropdown && (
-                  <div className="absolute top-full right-0 mt-2 w-44 bg-white rounded-xl shadow-lg border border-gray-200 z-10 py-2">
-                    <button
-                      onClick={() => {
-                        setSelectedCategory(null);
-                        setShowCategoryDropdown(false);
-                      }}
-                      className={`w-full text-left px-4 py-2 text-xs hover:bg-primary/10 transition-colors rounded-lg mx-1 ${
-                        selectedCategory === null ? 'text-primary font-bold bg-primary/10' : 'text-gray-700'
-                      }`}
-                    >
-                      All Categories
-                    </button>
-                    {conversationCategories.map((category) => (
-                      <button
-                        key={category}
-                        onClick={() => {
-                          setSelectedCategory(selectedCategory === category ? null : category);
-                          setShowCategoryDropdown(false);
-                        }}
-                        className={`w-full text-left px-4 py-2 text-xs hover:bg-primary/10 transition-colors rounded-lg mx-1 ${
-                          selectedCategory === category ? 'text-primary font-bold bg-primary/10' : 'text-gray-700'
-                        }`}
-                      >
-                        {category}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search conversations..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all duration-200 font-body"
+                />
               </div>
             </div>
-          </div>
-          <div className="flex-1 overflow-y-auto px-3 pb-3 min-h-0 scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-gray-100">
-            {conversationsLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 text-primary animate-spin" />
+
+            {/* Recent Conversations - Elingo Purple Theme - Maximized Space */}
+            <div className="flex-1 overflow-hidden flex flex-col min-h-0" style={{ backgroundColor: '#faf9ff' }}>
+              <div className="px-4 py-2.5 border-b border-gray-100" style={{ backgroundColor: '#faf9ff' }}>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-xs font-bold text-text font-display uppercase tracking-wide">Conversations</h3>
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
+                      className="flex items-center space-x-1 text-[10px] text-gray-600 hover:text-primary font-semibold px-2 py-1 rounded-lg hover:bg-primary/10 border border-gray-200 transition-all duration-200"
+                    >
+                      <span className="truncate max-w-[80px]">{selectedCategory || 'All'}</span>
+                      <ChevronDown className="h-3 w-3 flex-shrink-0" />
+                    </button>
+                    {showCategoryDropdown && (
+                      <div className="absolute top-full right-0 mt-2 w-44 bg-white rounded-xl shadow-lg border border-gray-200 z-10 py-2">
+                        <button
+                          onClick={() => {
+                            setSelectedCategory(null);
+                            setShowCategoryDropdown(false);
+                          }}
+                          className={`w-full text-left px-4 py-2 text-xs hover:bg-primary/10 transition-colors rounded-lg mx-1 ${
+                            selectedCategory === null ? 'text-primary font-bold bg-primary/10' : 'text-gray-700'
+                          }`}
+                        >
+                          All Categories
+                        </button>
+                        {conversationCategories.map((category) => (
+                          <button
+                            key={category}
+                            onClick={() => {
+                              setSelectedCategory(selectedCategory === category ? null : category);
+                              setShowCategoryDropdown(false);
+                            }}
+                            className={`w-full text-left px-4 py-2 text-xs hover:bg-primary/10 transition-colors rounded-lg mx-1 ${
+                              selectedCategory === category ? 'text-primary font-bold bg-primary/10' : 'text-gray-700'
+                            }`}
+                          >
+                            {category}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-            ) : filteredConversations.length > 0 ? (
-              <div className="space-y-1.5">
-                {filteredConversations.map((conversation) => (
+              <div className="flex-1 overflow-y-auto px-3 pb-3 min-h-0 scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-gray-100">
+                {conversationsLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-5 w-5 text-primary animate-spin" />
+                  </div>
+                ) : filteredConversations.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {filteredConversations.map((conversation) => (
                   <div
                     key={conversation.id}
                     className="relative group"
@@ -5344,9 +5449,9 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       </button>
                     )}
                   </div>
-                ))}
-              </div>
-            ) : (
+                    ))}
+                  </div>
+                ) : (
               <div className="text-center py-12">
                 <div className="w-20 h-20 bg-gradient-to-br from-primary/20 to-accent/20 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
                   <MessageCircle className="h-10 w-10 text-primary" />
@@ -5359,8 +5464,9 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   }
                 </p>
               </div>
-            )}
-          </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -5581,6 +5687,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                               onClick={async () => await speakText(message.content)}
                               className="p-1.5 hover:bg-primary/10 rounded-lg transition-all duration-200"
                               title="Listen"
+                              data-hint-target="listen-button"
                             >
                               <svg className="h-4 w-4 text-primary" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.617.816L4.846 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.846l3.537-3.816a1 1 0 011.617.816zM16 8a2 2 0 11-4 0 2 2 0 014 0zM14 8a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
@@ -5592,6 +5699,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                                 showTranslation[message.id] ? 'text-white bg-primary' : 'text-primary hover:bg-primary/10'
                               }`}
                               title="Translate"
+                              data-hint-target="translation-toggle"
                             >
                               EN
                             </button>
@@ -5599,6 +5707,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                               onClick={() => toggleSuggestions(message.id)}
                               className="p-1.5 hover:bg-primary/10 rounded-lg transition-all duration-200"
                               title="Suggest responses"
+                              data-hint-target="suggested-answers"
                             >
                               <svg className="h-4 w-4 text-primary" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
@@ -6331,6 +6440,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     placeholder="My left knee is injured and I want to visit a doctor."
                     value={conversationInput}
                     onChange={(e) => setConversationInput(e.target.value)}
+                    data-hint-target="text-input"
                     className="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl text-base resize-none focus:ring-2 focus:ring-primary focus:border-primary bg-gray-50 transition-all duration-200 font-body placeholder:text-gray-400"
                     rows={4}
                   />
@@ -6344,6 +6454,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     <button
                       onClick={() => !currentConversationContextLocked && setShowContextDropdown(!showContextDropdown)}
                       disabled={currentConversationContextLocked}
+                      data-hint-target="context-switcher"
                       className={`w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-left flex items-center justify-between shadow-sm transition-all duration-200 ${
                         currentConversationContextLocked 
                           ? 'bg-gray-100 cursor-not-allowed opacity-60' 
@@ -6422,6 +6533,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     <button 
                       onClick={isModalRecording ? stopModalRecording : () => startModalRecording(true)}
                       disabled={isTranscribing}
+                      title={isModalRecording ? "Stop recording" : "Start recording"}
+                      data-hint-target="voice-input"
                       className={`p-3 rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl ${
                         isModalRecording 
                           ? 'bg-red-500 hover:bg-red-600 text-white' 
@@ -6731,6 +6844,28 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             setConversationSummary(null);
           }}
           summary={conversationSummary}
+        />
+      )}
+
+      {/* Onboarding Hints - Dashboard */}
+      {showHints && (
+        <OnboardingHints
+          isVisible={showHints}
+          onDismiss={handleDismissHints}
+          onSkipAll={handleSkipAllHints}
+          hints={dashboardHints}
+          startIndex={0}
+        />
+      )}
+
+      {/* Onboarding Hints - Chat Bubbles */}
+      {showChatHints && selectedConversation && (
+        <OnboardingHints
+          isVisible={showChatHints}
+          onDismiss={handleDismissChatHints}
+          onSkipAll={handleSkipAllHints}
+          hints={chatBubbleHints}
+          startIndex={0}
         />
       )}
     </div>
