@@ -149,6 +149,7 @@ export default function Dashboard({ user }: DashboardProps) {
 
   const [showLevelUp, setShowLevelUp] = React.useState(false);
   const [showAchievement, setShowAchievement] = React.useState<string | null>(null);
+  const [achievementData, setAchievementData] = React.useState<{ title: string; description: string } | null>(null);
   const [recentAchievements, setRecentAchievements] = React.useState<string[]>([]);
 
   // 📊 SESSION TRACKING STATE
@@ -1194,9 +1195,13 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Ant
   const addAchievement = (achievementId: string, title: string, description: string) => {
     setPlayerStats(prev => {
       if (!prev.achievements.includes(achievementId)) {
+        setAchievementData({ title, description });
         setShowAchievement(achievementId);
         setRecentAchievements(prev => [...prev, achievementId]);
-        setTimeout(() => setShowAchievement(null), 3000);
+        setTimeout(() => {
+          setShowAchievement(null);
+          setAchievementData(null);
+        }, 3000);
         setTimeout(() => setRecentAchievements(prev => prev.filter(id => id !== achievementId)), 5000);
         
         return {
@@ -4968,16 +4973,17 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       setContextLevel('Professional');
     }
     
-    // Show hints after onboarding (if not already dismissed)
+    // 🎮 Give XP for completing onboarding
+    addExperience(50, 'onboarding_complete');
+    addAchievement('onboarding_complete', '🚀 Getting Started', 'Completed your profile setup!');
+    
+    // Show hints after onboarding achievement modal closes (if not already dismissed)
+    // Achievement modal auto-closes after 3000ms, so wait 4000ms to ensure it's fully closed and animations finished
     setTimeout(() => {
       if (!hintsDismissed) {
         setShowHints(true);
       }
-    }, 500);
-    
-    // 🎮 Give XP for completing onboarding
-    addExperience(50, 'onboarding_complete');
-    addAchievement('onboarding_complete', '🚀 Getting Started', 'Completed your profile setup!');
+    }, 4000);
   };
 
   const handleProfilePictureUpdate = (newUrl: string | null) => {
@@ -6813,21 +6819,24 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         </div>
       )}
 
-      {/* Achievement Modal */}
-      {showAchievement && (
+      {/* Achievement Modal - Purple Theme */}
+      {showAchievement && achievementData && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-8 max-w-md w-full text-center animate-pulse">
-            <div className="text-6xl mb-4">🏆</div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Achievement Unlocked!</h2>
-            <p className="text-gray-600 mb-4">You've earned a new achievement!</p>
-            <div className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-lg p-4 mb-4">
-              <div className="text-sm opacity-90">Achievement</div>
-              <div className="text-xl font-bold">🎉 First Conversation</div>
-              <div className="text-sm opacity-90">Completed your first German conversation!</div>
+          <div className="card-glass p-8 max-w-md w-full text-center shadow-figma-hero">
+            <div className="text-6xl mb-4 animate-bounce">🏆</div>
+            <h2 className="text-2xl font-bold text-text mb-2">Achievement Unlocked!</h2>
+            <p className="text-text-muted mb-6">You've earned a new achievement!</p>
+            <div className="bg-gradient-to-r from-primary via-primary/90 to-accent text-white rounded-2xl p-6 mb-6 shadow-lg">
+              <div className="text-sm opacity-90 mb-2">Achievement</div>
+              <div className="text-2xl font-bold mb-2">{achievementData.title}</div>
+              <div className="text-sm opacity-90">{achievementData.description}</div>
             </div>
             <button
-              onClick={() => setShowAchievement(null)}
-              className="w-full bg-green-500 hover:bg-green-600 text-white py-3 rounded-lg font-medium transition-colors"
+              onClick={() => {
+                setShowAchievement(null);
+                setAchievementData(null);
+              }}
+              className="btn-glossy w-full"
             >
               Amazing!
             </button>
