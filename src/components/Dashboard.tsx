@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ArrowLeft,
+  ArrowRight,
   Lock,
   Send,
   Play,
@@ -5197,10 +5198,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             </div>
           )}
           {sidebarCollapsed && (
-            <div className="flex flex-col space-y-2">
+            <div className="flex flex-col items-center space-y-2">
               <button
                 onClick={() => setCurrentView('progress')}
-                className={`p-3 rounded-xl transition-all duration-200 ${
+                className={`p-3 rounded-xl transition-all duration-200 flex items-center justify-center ${
                   currentView === 'progress'
                     ? 'bg-primary text-white shadow-lg shadow-primary/30' 
                     : 'text-gray-600 hover:text-primary hover:bg-primary/10'
@@ -5211,11 +5212,20 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               </button>
               <button
                 onClick={() => setShowVocabBuilder(true)}
-                className="p-3 rounded-xl transition-all duration-200 text-gray-600 hover:text-primary hover:bg-primary/10"
+                className="p-3 rounded-xl transition-all duration-200 text-gray-600 hover:text-primary hover:bg-primary/10 flex items-center justify-center"
                 title="Vocab List"
               >
                 <BookOpen className="h-5 w-5" />
               </button>
+              <div className="mt-8">
+                <button
+                  onClick={() => setSidebarCollapsed(false)}
+                  className="p-3 rounded-xl transition-all duration-200 text-gray-600 hover:text-primary hover:bg-primary/10 flex items-center justify-center"
+                  title="Expand Sidebar"
+                >
+                  <ArrowRight className="h-5 w-5" />
+                </button>
+              </div>
             </div>
           )}
         </div>
