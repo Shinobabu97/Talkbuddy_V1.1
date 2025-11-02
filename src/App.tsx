@@ -10,7 +10,16 @@ import {
   Star,
   ChevronDown,
   Menu,
-  X
+  X,
+  Briefcase,
+  GraduationCap,
+  Languages,
+  Globe,
+  UserCircle,
+  Sparkles,
+  MessageCircle,
+  FileCheck,
+  Bookmark
 } from 'lucide-react';
 import { supabase, AuthUser } from './lib/supabase';
 import AuthModal from './components/AuthModal';
@@ -62,27 +71,27 @@ function App() {
 
   const steps = [
     {
-      number: "1",
+      icon: UserCircle,
       title: "Tell Us About You",
       description: "Share your hobbies, interests, learning goals, and work background so your AI buddy gets to know the real you."
     },
     {
-      number: "2",
+      icon: Sparkles,
       title: "Get Your Personal Topic Menu",
       description: "Based on what you shared, we create conversation topics that actually matter to you - from your career field to weekend hobbies."
     },
     {
-      number: "3",
+      icon: MessageCircle,
       title: "Choose & Start Speaking",
       description: "Pick any topic that sparks your interest and start talking out loud with your AI language partner who knows your context."
     },
     {
-      number: "4",
+      icon: FileCheck,
       title: "Review Your Speaking Session",
       description: "After each conversation, see your full speaking transcript with helpful corrections, better phrasing suggestions, and new vocabulary you could have used."
     },
     {
-      number: "5",
+      icon: Bookmark,
       title: "Save Your Progress",
       description: "Bookmark useful sentences and vocab words to review later, building your personal speaking library as you go."
     }
@@ -390,32 +399,32 @@ function App() {
           
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-12">
             <div className="text-center stagger-animate">
-              <div className="bg-gradient-to-br from-primary-400 to-accent-400 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 shadow-lg">
-                <Users className="h-8 w-8 text-white" />
+              <div className="bg-primary-500 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 shadow-lg">
+                <Briefcase className="h-8 w-8 text-white" />
               </div>
               <h3 className="text-base font-semibold text-text mb-2 font-extrabold">Working Professionals</h3>
               <p className="text-sm text-text-muted font-body">Building confidence for meetings and presentations</p>
             </div>
             
             <div className="text-center stagger-animate">
-              <div className="bg-gradient-to-br from-purple-400 to-cyan-400 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 shadow-lg">
-                <Target className="h-8 w-8 text-white" />
+              <div className="bg-primary-500 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 shadow-lg">
+                <GraduationCap className="h-8 w-8 text-white" />
               </div>
               <h3 className="text-base font-semibold text-text mb-2 font-extrabold">University Students</h3>
               <p className="text-sm text-text-muted font-body">Preparing for academic discussions and social interactions</p>
             </div>
             
             <div className="text-center stagger-animate">
-              <div className="bg-gradient-to-br from-success-400 to-warning-400 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 shadow-lg">
-                <Star className="h-8 w-8 text-white" />
+              <div className="bg-primary-500 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 shadow-lg">
+                <Languages className="h-8 w-8 text-white" />
               </div>
               <h3 className="text-base font-semibold text-text mb-2 font-extrabold">Language Enthusiasts</h3>
               <p className="text-sm text-text-muted font-body">Passionate learners perfecting their speaking skills</p>
             </div>
             
             <div className="text-center stagger-animate">
-              <div className="bg-gradient-to-br from-accent-400 to-primary-400 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 shadow-lg">
-                <Shield className="h-8 w-8 text-white" />
+              <div className="bg-primary-500 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 shadow-lg">
+                <Globe className="h-8 w-8 text-white" />
               </div>
               <h3 className="text-base font-semibold text-text mb-2 font-extrabold">International Teams</h3>
               <p className="text-sm text-text-muted font-body">Improving cross-cultural communication</p>
@@ -482,34 +491,31 @@ function App() {
           </div>
 
           <div className="space-y-6">
-            {steps.map((step, index) => (
-              <div 
-                key={index}
-                className="card-glass rounded-2xl p-6 group stagger-animate"
-              >
-                <div className="flex flex-col lg:flex-row items-start gap-6">
-                  <div className="flex-shrink-0">
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold text-white shadow-lg bg-gradient-to-br ${
-                      index % 5 === 0 ? 'from-primary-400 to-accent-400' :
-                      index % 5 === 1 ? 'from-purple-400 to-cyan-400' :
-                      index % 5 === 2 ? 'from-success-400 to-warning-400' :
-                      index % 5 === 3 ? 'from-accent-400 to-primary-400' :
-                      'from-cyan-400 to-purple-400'
-                    }`}>
-                      {step.number}
+            {steps.map((step, index) => {
+              const Icon = step.icon;
+              return (
+                <div 
+                  key={index}
+                  className="card-glass rounded-2xl p-6 group stagger-animate"
+                >
+                  <div className="flex flex-col lg:flex-row items-start gap-6">
+                    <div className="flex-shrink-0">
+                      <div className="w-12 h-12 rounded-full flex items-center justify-center text-white shadow-lg bg-primary-500">
+                        <Icon className="h-6 w-6" />
+                      </div>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-xl font-semibold text-text mb-2 font-extrabold">
+                        {step.title}
+                      </h3>
+                      <p className="text-sm text-text-muted leading-relaxed font-body">
+                        {step.description}
+                      </p>
                     </div>
                   </div>
-                  <div className="flex-1">
-                    <h3 className="text-xl font-semibold text-text mb-2 font-extrabold">
-                      {step.title}
-                    </h3>
-                    <p className="text-sm text-text-muted leading-relaxed font-body">
-                      {step.description}
-                    </p>
-                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>
