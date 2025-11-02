@@ -11,6 +11,9 @@ import {
   Loader2,
   User,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ArrowLeft,
   Lock,
   Send,
   Play,
@@ -2425,6 +2428,12 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Ant
     console.log('Chat messages count:', chatMessages.length);
 
     const trimmedInput = messageInput.trim();
+    
+    // Auto-collapse sidebar when starting conversation with first user message
+    if (chatMessages.length <= 1 && !sidebarCollapsed) {
+      setSidebarCollapsed(true);
+      console.log('Auto-collapsing sidebar - first user message');
+    }
 
     if (!trimmedInput || isSending || !selectedConversation) {
       console.log('🚫 === BLOCKING SEND MESSAGE ===');
@@ -4779,7 +4788,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     // Show toolbar but start collapsed
     setShowToolbar(true);
     setToolbarCollapsed(true);
-    setSidebarCollapsed(false);
+    // Don't collapse sidebar when starting new conversation - let user control it
+    // setSidebarCollapsed(false);
   };
 
   // Helper function to reset all conversation states (used by both end and new conversation)
@@ -5025,7 +5035,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         h-screen
       `} style={{ backgroundColor: '#faf9ff' }}>
         {/* Sidebar Header */}
-        <div className="p-4 border-b border-gray-200" style={{ backgroundColor: '#faf9ff' }}>
+        <div className="p-4 border-b border-gray-200 relative" style={{ backgroundColor: '#faf9ff' }}>
           <div className="flex items-center justify-between mb-4">
             {!sidebarCollapsed && (
               <div className="flex items-center space-x-3">
@@ -5041,13 +5051,6 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   <Volume2 className="h-6 w-6 text-white" />
                 </div>
               )}
-              <button
-                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                className="p-2 text-gray-400 hover:text-primary hover:bg-primary/10 rounded-xl transition-all duration-200"
-                title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              >
-                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${sidebarCollapsed ? 'rotate-90' : '-rotate-90'}`} />
-              </button>
               {!sidebarCollapsed && (
                 <>
                   <button
@@ -5070,11 +5073,11 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     <Settings className="h-4 w-4" />
                   </button>
                   <button
-                    onClick={handleLogout}
-                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all duration-200"
-                    title="Logout"
+                    onClick={() => setSidebarCollapsed(true)}
+                    className="p-2 text-gray-400 hover:text-primary hover:bg-primary/10 rounded-xl transition-all duration-200"
+                    title="Collapse sidebar"
                   >
-                    <LogOut className="h-4 w-4" />
+                    <ArrowLeft className="h-4 w-4" />
                   </button>
                 </>
               )}
@@ -5093,11 +5096,14 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           )}
           {sidebarCollapsed && (
             <button 
-              onClick={resetConversationState}
+              onClick={() => {
+                resetConversationState();
+                // Don't change sidebar state - preserve user preference
+              }}
               className="w-full btn-glossy p-3 flex items-center justify-center mb-4 rounded-full"
               title="New Conversation"
             >
-              <Plus className="h-5 w-5" />
+              <Plus className="h-6 w-6 text-white font-bold" strokeWidth={3} />
             </button>
           )}
 
@@ -5352,22 +5358,28 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         {!sidebarCollapsed && (
           <div className="p-4 border-t border-gray-200 bg-white">
             <h3 className="text-sm font-bold text-text mb-3 font-display">Settings</h3>
-            <button
-              onClick={() => setShowProfileModal(true)}
-              className="flex items-center space-x-3 w-full text-left p-3 hover:bg-primary/5 rounded-xl transition-all duration-200 border border-transparent hover:border-primary/20"
-            >
-              {currentProfilePicture ? (
-                <img src={currentProfilePicture} alt="Profile" className="w-10 h-10 rounded-full object-cover border-2 border-gray-200" />
-              ) : (
-                <div className="w-10 h-10 bg-gradient-to-br from-primary/20 to-accent/20 rounded-full flex items-center justify-center border-2 border-gray-200">
-                  <User className="h-5 w-5 text-primary" />
+            <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-3 flex-1 text-left p-3">
+                {currentProfilePicture ? (
+                  <img src={currentProfilePicture} alt="Profile" className="w-10 h-10 rounded-full object-cover border-2 border-gray-200" />
+                ) : (
+                  <div className="w-10 h-10 bg-gradient-to-br from-primary/20 to-accent/20 rounded-full flex items-center justify-center border-2 border-gray-200">
+                    <User className="h-5 w-5 text-primary" />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-text font-display">{firstName}</p>
+                  <p className="text-xs text-text-muted font-body">Profile Settings</p>
                 </div>
-              )}
-              <div className="flex-1">
-                <p className="text-sm font-bold text-text font-display">{firstName}</p>
-                <p className="text-xs text-text-muted font-body">Profile Settings</p>
               </div>
-            </button>
+              <button
+                onClick={handleLogout}
+                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all duration-200"
+                title="Logout"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -5414,7 +5426,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             <div className="flex-1 flex flex-col h-full overflow-hidden">
 
             {/* German Partner Display - Elingo Purple Theme */}
-            <div className="border-b border-gray-200 px-4 py-4 lg:pl-4 pl-16 shadow-sm" style={{ backgroundColor: 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(10px)' }}>
+            <div className="border-b border-gray-200 px-4 py-4 lg:pl-4 pl-16 shadow-sm relative" style={{ backgroundColor: 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(10px)' }}>
               {/* Mobile Menu Button */}
               <button
                 onClick={() => setMobileSidebarOpen(true)}
@@ -5423,6 +5435,18 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               >
                 <Menu className="h-5 w-5" />
               </button>
+              
+              {/* Desktop Sidebar Toggle - Show when collapsed - Vertically Centered to Avoid Overlap */}
+              {sidebarCollapsed && (
+                <button
+                  onClick={() => setSidebarCollapsed(false)}
+                  className="hidden lg:flex fixed left-2 z-30 p-2.5 bg-primary text-white rounded-xl shadow-lg hover:bg-primary/90 transition-all duration-200"
+                  style={{ top: '50%', transform: 'translateY(-50%)', marginTop: 0 }}
+                  title="Expand sidebar"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              )}
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   <div className="relative">
@@ -5895,43 +5919,37 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             </div>
             </div>
             
-            {/* Right Sidebar - Collapsible Toolbar */}
-            <div className={`${toolbarCollapsed ? 'w-12' : 'w-[600px] lg:w-[700px]'} border-l border-gray-200 flex flex-col h-full transition-all duration-300 ease-in-out`} style={{ backgroundColor: '#faf9ff' }}>
-              {/* Toolbar Header */}
-              <div className="p-4 border-b border-gray-100 flex-shrink-0">
-                <div className="flex items-center justify-between">
-                  {!toolbarCollapsed && (
-                    <div className="flex items-center space-x-2">
-                      <BookOpen className="h-5 w-5 text-text500" />
-                      <span className="text-sm font-semibold text-gray-900">Learning Tools</span>
+            {/* Right Sidebar - Collapsible Toolbar - White & Subtle */}
+            <div className={`${toolbarCollapsed ? 'w-12' : 'w-[600px] lg:w-[700px]'} border-l border-gray-200 flex flex-col h-full transition-all duration-300 ease-in-out shadow-sm bg-white`}>
+              {/* Toolbar Header - Elingo Purple Theme */}
+              {!toolbarCollapsed && (
+                <div className="p-4 border-b border-primary/20 flex-shrink-0 bg-white">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center shadow-md">
+                        <BookOpen className="h-5 w-5 text-white" />
+                      </div>
+                      <div>
+                        <span className="text-sm font-bold text-text font-display block">Learning Tools</span>
+                        <span className="text-xs text-text-muted font-body">Vocabulary • Grammar • Pronunciation</span>
+                      </div>
                     </div>
-                  )}
-                  <div className="flex items-center space-x-2">
-                    {toolbarCollapsed && (
-                      <BookOpen className="h-5 w-5 text-text500" />
-                    )}
                     <button
                       onClick={() => {
                         setToolbarCollapsed(!toolbarCollapsed);
-                        // Auto-analyze grammar when expanding toolbar
-                        if (toolbarCollapsed && currentAIMessage) {
-                          console.log('Auto-analyzing grammar for:', currentAIMessage);
-                          // The comprehensive analysis should already be available
-                          // Just make sure the toolbar shows the analysis
-                        }
                       }}
-                      className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
-                      title={toolbarCollapsed ? "Expand toolbar" : "Collapse toolbar"}
+                      className="p-2 text-primary/60 hover:text-primary hover:bg-primary/10 rounded-xl transition-all duration-200"
+                      title="Collapse toolbar"
                     >
-                      <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${toolbarCollapsed ? 'rotate-90' : '-rotate-90'}`} />
+                      <ChevronDown className="h-4 w-4 transition-transform duration-200 -rotate-90" />
                     </button>
                   </div>
                 </div>
-              </div>
+              )}
               
               {/* Toolbar Content */}
               {!toolbarCollapsed ? (
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 overflow-y-auto bg-white">
                   <Toolbar
                     isVisible={true}
                     currentMessage={currentAIMessage}
@@ -5985,8 +6003,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   />
                 </div>
               ) : (
-                /* Collapsed State - Show expand button */
-                <div className="flex-1 flex flex-col items-center justify-center space-y-4 p-2">
+                /* Collapsed State - Interactive Arrow Only */
+                <div className="flex-1 flex items-center justify-center bg-white">
                   <button
                     onClick={() => {
                       setToolbarCollapsed(false);
@@ -5997,14 +6015,11 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                         // Just make sure the toolbar shows the analysis
                       }
                     }}
-                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
-                    title="Expand toolbar"
+                    className="p-2 text-primary/60 hover:text-primary hover:bg-primary/10 rounded-xl transition-all duration-200 group"
+                    title="Click to expand Learning Tools"
                   >
-                    <ChevronDown className="h-6 w-6 rotate-90" />
+                    <ChevronDown className="h-5 w-5 rotate-90 group-hover:scale-110 transition-transform duration-200" />
                   </button>
-                  <div className="text-xs text-gray-500 text-center">
-                    Click to expand<br />Learning Tools
-                  </div>
                 </div>
               )}
             </div>
