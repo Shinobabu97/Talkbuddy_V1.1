@@ -157,6 +157,18 @@
   }
 }
 
+@keyframes wave {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(20deg);
+  }
+  75% {
+    transform: rotate(-20deg);
+  }
+}
+
 .animate-bounce-slow {
   animation: bounce-slow 6s ease-in-out infinite;
 }
@@ -179,6 +191,11 @@
 
 .animate-draw-line {
   animation: draw-line 10s ease-in-out infinite;
+}
+
+.animate-wave {
+  animation: wave 2s ease-in-out infinite;
+  transform-origin: 70% 70%;
 }
 
 /* Legacy shadow classes for backward compatibility */

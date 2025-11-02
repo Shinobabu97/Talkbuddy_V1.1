@@ -16,7 +16,7 @@ import {
   Globe
 } from 'lucide-react';
 import { AuthUser, supabase } from '../lib/supabase';
-import OnboardingGame from './OnboardingGame';
+import OnboardingWelcome from './OnboardingWelcome';
 
 interface OnboardingFlowProps {
   user: AuthUser;
@@ -82,7 +82,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
   const [saving, setSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [gameCompleted, setGameCompleted] = useState(false);
+  const [welcomeCompleted, setWelcomeCompleted] = useState(false);
   const totalSteps = 5;
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [data, setData] = useState<OnboardingData>({
@@ -275,8 +275,10 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
     }
   };
 
-  const handleGameComplete = () => {
-    setGameCompleted(true);
+  const handleWelcomeComplete = async () => {
+    setWelcomeCompleted(true);
+    // Automatically complete onboarding when welcome is confirmed
+    await completeOnboarding();
   };
 
   const handleClose = () => {
@@ -290,9 +292,9 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
   };
 
   const renderProgressBar = () => (
-    <div className="w-full bg-white/30 rounded-full h-2 mb-8">
+    <div className="w-full bg-white rounded-full h-2 mb-4 border border-gray-200 shadow-sm">
       <div 
-        className="bg-gradient-to-r from-orange-400 to-orange-600 h-2 rounded-full transition-all duration-500 ease-out"
+        className="bg-gradient-to-r from-primary to-accent h-2 rounded-full transition-all duration-500 ease-out shadow-sm"
         style={{ width: `${((currentStep + 1) / totalSteps) * 100}%` }}
       />
     </div>
@@ -304,29 +306,29 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
         return (
           <div className="text-center space-y-6">
             <div className="space-y-4">
-              <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-orange-600">
+              <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary-500 to-primary-600">
                 Welcome to TalkBuddy, {firstName}! 🎉
               </h1>
-              <p className="text-lg text-gray-700 max-w-2xl mx-auto">
+              <p className="text-lg text-text max-w-2xl mx-auto">
                 Let's get you started! This will only take a minute.
               </p>
             </div>
 
             <div className="max-w-sm mx-auto">
               <div className="relative">
-                <div className="w-32 h-32 mx-auto mb-4 rounded-full bg-gradient-to-br from-orange-200 to-orange-300 flex items-center justify-center overflow-hidden border-4 border-white shadow-lg">
+                <div className="w-32 h-32 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center overflow-hidden border-4 border-white shadow-lg">
                   {profilePreview || data.profilePictureUrl ? (
                     <img src={profilePreview || data.profilePictureUrl} alt="Profile" className="w-full h-full object-cover" />
                   ) : (
-                    <Camera className="h-12 w-12 text-orange-600" />
+                    <Camera className="h-12 w-12 text-primary" />
                   )}
                 </div>
                 {isUploading ? (
-                  <div className="absolute bottom-0 right-1/2 transform translate-x-1/2 translate-y-2 bg-orange-500 text-white p-3 rounded-full shadow-lg opacity-75 cursor-not-allowed flex items-center justify-center">
+                  <div className="absolute bottom-0 right-1/2 transform translate-x-1/2 translate-y-2 bg-primary text-white p-3 rounded-full shadow-lg opacity-75 cursor-not-allowed flex items-center justify-center">
                     <Loader2 className="h-5 w-5 animate-spin" />
                   </div>
                 ) : (
-                  <label className="absolute bottom-0 right-1/2 transform translate-x-1/2 translate-y-2 bg-orange-500 hover:bg-orange-600 text-white p-3 rounded-full cursor-pointer shadow-lg hover:scale-110 transition-all duration-200 flex items-center justify-center">
+                  <label className="absolute bottom-0 right-1/2 transform translate-x-1/2 translate-y-2 btn-glossy p-3 cursor-pointer hover:scale-110 transition-all duration-200 flex items-center justify-center">
                     <Upload className="h-5 w-5" />
                     <input
                       type="file"
@@ -342,7 +344,7 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
                   {uploadError}
                 </p>
               )}
-              <p className="text-sm text-gray-600 mt-4">
+              <p className="text-sm text-text-muted mt-4">
                 Add a profile picture (optional) ✨
               </p>
             </div>
@@ -353,10 +355,10 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
         return (
           <div className="space-y-6">
             <div className="text-center space-y-4">
-              <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-orange-600">
+              <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary-500 to-primary-600">
                 What language do you want to learn? 🌍
               </h2>
-              <p className="text-gray-700 max-w-2xl mx-auto">
+              <p className="text-text max-w-2xl mx-auto">
                 Choose the language you'd like to practice speaking!
               </p>
             </div>
@@ -373,17 +375,17 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
                     disabled={isDisabled}
                     className={`relative bg-white border-2 rounded-xl p-4 text-center transition-all duration-300 ${
                       isSelected 
-                        ? 'border-orange-500 bg-orange-50 scale-105 shadow-lg' 
+                        ? 'border-primary-500 bg-primary-50 scale-105 shadow-lg' 
                         : isDisabled
                         ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
-                        : 'border-gray-200 hover:border-orange-300 hover:shadow-md'
+                        : 'border-gray-200 hover:border-primary-300 hover:shadow-md'
                     }`}
                   >
                     <div className="text-4xl mb-2">{lang.flag}</div>
-                    <div className="font-semibold text-gray-900">{lang.label}</div>
+                    <div className="font-semibold text-text">{lang.label}</div>
                     {isSelected && (
                       <div className="absolute top-2 right-2">
-                        <Check className="h-5 w-5 text-orange-600" />
+                        <Check className="h-5 w-5 text-primary-600" />
                       </div>
                     )}
                     {isDisabled && (
@@ -402,10 +404,10 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
         return (
           <div className="space-y-6">
             <div className="text-center space-y-4">
-              <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-orange-600">
+              <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary-500 to-primary-600">
                 What's your native language? 🗣️
               </h2>
-              <p className="text-gray-700 max-w-2xl mx-auto">
+              <p className="text-text max-w-2xl mx-auto">
                 Tell us the language you're most comfortable with!
               </p>
             </div>
@@ -422,17 +424,17 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
                     disabled={isDisabled}
                     className={`relative bg-white border-2 rounded-xl p-4 text-center transition-all duration-300 ${
                       isSelected 
-                        ? 'border-orange-500 bg-orange-50 scale-105 shadow-lg' 
+                        ? 'border-primary-500 bg-primary-50 scale-105 shadow-lg' 
                         : isDisabled
                         ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
-                        : 'border-gray-200 hover:border-orange-300 hover:shadow-md'
+                        : 'border-gray-200 hover:border-primary-300 hover:shadow-md'
                     }`}
                   >
                     <div className="text-4xl mb-2">{lang.flag}</div>
-                    <div className="font-semibold text-gray-900">{lang.label}</div>
+                    <div className="font-semibold text-text">{lang.label}</div>
                     {isSelected && (
                       <div className="absolute top-2 right-2">
-                        <Check className="h-5 w-5 text-orange-600" />
+                        <Check className="h-5 w-5 text-primary-600" />
                       </div>
                     )}
                     {isDisabled && (
@@ -451,10 +453,10 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
         return (
           <div className="space-y-6">
             <div className="text-center space-y-4">
-              <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-orange-600">
+              <h2 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary-500 to-primary-600">
                 Why are you using TalkBuddy? 🎯
               </h2>
-              <p className="text-gray-700 max-w-2xl mx-auto">
+              <p className="text-text max-w-2xl mx-auto">
                 This helps us personalize your learning experience!
               </p>
             </div>
@@ -470,23 +472,23 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
                     onClick={() => updateData({ focusGroup: group.id })}
                     className={`relative bg-white border-2 rounded-2xl p-8 text-center transition-all duration-300 ${
                       isSelected 
-                        ? 'border-orange-500 bg-gradient-to-br from-orange-50 to-orange-100 scale-105 shadow-xl' 
-                        : 'border-gray-200 hover:border-orange-300 hover:shadow-lg'
+                        ? 'border-primary-500 bg-gradient-to-br from-primary-50 to-primary-100 scale-105 shadow-xl' 
+                        : 'border-gray-200 hover:border-primary-300 hover:shadow-lg'
                     }`}
                   >
                     <div className={`inline-flex p-4 rounded-2xl mb-4 ${
-                      isSelected ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600'
+                      isSelected ? 'bg-primary-500 text-white' : 'bg-gray-100 text-text-muted'
                     }`}>
                       <Icon className="h-8 w-8" />
                     </div>
-                    <h3 className="text-2xl font-bold text-gray-900 mb-2">
+                    <h3 className="text-2xl font-bold text-text mb-2">
                       {group.label}
                     </h3>
-                    <p className="text-gray-600 mb-4">
+                    <p className="text-text-muted mb-4">
                       {group.description}
                     </p>
                     {isSelected && (
-                      <div className="flex items-center justify-center space-x-2 text-orange-600">
+                      <div className="flex items-center justify-center space-x-2 text-primary-600">
                         <Check className="h-6 w-6" />
                         <span className="font-semibold">Selected</span>
                       </div>
@@ -500,10 +502,10 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
 
       case 4:
         return (
-          <OnboardingGame
+          <OnboardingWelcome
+            firstName={firstName}
             learningLanguage={data.learningLanguage || 'german'}
-            focusGroup={data.focusGroup || 'travelers'}
-            onComplete={handleGameComplete}
+            onComplete={handleWelcomeComplete}
           />
         );
 
@@ -523,32 +525,50 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
       case 3:
         return !!data.focusGroup;
       case 4:
-        return gameCompleted;
+        return welcomeCompleted;
       default:
         return false;
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-orange-50">
+    <div className="min-h-screen relative" style={{ background: 'linear-gradient(135deg, #faf9ff 0%, #f5f5f5 100%)' }}>
+      {/* Animated Background - Matching Dashboard */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {/* Animated Grid Pattern */}
+        <div className="absolute inset-0 opacity-20" style={{
+          backgroundImage: `
+            linear-gradient(rgba(105, 73, 255, 0.1) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(105, 73, 255, 0.1) 1px, transparent 1px)
+          `,
+          backgroundSize: '50px 50px',
+          animation: 'grid-move 20s linear infinite'
+        }}></div>
+        
+        {/* Floating Geometric Shapes */}
+        <div className="absolute top-20 left-20 w-16 h-16 bg-primary/30 rounded-2xl rotate-45 animate-bounce-slow shadow-lg"></div>
+        <div className="absolute top-40 right-32 w-12 h-12 bg-accent/35 rounded-full animate-bounce-medium shadow-lg" style={{ animationDelay: '0.5s' }}></div>
+        <div className="absolute bottom-32 left-32 w-20 h-20 bg-primary/25 rounded-lg rotate-12 animate-bounce-slow shadow-lg" style={{ animationDelay: '1s' }}></div>
+      </div>
+
       {/* Close Confirmation Modal */}
       {showCloseConfirm && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl">
-            <h3 className="text-xl font-bold mb-4 text-gray-900">Discard Changes?</h3>
-            <p className="text-gray-700 mb-6">
+          <div className="card-glass max-w-md w-full p-6">
+            <h3 className="text-xl font-bold mb-4 text-text">Discard Changes?</h3>
+            <p className="text-text-muted mb-6">
               Are you sure you want to close without saving your changes?
             </p>
             <div className="flex space-x-4">
               <button
                 onClick={() => setShowCloseConfirm(false)}
-                className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 hover:bg-gray-300 rounded-lg transition-colors"
+                className="flex-1 px-4 py-2 bg-gray-200 text-text hover:bg-gray-300 rounded-2xl transition-colors"
               >
                 Continue Editing
               </button>
               <button
                 onClick={confirmClose}
-                className="flex-1 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
+                className="flex-1 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-2xl transition-colors"
               >
                 Discard Changes
               </button>
@@ -557,80 +577,90 @@ export default function OnboardingFlow({ user, onComplete, existingData, isEditi
         </div>
       )}
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
         {/* Close Button for Editing Mode */}
         {isEditing && (
           <button
             onClick={handleClose}
-            className="absolute top-4 right-4 w-10 h-10 bg-white rounded-full flex items-center justify-center hover:bg-gray-100 transition-all duration-200 z-10 shadow-lg"
+            className="absolute top-8 right-8 w-10 h-10 bg-white rounded-full flex items-center justify-center hover:bg-primary/10 transition-all duration-200 z-10 shadow-lg border border-gray-200"
           >
-            <X className="h-5 w-5 text-gray-600" />
+            <X className="h-5 w-5 text-text-muted" />
           </button>
         )}
 
-        {renderProgressBar()}
+        {/* Progress Bar */}
+        <div className="mb-8">
+          {renderProgressBar()}
+        </div>
         
-        <div className="min-h-[500px] flex flex-col">
-          <div className="flex-1">
-            {renderStep()}
-          </div>
-          
-          {/* Navigation */}
-          <div className="flex justify-between items-center mt-8 pt-6 border-t border-gray-200">
-            <button
-              onClick={prevStep}
-              disabled={currentStep === 0}
-              className={`flex items-center space-x-2 px-6 py-3 rounded-lg transition-all duration-200 ${
-                currentStep === 0
-                  ? 'text-gray-400 cursor-not-allowed'
-                  : 'bg-gray-200 text-gray-800 hover:bg-gray-300 hover:scale-105'
-              }`}
-            >
-              <ChevronLeft className="h-5 w-5" />
-              <span>Back</span>
-            </button>
-
-            <div className="flex items-center space-x-2">
-              <span className="text-sm text-gray-600">
-                {isEditing ? 'Editing Profile' : `Step ${currentStep + 1} of ${totalSteps}`}
-              </span>
+        {/* Main Content Card */}
+        <div className="card-glass p-8 md:p-12 min-h-[600px]">
+          <div className="flex flex-col h-full">
+            <div className="flex-1">
+              {renderStep()}
             </div>
+            
+            {/* Navigation - Hide on last step */}
+            {currentStep < totalSteps - 1 && (
+              <div className="flex flex-col space-y-4 mt-8 pt-6 border-t border-gray-200">
+                <div className="flex justify-between items-center">
+                  <button
+                    onClick={prevStep}
+                    disabled={currentStep === 0}
+                    className={`flex items-center space-x-2 px-6 py-3 rounded-2xl transition-all duration-200 ${
+                      currentStep === 0
+                        ? 'text-text-muted cursor-not-allowed opacity-50'
+                        : 'bg-white border-2 border-gray-200 text-text hover:border-primary/30 hover:shadow-md'
+                    }`}
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                    <span>Back</span>
+                  </button>
 
-            {currentStep < totalSteps - 1 ? (
-              <button
-                onClick={nextStep}
-                disabled={!canProceed()}
-                className={`flex items-center space-x-2 px-6 py-3 rounded-lg transition-all duration-200 ${
-                  canProceed()
-                    ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white hover:from-orange-600 hover:to-orange-700 shadow-lg hover:scale-105'
-                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                }`}
-              >
-                <span>Continue</span>
-                <ChevronRight className="h-5 w-5" />
-              </button>
-            ) : (
-              <button
-                onClick={completeOnboarding}
-                disabled={!canProceed() || saving}
-                className={`flex items-center space-x-2 px-8 py-3 rounded-lg transition-all duration-200 ${
-                  canProceed() && !saving
-                    ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white hover:from-orange-600 hover:to-orange-700 shadow-lg hover:scale-105'
-                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                }`}
-              >
-                {saving ? (
-                  <>
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    <span>Saving...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-5 w-5" />
-                    <span>Start Learning! 🚀</span>
-                  </>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm text-text-muted">
+                      {isEditing ? 'Editing Profile' : `Step ${currentStep + 1} of ${totalSteps}`}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={nextStep}
+                    disabled={!canProceed()}
+                    className={`btn-glossy flex items-center space-x-2 ${
+                      !canProceed() ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                  >
+                    <span>Continue</span>
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                </div>
+
+                {/* Skip Button - Footer Center */}
+                {!isEditing && (
+                  <div className="flex justify-center">
+                    <button
+                      onClick={async () => {
+                        // Save minimal data and skip onboarding
+                        const skipData: OnboardingData = {
+                          profilePictureUrl: data.profilePictureUrl,
+                          learningLanguage: data.learningLanguage || 'german',
+                          nativeLanguage: data.nativeLanguage || 'english',
+                          focusGroup: data.focusGroup || 'travelers'
+                        };
+                        const success = await saveToDatabase(skipData);
+                        if (success) {
+                          onComplete(skipData);
+                        } else {
+                          alert('There was an error skipping onboarding. Please try again.');
+                        }
+                      }}
+                      className="text-sm text-text-muted hover:text-primary transition-colors underline"
+                    >
+                      Skip onboarding
+                    </button>
+                  </div>
                 )}
-              </button>
+              </div>
             )}
           </div>
         </div>
