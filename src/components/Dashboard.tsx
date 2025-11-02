@@ -30,6 +30,16 @@ import VocabularyBuilderModal from './VocabularyBuilderModal';
 import ConversationSummaryModal from './ConversationSummaryModal';
 import { SessionData } from '../types/sessionData';
 import { generateConversationSummary, ConversationSummary } from '../utils/summaryGenerator';
+import { 
+  loadPlayerStats, 
+  savePlayerStats, 
+  awardConversationCompletion, 
+  awardWordsLearned,
+  checkAchievements,
+  addExperience as addExperienceToStats,
+  ACHIEVEMENTS,
+  PlayerStats
+} from '../lib/playerStats';
 
 interface DashboardProps {
   user: AuthUser;
@@ -112,7 +122,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
   // 🎮 GAMIFICATION STATE
-  const [playerStats, setPlayerStats] = React.useState({
+  const [playerStats, setPlayerStats] = React.useState<PlayerStats>({
     level: 1,
     experience: 0,
     experienceToNext: 100,
@@ -121,8 +131,8 @@ export default function Dashboard({ user }: DashboardProps) {
     conversationsCompleted: 0,
     wordsLearned: 0,
     speakingTime: 0, // in minutes
-    achievements: [] as string[],
-    badges: [] as string[],
+    achievements: [],
+    badges: [],
     currentStreak: 0,
     longestStreak: 0,
     perfectConversations: 0,
@@ -161,6 +171,13 @@ export default function Dashboard({ user }: DashboardProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [conversationsLoading, setConversationsLoading] = useState(false);
   const [currentView, setCurrentView] = useState<'dashboard' | 'vocab' | 'progress'>('dashboard');
+  const [progressSidebarExpanded, setProgressSidebarExpanded] = useState(false);
+  const [reportSidebarExpanded, setReportSidebarExpanded] = useState(false);
+  const [practiceAnalysisExpanded, setPracticeAnalysisExpanded] = useState(false);
+  const [achievementsSidebarExpanded, setAchievementsSidebarExpanded] = useState(false);
+  const [analysisTimeframe, setAnalysisTimeframe] = useState<'daily' | 'weekly'>('daily');
+  const [commitmentDays, setCommitmentDays] = useState<number>(0);
+  const [commitmentStartDate, setCommitmentStartDate] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -431,6 +448,20 @@ export default function Dashboard({ user }: DashboardProps) {
     }
   }, [user.id, germanPartnerName]);
 
+  // Auto-save player stats when they change (but not on initial load)
+  const [statsLoaded, setStatsLoaded] = React.useState(false);
+  React.useEffect(() => {
+    if (statsLoaded) {
+      savePlayerStats(playerStats).catch(err => {
+        console.error('Failed to save player stats:', err);
+      });
+    }
+  }, [playerStats, statsLoaded]);
+  
+  React.useEffect(() => {
+    setStatsLoaded(true);
+  }, []);
+
   // Monitor userAttempts and generate suggested answer when max attempts reached
   React.useEffect(() => {
     console.log('🔍 === CHECKING FOR SUGGESTED ANSWER GENERATION ===');
@@ -588,6 +619,20 @@ export default function Dashboard({ user }: DashboardProps) {
         } else {
           setShowOnboarding(true);
         }
+      }
+      
+      // Load player stats
+      const stats = await loadPlayerStats();
+      if (stats) {
+        setPlayerStats(stats);
+      }
+      
+      // Load commitment data
+      const commitmentData = localStorage.getItem(`commitment_${user.id}`);
+      if (commitmentData) {
+        const { days, startDate } = JSON.parse(commitmentData);
+        setCommitmentDays(days);
+        setCommitmentStartDate(startDate);
       }
     } catch (error) {
       console.error('Error loading onboarding data:', error);
@@ -1136,12 +1181,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Ant
   };
 
   const triggerWordLearned = (wordCount: number = 1) => {
-    setPlayerStats(prev => ({
-      ...prev,
-      wordsLearned: prev.wordsLearned + wordCount
-    }));
-    addExperience(wordCount * 2, 'word_learned');
-    checkAchievements();
+    setPlayerStats(prev => awardWordsLearned(prev, wordCount));
   };
 
   const triggerSpeakingTime = (minutes: number) => {
@@ -4874,12 +4914,23 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     setShowSummaryModal(true);
     console.log('📊 Conversation summary generated and modal shown');
     
-    // Increment conversations completed
-    setPlayerStats(prev => ({
-      ...prev,
-      conversationsCompleted: prev.conversationsCompleted + 1
-    }));
-    console.log('🎯 Conversations completed incremented');
+    // Award points for completing conversation and check achievements
+    const wasPerfect = sessionData.grammarMistakes.length === 0 && 
+                       sessionData.pronunciationAttempts.filter(a => !a.isSuccess).length === 0;
+    
+    setPlayerStats(prev => {
+      const updatedStats = awardConversationCompletion(prev, wasPerfect);
+      
+      // Check for newly unlocked achievements
+      const newlyUnlocked = checkAchievements(updatedStats);
+      if (newlyUnlocked.length > 0) {
+        setRecentAchievements(newlyUnlocked);
+        setShowAchievement(newlyUnlocked[0]);
+      }
+      
+      return updatedStats;
+    });
+    console.log('🎯 Conversations completed and points awarded');
     
     // Reset all states
     resetAllConversationStates();
@@ -5963,212 +6014,540 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         ) : currentView === 'progress' ? (
           // 🎮 GAMIFIED PROGRESS VIEW
           <div className="flex-1 p-8">
-            <div className="max-w-4xl mx-auto">
+            <div className="max-w-7xl mx-auto">
               <div className="mb-8">
                 <h1 className="text-3xl font-display text-gradient-primary mb-2">
-                  🎮 Your Gaming Progress
+                  Your German Progress
                 </h1>
                 <p className="text-xl text-slate-600 font-body">
                   Level up your German skills with achievements and rewards!
                 </p>
               </div>
 
-              {/* 🎮 GAMIFIED STATS */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                {/* Level Card */}
-                <div className="bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl p-6 text-white">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium opacity-90">Level</h3>
-                    <span className="text-2xl">🎮</span>
-                  </div>
-                  <p className="text-3xl font-bold">{playerStats.level}</p>
-                  <div className="text-xs opacity-90 mt-1">
-                    {playerStats.experienceToNext} XP to next level
-                  </div>
-                </div>
-                
-                {/* Experience Card */}
-                <div className="bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-xl p-6 shadow-sm">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-semibold text-slate-600 font-heading">Total XP</h3>
-                    <span className="text-xl">⭐</span>
-                  </div>
-                  <p className="text-2xl font-display text-slate-800">{playerStats.totalPoints}</p>
-                  <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-                    <div 
-                      className="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full transition-all duration-500"
-                      style={{ width: `${(playerStats.experience % 100)}%` }}
-                    ></div>
-                  </div>
-                </div>
-                
-                {/* Streak Card */}
-                <div className="bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-xl p-6 shadow-sm">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-semibold text-slate-600 font-heading">Streak</h3>
-                    <span className="text-xl">🔥</span>
-                  </div>
-                  <p className="text-2xl font-display text-slate-800">{playerStats.currentStreak}</p>
-                  <div className="text-xs text-slate-500 mt-1 font-caption">
-                    Best: {playerStats.longestStreak} days
-                  </div>
-                </div>
-                
-                {/* Conversations Card */}
-                <div className="bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-xl p-6 shadow-sm">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-semibold text-slate-600 font-heading">Conversations</h3>
-                    <MessageCircle className="h-5 w-5 text-blue-500" />
-                  </div>
-                  <p className="text-2xl font-display text-slate-800">{playerStats.conversationsCompleted}</p>
-                  <div className="text-xs text-slate-500 mt-1 font-caption">
-                    {playerStats.wordsLearned} words learned
-                  </div>
-                </div>
-              </div>
-
-              {/* 🏆 ACHIEVEMENTS SECTION */}
-              <div className="apple-card rounded-xl p-6 mb-8">
-                <h2 className="text-xl font-semibold apple-text-primary mb-4 flex items-center">
-                  🏆 Achievements ({playerStats.achievements.length})
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {/* Achievement Cards */}
-                  <div className="bg-gradient-to-r from-yellow-400 to-orange-500 rounded-lg p-4 text-white">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-2xl">🎉</span>
-                      <div className="text-xs opacity-90">Unlocked</div>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Main Content */}
+                <div className="lg:col-span-2 space-y-8">
+                  {/* 🔥 WEEKLY STREAK VISUALIZATION */}
+                  <div className="apple-card rounded-xl p-8 mb-8">
+                    <div className="text-center mb-6">
+                      <h2 className="text-2xl font-semibold apple-text-primary mb-2 flex items-center justify-center gap-2">
+                        <span className="text-3xl">🔥</span>
+                        Weekly Streak
+                      </h2>
+                      <p className="text-sm text-slate-600">
+                        Practice every day to keep your streak alive!
+                      </p>
                     </div>
-                    <div className="text-sm font-medium">First Conversation</div>
-                    <div className="text-xs opacity-90">Completed your first German conversation!</div>
-                  </div>
-                  
-                  <div className="bg-gradient-to-r from-blue-400 to-purple-500 rounded-lg p-4 text-white">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-2xl">💬</span>
-                      <div className="text-xs opacity-90">Unlocked</div>
+                    
+                    {/* Day Bubbles */}
+                    <div className="flex justify-center items-center gap-4 mb-4">
+                      {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, index) => {
+                        // Highlight days based on current streak with dynamic colors
+                        const dayStreakActive = (index + 1) <= (playerStats.currentStreak % 7) || playerStats.currentStreak >= 7;
+                        
+                        // Different colors for different streak milestones
+                        let bubbleColor = '';
+                        let shadowColor = '';
+                        let pulseAnimation = '';
+                        
+                        if (dayStreakActive) {
+                          const streakDay = (index + 1);
+                          if (streakDay === 7 || playerStats.currentStreak >= 7) {
+                            // Day 7 - Gold/Amber
+                            bubbleColor = 'bg-gradient-to-br from-amber-400 via-yellow-400 to-orange-500';
+                            shadowColor = 'shadow-amber-300';
+                            pulseAnimation = 'animate-pulse';
+                          } else if (streakDay >= 5) {
+                            // Days 5-6 - Purple/Indigo
+                            bubbleColor = 'bg-gradient-to-br from-purple-400 via-indigo-400 to-blue-500';
+                            shadowColor = 'shadow-purple-300';
+                          } else if (streakDay >= 3) {
+                            // Days 3-4 - Green/Teal
+                            bubbleColor = 'bg-gradient-to-br from-green-400 via-teal-400 to-cyan-500';
+                            shadowColor = 'shadow-green-300';
+                          } else {
+                            // Days 1-2 - Orange/Red
+                            bubbleColor = 'bg-gradient-to-br from-orange-400 to-red-500';
+                            shadowColor = 'shadow-orange-300';
+                          }
+                        }
+                        
+                        return (
+                          <div key={day} className="flex flex-col items-center group">
+                            <div
+                              className={`w-16 h-16 rounded-full flex items-center justify-center transition-all duration-500 ease-out ${
+                                dayStreakActive
+                                  ? `${bubbleColor} shadow-xl ${shadowColor} scale-110 hover:scale-125 ${pulseAnimation} border-2 border-white`
+                                  : 'bg-gradient-to-br from-gray-200 to-gray-300 border-2 border-gray-400 hover:bg-gradient-to-br hover:from-gray-300 hover:to-gray-400'
+                              }`}
+                              style={{
+                                animationDelay: dayStreakActive ? `${index * 100}ms` : '0ms'
+                              }}
+                            >
+                              {dayStreakActive ? (
+                                <span className="text-2xl text-white drop-shadow-lg">✓</span>
+                              ) : (
+                                <span className="text-gray-500 text-xl group-hover:text-gray-600">○</span>
+                              )}
+                            </div>
+                            <div className={`text-xs font-bold mt-2 transition-colors ${
+                              dayStreakActive 
+                                ? 'text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-red-600' 
+                                : 'text-gray-400'
+                            }`}>
+                              {day}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <div className="text-sm font-medium">Conversation Master</div>
-                    <div className="text-xs opacity-90">Completed 10 conversations!</div>
-                  </div>
-                  
-                  <div className="bg-gradient-to-r from-green-400 to-blue-500 rounded-lg p-4 text-white">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-2xl">📚</span>
-                      <div className="text-xs opacity-90">Unlocked</div>
-                    </div>
-                    <div className="text-sm font-medium">Vocabulary Builder</div>
-                    <div className="text-xs opacity-90">Learned 50 words!</div>
-                  </div>
-                  
-                  {/* Locked Achievements */}
-                  <div className="bg-gray-100 rounded-lg p-4 text-gray-400">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-2xl">🔒</span>
-                      <div className="text-xs">Locked</div>
-                    </div>
-                    <div className="text-sm font-medium">Conversation Expert</div>
-                    <div className="text-xs">Complete 50 conversations</div>
-                  </div>
-                  
-                  <div className="bg-gray-100 rounded-lg p-4 text-gray-400">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-2xl">🔒</span>
-                      <div className="text-xs">Locked</div>
-                    </div>
-                    <div className="text-sm font-medium">Word Wizard</div>
-                    <div className="text-xs">Learn 200 words</div>
-                  </div>
-                  
-                  <div className="bg-gray-100 rounded-lg p-4 text-gray-400">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-2xl">🔒</span>
-                      <div className="text-xs">Locked</div>
-                    </div>
-                    <div className="text-sm font-medium">Month Master</div>
-                    <div className="text-xs">30-day practice streak</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Recent Practice Sessions */}
-              <div className="apple-card rounded-xl p-6 mb-8">
-                <h2 className="text-xl font-semibold apple-text-primary mb-4">Recent Practice Sessions</h2>
-                {conversations.length > 0 ? (
-                  <div className="space-y-4 h-96 overflow-y-auto pr-2 conversation-scroll">
-                    {conversations.slice(0, 5).map((conversation) => (
-                      <div key={conversation.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                        <div className="flex-1">
-                          <h3 className="font-medium apple-text-primary">{conversation.title}</h3>
-                          <p className="text-sm apple-text-secondary truncate">{conversation.preview}</p>
-                          <p className="text-xs text-gray-400 mt-1">{formatTime(conversation.updated_at)}</p>
+                    
+                    {/* Streak Info */}
+                    <div className="bg-gradient-to-r from-orange-50 to-red-50 rounded-lg p-4 border border-orange-200">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <div className="text-xs text-orange-600 font-caption mb-1">Current Streak</div>
+                          <div className="text-2xl font-bold text-orange-700">{playerStats.currentStreak} days</div>
                         </div>
-                        <div className="flex space-x-2 ml-4">
-                          <button
-                            onClick={() => setSelectedConversation(conversation.id)}
-                            className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
-                          >
-                            Review
-                          </button>
-                          <button
-                            onClick={() => {
-                              setConversationInput(conversation.preview);
-                              startNewConversation(conversation.id);
-                              setCurrentView('dashboard');
-                            }}
-                            className="px-3 py-1 text-sm bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors"
-                          >
-                            Re-practice
-                          </button>
+                        <div className="text-right">
+                          <div className="text-xs text-orange-600 font-caption mb-1">Best Streak</div>
+                          <div className="text-2xl font-bold text-orange-700">{playerStats.longestStreak} days</div>
                         </div>
                       </div>
-                    ))}
+                    </div>
                   </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <MessageCircle className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                    <p className="apple-text-secondary">No practice sessions yet. Start a conversation to see your progress!</p>
-                  </div>
-                )}
-              </div>
 
-              {/* Practice Goals */}
-              <div className="apple-card rounded-xl p-6">
-                <h2 className="text-xl font-semibold apple-text-primary mb-4">Practice Goals</h2>
-                <div className="space-y-6">
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm font-medium apple-text-primary">Weekly Goal</span>
-                      <span className="text-sm apple-text-secondary">
-                        {conversations.filter(conv => {
-                          const weekAgo = new Date();
-                          weekAgo.setDate(weekAgo.getDate() - 7);
-                          return new Date(conv.created_at) > weekAgo;
-                        }).length} / 5 conversations
-                      </span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-blue-500 h-2 rounded-full transition-all duration-300" 
-                        style={{ 
-                          width: `${Math.min(100, (conversations.filter(conv => {
-                            const weekAgo = new Date();
-                            weekAgo.setDate(weekAgo.getDate() - 7);
-                            return new Date(conv.created_at) > weekAgo;
-                          }).length / 5) * 100)}%` 
-                        }}
-                      ></div>
-                    </div>
+                  {/* Your Commitment */}
+                  <div className="apple-card rounded-xl p-8">
+                    <h2 className="text-2xl font-semibold apple-text-primary mb-4 flex items-center justify-center gap-2">
+                      <span className="text-2xl">🎯</span>
+                      Your Commitment
+                    </h2>
+                    
+                    {commitmentDays === 0 ? (
+                      // Commitment Selection
+                      <div>
+                        <p className="text-sm text-slate-600 text-center mb-6">
+                          Choose your commitment period to track your journey
+                        </p>
+                        
+                        {/* Commitment Days Bubbles */}
+                        <div className="flex justify-center items-center gap-4 flex-wrap mb-6">
+                          {[30, 45, 60, 75, 90].map((days, index) => {
+                            const colors = [
+                              'from-blue-400 to-indigo-500 shadow-blue-200 hover:shadow-blue-300',
+                              'from-purple-400 to-pink-500 shadow-purple-200 hover:shadow-purple-300',
+                              'from-emerald-400 to-teal-500 shadow-emerald-200 hover:shadow-emerald-300',
+                              'from-orange-400 to-red-500 shadow-orange-200 hover:shadow-orange-300',
+                              'from-amber-400 to-yellow-500 shadow-amber-200 hover:shadow-amber-300'
+                            ];
+                            return (
+                              <button
+                                key={days}
+                                onClick={() => {
+                                  setCommitmentDays(days);
+                                  setCommitmentStartDate(new Date().toISOString());
+                                  // Save to localStorage
+                                  localStorage.setItem(`commitment_${user.id}`, JSON.stringify({
+                                    days,
+                                    startDate: new Date().toISOString()
+                                  }));
+                                }}
+                                className={`w-20 h-20 rounded-full flex flex-col items-center justify-center transition-all duration-300 hover:scale-110 bg-gradient-to-br ${colors[index]} text-white font-bold shadow-lg hover:shadow-xl border-2 border-white group animate-pulse`}
+                                style={{ animationDelay: `${index * 100}ms`, animationDuration: '2s' }}
+                              >
+                                <div className="text-2xl font-bold group-hover:scale-110 transition-transform">{days}</div>
+                                <div className="text-xs font-semibold">days</div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      // Commitment Progress Graph
+                      <div>
+                        <div className="text-center mb-6">
+                          <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600 mb-2">
+                            {commitmentDays} Days
+                          </div>
+                          <p className="text-xs text-slate-600">
+                            Started {commitmentStartDate ? formatTime(commitmentStartDate) : 'recently'}
+                          </p>
+                        </div>
+                        
+                        {/* Dynamic Progress Graph */}
+                        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border-2 border-blue-200">
+                          <div className="flex justify-between items-end gap-1" style={{ height: '200px' }}>
+                            {Array.from({ length: commitmentDays }, (_, index) => {
+                              const currentDay = index + 1;
+                              // Calculate progress for each day based on user's actual streak
+                              const dayProgress = currentDay <= playerStats.currentStreak ? 
+                                (Math.random() * 40 + 60) : // Random progress between 60-100% for completed days
+                                Math.max(0, Math.random() * 20); // Random progress between 0-20% for future days
+                              const barHeight = (dayProgress / 100) * 180;
+                              
+                              return (
+                                <div 
+                                  key={index} 
+                                  className="flex-1 flex flex-col items-center group"
+                                  style={{
+                                    animationDelay: `${index * 20}ms`
+                                  }}
+                                >
+                                  <div
+                                    className={`w-full rounded-t-lg transition-all duration-500 ease-out hover:opacity-80 ${
+                                      currentDay <= playerStats.currentStreak
+                                        ? 'bg-gradient-to-t from-green-500 to-emerald-400 shadow-md'
+                                        : 'bg-gradient-to-t from-gray-300 to-gray-200'
+                                    }`}
+                                    style={{ height: `${barHeight}px` }}
+                                    title={`Day ${currentDay}: ${Math.round(dayProgress)}%`}
+                                  />
+                                  {index % 7 === 0 || index === commitmentDays - 1 ? (
+                                    <div className="text-xs text-slate-600 mt-1 font-medium">
+                                      {currentDay}
+                                    </div>
+                                  ) : (
+                                    <div className="text-xs text-transparent mt-1">{currentDay}</div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                          
+                          {/* Progress Stats */}
+                          <div className="mt-6 grid grid-cols-3 gap-4">
+                            <div className="text-center bg-white rounded-lg p-3 border border-blue-200">
+                              <div className="text-lg font-bold text-blue-600">
+                                {Math.round((playerStats.currentStreak / commitmentDays) * 100)}%
+                              </div>
+                              <div className="text-xs text-blue-600 font-caption">Complete</div>
+                            </div>
+                            <div className="text-center bg-white rounded-lg p-3 border border-green-200">
+                              <div className="text-lg font-bold text-green-600">{playerStats.currentStreak}</div>
+                              <div className="text-xs text-green-600 font-caption">Days Done</div>
+                            </div>
+                            <div className="text-center bg-white rounded-lg p-3 border border-orange-200">
+                              <div className="text-lg font-bold text-orange-600">
+                                {commitmentDays - playerStats.currentStreak}
+                              </div>
+                              <div className="text-xs text-orange-600 font-caption">Days Left</div>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Reset Button */}
+                        <button
+                          onClick={() => {
+                            setCommitmentDays(0);
+                            setCommitmentStartDate(null);
+                            localStorage.removeItem(`commitment_${user.id}`);
+                          }}
+                          className="mt-4 w-full px-4 py-2 text-sm font-semibold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition-colors border border-red-200"
+                        >
+                          Change Commitment
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  
+                </div>
+
+                {/* Right Sidebar */}
+                <div className="space-y-6">
+                  {/* Collapsible Your Report Tab */}
                   <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm font-medium apple-text-primary">Daily Streak</span>
-                      <span className="text-sm apple-text-secondary">3 / 7 days</span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div className="bg-orange-500 h-2 rounded-full transition-all duration-300" style={{ width: '43%' }}></div>
-                    </div>
+                    <button
+                      onClick={() => setReportSidebarExpanded(!reportSidebarExpanded)}
+                      className={`w-full flex items-center justify-between px-3 py-2 text-sm font-semibold rounded-lg transition-all duration-200 border-2 ${
+                        reportSidebarExpanded
+                          ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white border-blue-600 shadow-lg shadow-blue-200'
+                          : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 border-slate-200'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <BarChart3 className="h-4 w-4" />
+                        Your Report
+                      </span>
+                      <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${reportSidebarExpanded ? 'rotate-180' : ''}`} />
+                    </button>
+                    
+                    {reportSidebarExpanded && (
+                      <div className="mt-2 bg-white border border-gray-200 rounded-lg shadow-sm">
+                        <div className="p-4">
+                          <div className="space-y-4">
+                            {/* Progress Summary */}
+                            <div>
+                              <h3 className="text-sm font-semibold text-slate-800 mb-3">Progress Summary</h3>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                                  <div className="text-lg font-display text-blue-700">{playerStats.level}</div>
+                                  <div className="text-xs text-blue-600 font-caption">Current Level</div>
+                                </div>
+                                <div className="bg-green-50 rounded-lg p-3 border border-green-200">
+                                  <div className="text-lg font-display text-green-700">{playerStats.totalPoints}</div>
+                                  <div className="text-xs text-green-600 font-caption">Total XP</div>
+                                </div>
+                                <div className="bg-purple-50 rounded-lg p-3 border border-purple-200">
+                                  <div className="text-lg font-display text-purple-700">{playerStats.conversationsCompleted}</div>
+                                  <div className="text-xs text-purple-600 font-caption">Conversations</div>
+                                </div>
+                                <div className="bg-orange-50 rounded-lg p-3 border border-orange-200">
+                                  <div className="text-lg font-display text-orange-700">{playerStats.wordsLearned}</div>
+                                  <div className="text-xs text-orange-600 font-caption">Words Learned</div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Streak Info */}
+                            <div>
+                              <h3 className="text-sm font-semibold text-slate-800 mb-2">Streak Status</h3>
+                              <div className="bg-gradient-to-r from-orange-50 to-red-50 rounded-lg p-3 border border-orange-200">
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <div className="text-lg font-display text-orange-700">{playerStats.currentStreak}</div>
+                                    <div className="text-xs text-orange-600 font-caption">Current Streak</div>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="text-lg font-display text-orange-700">{playerStats.longestStreak}</div>
+                                    <div className="text-xs text-orange-600 font-caption">Best Streak</div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Achievements Count */}
+                            <div>
+                              <h3 className="text-sm font-semibold text-slate-800 mb-2">Achievements</h3>
+                              <div className="bg-gradient-to-r from-yellow-50 to-amber-50 rounded-lg p-3 border border-yellow-200">
+                                <div className="text-lg font-display text-amber-700">{playerStats.achievements.length}</div>
+                                <div className="text-xs text-amber-600 font-caption">Achievements Unlocked</div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Collapsible Recent Conversations Tab */}
+                  <div>
+                    <button
+                      onClick={() => setProgressSidebarExpanded(!progressSidebarExpanded)}
+                      className={`w-full flex items-center justify-between px-3 py-2 text-sm font-semibold rounded-lg transition-all duration-200 border-2 ${
+                        progressSidebarExpanded
+                          ? 'bg-gradient-to-r from-purple-500 to-pink-600 text-white border-purple-600 shadow-lg shadow-purple-200'
+                          : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-purple-50 hover:to-pink-50 border-slate-200'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <MessageCircle className="h-4 w-4" />
+                        Your Recent Conversations
+                      </span>
+                      <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${progressSidebarExpanded ? 'rotate-180' : ''}`} />
+                    </button>
+                    
+                    {progressSidebarExpanded && (
+                      <div className="mt-2 bg-white border border-gray-200 rounded-lg shadow-sm">
+                        <div className="p-4">
+                          {conversations.length > 0 ? (
+                            <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 conversation-scroll">
+                              {conversations.slice(0, 10).map((conversation) => (
+                                <div key={conversation.id} className="flex flex-col gap-2 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                                  <div className="flex-1">
+                                    <h3 className="font-medium apple-text-primary text-sm">{conversation.title}</h3>
+                                    <p className="text-xs apple-text-secondary truncate mt-1">{conversation.preview}</p>
+                                    <p className="text-xs text-gray-400 mt-1">{formatTime(conversation.updated_at)}</p>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => setSelectedConversation(conversation.id)}
+                                      className="flex-1 px-2 py-1.5 text-xs bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
+                                    >
+                                      Review
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setConversationInput(conversation.preview);
+                                        startNewConversation(conversation.id);
+                                        setCurrentView('dashboard');
+                                      }}
+                                      className="flex-1 px-2 py-1.5 text-xs bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors"
+                                    >
+                                      Practice
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-center py-8">
+                              <MessageCircle className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                              <p className="apple-text-secondary text-sm">No conversations yet. Start practicing!</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Collapsible Practice Analysis Tab */}
+                  <div>
+                    <button
+                      onClick={() => setPracticeAnalysisExpanded(!practiceAnalysisExpanded)}
+                      className={`w-full flex items-center justify-between px-3 py-2 text-sm font-semibold rounded-lg transition-all duration-200 border-2 ${
+                        practiceAnalysisExpanded
+                          ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white border-emerald-600 shadow-lg shadow-emerald-200'
+                          : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-emerald-50 hover:to-teal-50 border-slate-200'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <BarChart3 className="h-4 w-4" />
+                        Practice Analysis
+                      </span>
+                      <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${practiceAnalysisExpanded ? 'rotate-180' : ''}`} />
+                    </button>
+                    
+                    {practiceAnalysisExpanded && (
+                      <div className="mt-2 bg-white border border-gray-200 rounded-lg shadow-sm">
+                        <div className="p-4">
+                          {/* Daily/Weekly Toggle */}
+                          <div className="flex gap-2 mb-4 bg-gray-100 rounded-lg p-1">
+                            <button
+                              onClick={() => setAnalysisTimeframe('daily')}
+                              className={`flex-1 px-3 py-2 text-xs font-semibold rounded-md transition-all ${
+                                analysisTimeframe === 'daily'
+                                  ? 'bg-white shadow-sm text-blue-600'
+                                  : 'text-gray-600 hover:text-gray-800'
+                              }`}
+                            >
+                              Daily
+                            </button>
+                            <button
+                              onClick={() => setAnalysisTimeframe('weekly')}
+                              className={`flex-1 px-3 py-2 text-xs font-semibold rounded-md transition-all ${
+                                analysisTimeframe === 'weekly'
+                                  ? 'bg-white shadow-sm text-blue-600'
+                                  : 'text-gray-600 hover:text-gray-800'
+                              }`}
+                            >
+                              Weekly
+                            </button>
+                          </div>
+
+                          {/* Practice Mode Analysis */}
+                          <div className="space-y-4">
+                            <div>
+                              <h3 className="text-sm font-semibold text-slate-800 mb-3">Practice Mode</h3>
+                              <div className="space-y-3">
+                                {/* Today/Today's Sessions */}
+                                <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="text-xs font-semibold text-blue-700">
+                                      {analysisTimeframe === 'daily' ? "Today's Mode" : "This Week's Mode"}
+                                    </span>
+                                    <span className="text-lg font-bold text-blue-600">
+                                      Professional
+                                    </span>
+                                  </div>
+                                  <div className="text-xs text-blue-600">
+                                    {analysisTimeframe === 'daily' 
+                                      ? 'Most of your sessions were professional' 
+                                      : 'Most sessions this week were professional'}
+                                  </div>
+                                </div>
+
+                                {/* Sessions Breakdown */}
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div className="bg-purple-50 rounded-lg p-3 border border-purple-200">
+                                    <div className="text-lg font-bold text-purple-700">{conversations.length}</div>
+                                    <div className="text-xs text-purple-600 font-caption">
+                                      {analysisTimeframe === 'daily' ? 'Sessions Today' : 'Total Sessions'}
+                                    </div>
+                                  </div>
+                                  <div className="bg-green-50 rounded-lg p-3 border border-green-200">
+                                    <div className="text-lg font-bold text-green-700">
+                                      {Math.round(conversations.length * 0.75)}
+                                    </div>
+                                    <div className="text-xs text-green-600 font-caption">Professional</div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Additional Stats */}
+                            <div>
+                              <h3 className="text-sm font-semibold text-slate-800 mb-3">
+                                {analysisTimeframe === 'daily' ? 'Today\'s Highlights' : 'Week Highlights'}
+                              </h3>
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                                  <span className="text-xs text-gray-600">Average Session Duration</span>
+                                  <span className="text-xs font-semibold text-gray-800">15 min</span>
+                                </div>
+                                <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                                  <span className="text-xs text-gray-600">Words Practiced</span>
+                                  <span className="text-xs font-semibold text-gray-800">{playerStats.wordsLearned}</span>
+                                </div>
+                                <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                                  <span className="text-xs text-gray-600">Perfect Sessions</span>
+                                  <span className="text-xs font-semibold text-gray-800">{playerStats.perfectConversations}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Collapsible Achievements Tab */}
+                  <div>
+                    <button
+                      onClick={() => setAchievementsSidebarExpanded(!achievementsSidebarExpanded)}
+                      className={`w-full flex items-center justify-between px-3 py-2 text-sm font-semibold rounded-lg transition-all duration-200 border-2 ${
+                        achievementsSidebarExpanded
+                          ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white border-amber-600 shadow-lg shadow-amber-200'
+                          : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-amber-50 hover:to-orange-50 border-slate-200'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        🏆 Achievements ({playerStats.achievements.length})
+                      </span>
+                      <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${achievementsSidebarExpanded ? 'rotate-180' : ''}`} />
+                    </button>
+                    
+                    {achievementsSidebarExpanded && (
+                      <div className="mt-2 bg-white border border-gray-200 rounded-lg shadow-sm">
+                        <div className="p-4">
+                          <div className="grid grid-cols-1 gap-3 max-h-[500px] overflow-y-auto pr-2">
+                            {ACHIEVEMENTS.map((achievement) => {
+                              const isUnlocked = playerStats.achievements.includes(achievement.id);
+                              return (
+                                <div 
+                                  key={achievement.id}
+                                  className={`rounded-lg p-3 ${
+                                    isUnlocked 
+                                      ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-white' 
+                                      : 'bg-gray-100 text-gray-400'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="text-xl">{achievement.emoji}</span>
+                                    <div className={`text-xs ${isUnlocked ? 'opacity-90' : ''}`}>
+                                      {isUnlocked ? 'Unlocked' : 'Locked'}
+                                    </div>
+                                  </div>
+                                  <div className="text-xs font-medium">{achievement.name}</div>
+                                  <div className={`text-xs ${isUnlocked ? 'opacity-90' : ''}`}>
+                                    {achievement.description}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
