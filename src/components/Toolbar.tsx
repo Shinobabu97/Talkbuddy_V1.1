@@ -354,6 +354,7 @@ interface ToolbarProps {
   onWordLearned?: (word?: string) => void;
   lastGermanVoiceMessage?: any;
   onPronunciationComplete?: (score: number, word: string) => void;
+  pendingPronunciationAnalysis?: { audioBlob: Blob, text: string, responseId: string } | null;
 }
 
 interface VocabItem {
@@ -427,7 +428,8 @@ export default function Toolbar({
   onAddExperience,
   onWordLearned,
   lastGermanVoiceMessage,
-  onPronunciationComplete
+  onPronunciationComplete,
+  pendingPronunciationAnalysis
 }: ToolbarProps) {
   const [internalActiveTab, setInternalActiveTab] = useState<'vocab' | 'explain' | 'pronunciation'>('explain');
   
@@ -915,6 +917,66 @@ export default function Toolbar({
   };
 
   const analyzePronunciation = async () => {
+    console.log('🎤 === ANALYZING PRONUNCIATION ===');
+    
+    // Check for pending analysis first (from suggested responses)
+    if (pendingPronunciationAnalysis) {
+      console.log('📊 Using pending pronunciation analysis:', pendingPronunciationAnalysis.text);
+      setIsAnalyzingPronunciation(true);
+      
+      try {
+        // Convert blob to base64
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+          try {
+            const base64Audio = (reader.result as string).split(',')[1];
+            
+            const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pronunciation-analysis`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                audioData: base64Audio,
+                transcription: pendingPronunciationAnalysis.text,
+                language: 'de',
+                post_id: pendingPronunciationAnalysis.responseId
+              })
+            });
+
+            if (!response.ok) {
+              const errorText = await response.text();
+              throw new Error(`Pronunciation analysis failed: ${response.status} - ${errorText}`);
+            }
+
+            const data = await response.json();
+            console.log('✅ Pronunciation analysis completed:', data);
+            
+            setPronunciationAnalysis(data);
+          } catch (error) {
+            console.error('❌ Error in pronunciation analysis:', error);
+            alert(`Pronunciation analysis failed: ${(error as Error).message}`);
+          } finally {
+            setIsAnalyzingPronunciation(false);
+          }
+        };
+        
+        reader.onerror = () => {
+          console.error('❌ Error reading audio blob');
+          setIsAnalyzingPronunciation(false);
+          alert('Failed to read audio file.');
+        };
+        
+        reader.readAsDataURL(pendingPronunciationAnalysis.audioBlob);
+      } catch (error) {
+        console.error('❌ Error starting pronunciation analysis:', error);
+        setIsAnalyzingPronunciation(false);
+      }
+      return;
+    }
+
+    // Fallback to old behavior (lastGermanVoiceMessage)
     if (!lastGermanVoiceMessage) {
       console.log('No German voice message available for pronunciation analysis');
       alert('No German voice message available. Please record a German voice message first.');
@@ -965,7 +1027,9 @@ export default function Toolbar({
         },
         body: JSON.stringify({
           audioData: lastGermanVoiceMessage.audioData,
-          transcription: transcription
+          transcription: transcription,
+          language: 'de',
+          post_id: lastGermanVoiceMessage.messageId || `voice_${Date.now()}`
         })
       });
 
@@ -3096,25 +3160,15 @@ export default function Toolbar({
             {/* Pronunciation Analysis Section */}
             <div className="bg-primary-50 border border-primary-200 rounded-lg p-4">
               <h4 className="font-semibold text-text900 mb-3">Analyze Your Pronunciation</h4>
-              <p className="text-sm text-text700 mb-4">
-                Analyze the pronunciation of your most recent German voice message
-              </p>
               
-              {!lastGermanVoiceMessage ? (
-                <div className="text-center py-4">
-                  <Volume2 className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-600">
-                    Send a German voice message to analyze pronunciation
-                  </p>
-                </div>
-              ) : (
+              {/* Show pending analysis if available */}
+              {pendingPronunciationAnalysis ? (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-gray-700">Last German Message:</p>
-                      <p className="text-sm text-gray-600">"{lastGermanVoiceMessage.transcription}"</p>
+                      <p className="text-sm font-medium text-gray-700">Sentence to Analyze:</p>
+                      <p className="text-sm text-gray-600">"{pendingPronunciationAnalysis.text}"</p>
                     </div>
-                    <div className="flex space-x-2">
                     <button
                       onClick={analyzePronunciation}
                       disabled={isAnalyzingPronunciation}
@@ -3132,601 +3186,66 @@ export default function Toolbar({
                         </>
                       )}
                     </button>
-                      
-                    </div>
                   </div>
-                  
-                  {pronunciationAnalysis && (
-                    <div className="mt-4">
-                      <PronunciationSentenceView
-                        pronunciationData={pronunciationAnalysis}
-                        sentence={lastGermanVoiceMessage.transcription}
-                        onRepracticeWord={(word) => {
-                          console.log('Repractice word:', word);
-                          startWordRecording(word);
-                        }}
-                        onRepracticeSentence={() => {
-                          console.log('Repractice sentence');
-                          if (isRecordingSentence) {
-                            stopSentenceRecording();
-                          } else {
-                            startSentenceRecording();
-                          }
-                        }}
-                        onPlayCorrectPronunciation={() => {
-                          console.log('Play correct pronunciation');
-                          germanTTS.speak(lastGermanVoiceMessage.transcription);
-                        }}
-                        isRecordingWord={isRecordingWord}
-                        practicingWord={practicingWord}
-                        onStopWordRecording={stopWordRecording}
-                        isRecordingSentence={isRecordingSentence}
-                      />
+                </div>
+              ) : !lastGermanVoiceMessage ? (
+                <div className="text-center py-4">
+                  <Volume2 className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                  <p className="text-sm text-gray-600">
+                    Practice a suggested response or send a German voice message to analyze pronunciation
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">Last German Message:</p>
+                      <p className="text-sm text-gray-600">"{lastGermanVoiceMessage.transcription}"</p>
                     </div>
-                  )}
+                    <button
+                      onClick={analyzePronunciation}
+                      disabled={isAnalyzingPronunciation}
+                      className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:bg-primary-300"
+                    >
+                      {isAnalyzingPronunciation ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Analyzing...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Volume2 className="h-4 w-4" />
+                          <span>Analyze Pronunciation</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              {/* Show results if analysis is complete */}
+              {pronunciationAnalysis && (
+                <div className="mt-4">
+                  <PronunciationSentenceView
+                    pronunciationData={pronunciationAnalysis}
+                    sentence={pendingPronunciationAnalysis?.text || lastGermanVoiceMessage?.transcription || ''}
+                    onRepracticeWord={(word) => {
+                      console.log('Repractice word:', word);
+                    }}
+                    onRepracticeSentence={() => {
+                      console.log('Repractice sentence');
+                    }}
+                    onPlayCorrectPronunciation={() => {
+                      const text = pendingPronunciationAnalysis?.text || lastGermanVoiceMessage?.transcription || '';
+                      germanTTS.speak(text);
+                    }}
+                  />
                 </div>
               )}
             </div>
-
-            {(() => {
-              // Check if there are any phonetic breakdowns available
-              const hasPhoneticData = Object.keys(phoneticBreakdowns).some(id => 
-                phoneticBreakdowns[id] && phoneticBreakdowns[id].length > 0
-              );
-              
-              if (!hasPhoneticData) {
-                return (
-                  <div className="text-center py-8">
-                    <Volume2 className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                    <p className="text-sm text-gray-600">
-                      Pronunciation practice will be available when the AI sends a message
-                    </p>
-                  </div>
-                );
-              }
-              
-              return (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-semibold text-gray-900 text-base">Pronunciation Practice</h4>
-                  
-                  {/* Gamification Display */}
-                  <div className="flex items-center space-x-4">
-                    {/* Level and Points */}
-                    <div className="flex items-center space-x-2">
-                      <div className="text-right">
-                        <div className="text-xs text-gray-500">Level {userLevel}</div>
-                        <div className="text-sm font-semibold text-text600">{userPoints} pts</div>
-                      </div>
-                      <div className="w-8 h-8 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center">
-                        <span className="text-white font-bold text-sm">{userLevel}</span>
-                      </div>
-                    </div>
-                    
-                    {/* Level Progress Bar */}
-                    <div className="w-20">
-                      <div className="text-xs text-gray-500 mb-1">Progress</div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div 
-                          className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-500"
-                          style={{ width: `${getLevelProgress().progressPercentage}%` }}
-                        ></div>
-                      </div>
-                      <div className="text-xs text-gray-400 mt-1">
-                        {getLevelProgress().pointsToNextLevel} to next level
-                      </div>
-                    </div>
-                    
-                    {/* Streak Display */}
-                    <div className="flex items-center space-x-2">
-                      <div className="text-right">
-                        <div className="text-xs text-gray-500">Streak</div>
-                        <div className="text-sm font-bold text-orange-600">{currentStreak} 🔥</div>
-                      </div>
-                      {longestStreak > currentStreak && (
-                        <div className="text-right">
-                          <div className="text-xs text-gray-500">Best</div>
-                          <div className="text-sm font-semibold text-purple-600">{longestStreak} 👑</div>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Recent Points Animation */}
-                    {recentPointsEarned > 0 && (
-                      <div className="animate-bounce">
-                        <div className="bg-green-500 text-white px-2 py-1 rounded-full text-xs font-bold">
-                          +{recentPointsEarned} ⭐
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Progress Tracker Button */}
-                    <button
-                      onClick={() => setShowProgressModal(true)}
-                      className="flex items-center space-x-1 px-3 py-1 bg-gradient-to-r from-green-500 to-blue-500 text-white rounded-lg hover:from-green-600 hover:to-blue-600 transition-all duration-200"
-                    >
-                      <TrendingUp className="h-4 w-4" />
-                      <span className="text-xs font-medium">Progress</span>
-                    </button>
-                    
-                    {/* Difficult Words Library Button */}
-                    <button
-                      onClick={() => setShowDifficultWordsModal(true)}
-                      className="flex items-center space-x-1 px-3 py-1 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg hover:from-orange-600 hover:to-red-600 transition-all duration-200"
-                    >
-                      <BookOpen className="h-4 w-4" />
-                      <span className="text-xs font-medium">Library</span>
-                      {difficultWords.length > 0 && (
-                        <span className="bg-white text-orange-600 text-xs px-1 rounded-full ml-1">
-                          {difficultWords.length}
-                        </span>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Sentence-Level Practice and Analysis */}
-                <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-4 border border-purple-200">
-                  <h5 className="text-sm font-semibold text-purple-900 mb-3 flex items-center">
-                    <Target className="h-4 w-4 mr-2" />
-                    Sentence-Level Practice
-                  </h5>
-                  <div className="flex items-center space-x-3">
-                    {!isSentenceRecording ? (
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          console.log('🎤 Starting sentence practice for:', currentMessage);
-                          startSentencePractice();
-                        }}
-                        className="flex items-center space-x-2 px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 cursor-pointer"
-                        style={{ pointerEvents: 'auto' }}
-                      >
-                        <Mic className="h-4 w-4" />
-                        <span>Practice Sentence</span>
-                      </button>
-                    ) : (
-                      <div className="flex items-center space-x-3">
-                        <div className="flex items-center space-x-2 px-4 py-2 bg-red-100 text-red-800 rounded-lg">
-                          <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                          <span className="text-sm font-medium">Recording Sentence...</span>
-                    </div>
-                      <button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            console.log('🛑 Stop sentence recording clicked');
-                            // Stop recording functionality removed
-                          }}
-                          className="flex items-center space-x-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 cursor-pointer"
-                          style={{ pointerEvents: 'auto' }}
-                        >
-                          <MicOff className="h-4 w-4" />
-                          <span>Stop Recording</span>
-                      </button>
-                    </div>
-                    )}
-                    
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        console.log('🔍 Sentence analysis button clicked');
-                        analyzeSentence();
-                      }}
-                      disabled={!sentenceAnalysisComplete || isAnalyzing || sentenceAnalyzed}
-                      className={`flex items-center space-x-2 px-4 py-2 rounded-lg cursor-pointer ${
-                        !sentenceAnalysisComplete || sentenceAnalyzed
-                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                          : isAnalyzing
-                          ? 'bg-primary-300 text-text700 cursor-not-allowed'
-                          : 'btn-glossy hover:bg-primary-600'
-                      }`}
-                      style={{ pointerEvents: sentenceAnalysisComplete && !sentenceAnalyzed ? 'auto' : 'none' }}
-                    >
-                      {isAnalyzing ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Target className="h-4 w-4" />
-                      )}
-                      <span>
-                        {!sentenceAnalysisComplete ? 'Record First' : 
-                         sentenceAnalyzed ? 'Analyzed' :
-                         isAnalyzing ? 'Analyzing...' : 'Analyze Sentence'}
-                      </span>
-                    </button>
-                </div>
-
-                  {/* Sentence Analysis Results */}
-                  {sentenceAnalysis && (
-                    <div className="mt-4 p-3 bg-white rounded-lg border border-purple-200">
-                      <h6 className="text-sm font-semibold text-purple-700 mb-3">Sentence Analysis Results</h6>
-                      
-                      {/* Individual Word Analysis First */}
-                      {sentenceAnalysis.wordScores && sentenceAnalysis.wordScores.length > 0 && (
-                        <div className="mb-4">
-                          <h6 className="text-sm font-medium text-gray-700 mb-2">Individual Word Analysis:</h6>
-                          <div className="space-y-2">
-                            {sentenceAnalysis.wordScores.map((wordScore, index) => (
-                              <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                                <div className="flex-1">
-                                  <span className="text-sm font-medium text-gray-800">{wordScore.word}</span>
-                                  <div className="flex items-center space-x-2 mt-1">
-                                    <span className="text-xs text-gray-600">Accuracy:</span>
-                                    {sentenceAnalysis.feedback === 'Analysis in progress... Please wait for results.' ? (
-                                      <div className="px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-600">
-                                        Will be displayed
-                                      </div>
-                                    ) : sentenceAnalysis.feedback.includes('Analysis cannot be done') || 
-                                         sentenceAnalysis.feedback.includes('no sentence or words being spoken') ||
-                                         sentenceAnalysis.feedback.includes('incorrect/irrelevant words have been spoken') ? (
-                                      <div className="px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-800">
-                                        No analysis
-                                      </div>
-                                    ) : (
-                                      <div className={`px-2 py-1 rounded text-xs font-medium ${
-                                        wordScore.score >= 90 ? 'bg-green-100 text-green-800' :
-                                        wordScore.score >= 70 ? 'bg-yellow-100 text-yellow-800' :
-                                        'bg-red-100 text-red-800'
-                                      }`}>
-                                        {wordScore.score}/100
-                                      </div>
-                                    )}
-                                  </div>
-                                  <p className="text-xs text-gray-600 mt-1">{wordScore.feedback}</p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* Overall Sentence Analysis */}
-                      <div className="border-t pt-3">
-                        <h6 className="text-sm font-medium text-gray-700 mb-2">Overall Sentence Analysis:</h6>
-                        <div className="space-y-3">
-                          {/* 1. Accuracy Rating with RAG Status Background */}
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-gray-600">Overall Accuracy Rating:</span>
-                            {sentenceAnalysis.feedback === 'Analysis in progress... Please wait for results.' ? (
-                              <div className="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600">
-                                Will be displayed once analysis is completed
-                              </div>
-                            ) : sentenceAnalysis.feedback.includes('Analysis cannot be done') || 
-                                 sentenceAnalysis.feedback.includes('no sentence or words being spoken') ||
-                                 sentenceAnalysis.feedback.includes('incorrect/irrelevant words have been spoken') ||
-                                 sentenceAnalysis.feedback.includes('detected mostly different words') ? (
-                              <div className="px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
-                                No analysis available
-                              </div>
-                            ) : (
-                        <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-                          sentenceAnalysis.overallScore >= 90 ? 'bg-green-100 text-green-800' :
-                          sentenceAnalysis.overallScore >= 70 ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-red-100 text-red-800'
-                        }`}>
-                          {sentenceAnalysis.overallScore}/100
-                    </div>
-                            )}
-                  </div>
-                          
-                          {/* 2. Overall Feedback */}
-                          <div>
-                            <span className="text-sm font-medium text-gray-600">Overall Feedback:</span>
-                            <p className="text-sm text-gray-700 mt-1">{sentenceAnalysis.feedback}</p>
-                      </div>
-                    </div>
-                  </div>
-                  </div>
-                )}
-                        </div>
-                        
-                {/* Word-Level Practice and Analysis */}
-                <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-xl p-4 border border-green-200">
-                  <h5 className="text-sm font-semibold text-green-900 mb-3 flex items-center">
-                    <Mic className="h-4 w-4 mr-2" />
-                    Word-Level Practice
-                  </h5>
-                  
-                  {/* Word Breakdown Display */}
-                  {(() => {
-                    // Get phonetic breakdown for current message using currentMessageId
-                    const words = currentMessageId && phoneticBreakdowns[currentMessageId] 
-                      ? phoneticBreakdowns[currentMessageId] 
-                      : [];
-                  
-                  if (words.length === 0) {
-                    return (
-                      <div className="text-center py-8">
-                        <Volume2 className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                        <p className="text-sm text-gray-600">
-                          Click "Get pronunciation guide" in the chat to load word breakdown
-                        </p>
-                            </div>
-                    );
-                  }
-
-                  return (
-                    <div className="space-y-4">
-                      <h5 className="text-sm font-semibold text-gray-700">Word Breakdown</h5>
-                      <div className="space-y-3">
-                        {words.map((word, index) => {
-                          console.log('🎯 Rendering WordPracticeCard for word:', word.original);
-                          console.log('🎯 individualWordAnalysis[word.original]:', individualWordAnalysis[word.original]);
-                          console.log('🎯 wordsAnalyzed.has(word.original):', wordsAnalyzed.has(word.original));
-                          console.log('🎯 wordsRecordingCompleted.has(word.original):', wordsRecordingCompleted.has(word.original));
-                          console.log('🎯 analyzingWord:', analyzingWord);
-                          
-                          return (
-                          <WordPracticeCard 
-                            key={index}
-                            word={word}
-                            onPlayAudio={onPlayWordAudio}
-                            globalSpeed={globalPlaybackSpeed}
-                            onSpeedChange={onSpeedChange}
-                            onPractice={practiceWord}
-                            isRecording={isWordRecording && practicingWord === word.original}
-                            onStartRecording={startRecording}
-                            onStopRecording={stopRecording}
-                            pronunciationScore={individualWordAnalysis[word.original]?.score || 0}
-                            onAnalyzeWord={analyzeIndividualWord}
-                            isAnalyzing={analyzingWord === word.original}
-                            wordAnalysis={individualWordAnalysis[word.original]}
-                            isReadyForAnalysis={wordsAnalysisComplete.has(word.original)}
-                            hasBeenAnalyzed={wordsAnalyzed.has(word.original)}
-                            onSaveToDifficult={(word) => {
-                              const phoneticData = phoneticBreakdowns[currentMessage || '']?.find((w: any) => w.original === word);
-                              if (phoneticData) {
-                                addToDifficultWords(word, individualWordAnalysis[word]?.score || 0, phoneticData.phonetic, phoneticData.transliteration);
-                              }
-                            }}
-                            isInDifficultWords={difficultWords.some((w: any) => w.word === word.original)}
-                            onAddExperience={onAddExperience}
-                          />
-                          );
-                        })}
-                              </div>
-                            </div>
-                  );
-                })()}
-
-                {/* Note: Individual word analysis is now displayed within each WordPracticeCard above */}
-                                  </div>
-                            </div>
-              );
-            })()}
-            
-            {/* Progress Modal */}
-            {showProgressModal && (
-              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                <div className="bg-white rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900">Your Progress</h3>
-                    <button
-                      onClick={() => setShowProgressModal(false)}
-                      className="text-gray-400 hover:text-gray-600"
-                    >
-                      <X className="h-6 w-6" />
-                    </button>
-                  </div>
-                  
-                  {(() => {
-                    const stats = getProgressStats();
-                    return (
-                      <div className="space-y-6">
-                        {/* Overall Stats */}
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="bg-primary-50 rounded-lg p-4">
-                            <div className="text-2xl font-bold text-text600">{stats.totalWords}</div>
-                            <div className="text-sm text-text800">Words Practiced</div>
-                          </div>
-                          <div className="bg-green-50 rounded-lg p-4">
-                            <div className="text-2xl font-bold text-green-600">{stats.totalSessions}</div>
-                            <div className="text-sm text-green-800">Practice Sessions</div>
-                          </div>
-                          <div className="bg-purple-50 rounded-lg p-4">
-                            <div className="text-2xl font-bold text-purple-600">{stats.avgScore}%</div>
-                            <div className="text-sm text-purple-800">Average Score</div>
-                          </div>
-                          <div className="bg-orange-50 rounded-lg p-4">
-                            <div className="text-2xl font-bold text-orange-600">{stats.streak}</div>
-                            <div className="text-sm text-orange-800">Day Streak</div>
-                          </div>
-                        </div>
-                        
-                        {/* Weekly Stats */}
-                        <div className="bg-gray-50 rounded-lg p-4">
-                          <h4 className="font-semibold text-gray-800 mb-3">This Week</h4>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <div className="text-lg font-bold text-gray-700">{stats.weeklyWords}</div>
-                              <div className="text-sm text-gray-600">Words This Week</div>
-                            </div>
-                            <div>
-                              <div className="text-lg font-bold text-gray-700">{stats.weeklySessions}</div>
-                              <div className="text-sm text-gray-600">Sessions This Week</div>
-                            </div>
-                          </div>
-                        </div>
-                        
-                        {/* Recent Activity */}
-                        {progressHistory.length > 0 && (
-                          <div>
-                            <h4 className="font-semibold text-gray-800 mb-3">Recent Activity</h4>
-                            <div className="space-y-2 max-h-40 overflow-y-auto">
-                              {progressHistory.slice(-7).reverse().map((day: any, index: number) => (
-                                <div key={index} className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
-                                  <div>
-                                    <div className="font-medium text-gray-800">{day.date}</div>
-                                    <div className="text-sm text-gray-600">{day.wordsPracticed} words, {day.totalSessions} sessions</div>
-                                  </div>
-                                  <div className="text-right">
-                                    <div className="font-bold text-text600">{day.averageScore}%</div>
-                                    <div className="text-sm text-green-600">+{day.pointsEarned} pts</div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        
-                        {/* Daily Badges */}
-                        {dailyBadges.length > 0 && (
-                          <div>
-                            <h4 className="font-semibold text-gray-800 mb-3">Recent Badges</h4>
-                            <div className="grid grid-cols-2 gap-2">
-                              {dailyBadges.slice(-6).reverse().map((badge: any, index: number) => (
-                                <div key={index} className={`p-3 rounded-lg border-2 ${
-                                  badge.color === 'gold' ? 'bg-yellow-50 border-yellow-200' :
-                                  badge.color === 'silver' ? 'bg-gray-50 border-gray-200' :
-                                  badge.color === 'bronze' ? 'bg-orange-50 border-orange-200' :
-                                  'bg-primary-50 border-primary-200'
-                                }`}>
-                                  <div className="flex items-center space-x-2">
-                                    <span className="text-lg">{badge.icon}</span>
-                                    <div>
-                                      <div className="font-semibold text-sm">{badge.type}</div>
-                                      <div className="text-xs text-gray-600">{badge.date}</div>
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        
-                        {/* Streak Milestones */}
-                        {getStreakMilestones().length > 0 && (
-                          <div>
-                            <h4 className="font-semibold text-gray-800 mb-3">Streak Achievements</h4>
-                            <div className="space-y-2">
-                              {getStreakMilestones().map((milestone, index) => (
-                                <div key={index} className="flex items-center space-x-3 bg-gradient-to-r from-orange-50 to-red-50 rounded-lg p-3 border border-orange-200">
-                                  <span className="text-2xl">{milestone.badge}</span>
-                                  <div>
-                                    <div className="font-semibold text-orange-800">{milestone.name}</div>
-                                    <div className="text-sm text-orange-600">{milestone.days} days streak</div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-            )}
-            
-            {/* Difficult Words Library Modal */}
-            {showDifficultWordsModal && (
-              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                <div className="bg-white rounded-xl p-6 max-w-4xl w-full mx-4 max-h-[80vh] overflow-y-auto">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900">Difficult Words Library</h3>
-                    <button
-                      onClick={() => setShowDifficultWordsModal(false)}
-                      className="text-gray-400 hover:text-gray-600"
-                    >
-                      <X className="h-6 w-6" />
-                    </button>
-                  </div>
-                  
-                  {(() => {
-                    const stats = getDifficultWordsStats();
-                    return (
-                      <div className="space-y-6">
-                        {/* Library Stats */}
-                        <div className="grid grid-cols-3 gap-4">
-                          <div className="bg-orange-50 rounded-lg p-4">
-                            <div className="text-2xl font-bold text-orange-600">{stats.totalWords}</div>
-                            <div className="text-sm text-orange-800">Difficult Words</div>
-                          </div>
-                          <div className="bg-red-50 rounded-lg p-4">
-                            <div className="text-2xl font-bold text-red-600">{stats.avgScore}%</div>
-                            <div className="text-sm text-red-800">Average Score</div>
-                          </div>
-                          <div className="bg-green-50 rounded-lg p-4">
-                            <div className="text-2xl font-bold text-green-600">
-                              {stats.mostImproved ? stats.mostImproved.improvement : 0}
-                            </div>
-                            <div className="text-sm text-green-800">Best Improvement</div>
-                          </div>
-                        </div>
-                        
-                        {/* Difficult Words List */}
-                        {difficultWords.length > 0 ? (
-                          <div>
-                            <h4 className="font-semibold text-gray-800 mb-3">Your Difficult Words</h4>
-                            <div className="space-y-3 max-h-60 overflow-y-auto">
-                              {difficultWords.map((word: any, index: number) => (
-                                <div key={index} className="flex items-center justify-between bg-gray-50 rounded-lg p-4">
-                                  <div className="flex-1">
-                                    <div className="flex items-center space-x-3">
-                                      <div>
-                                        <div className="font-semibold text-lg text-gray-800">{word.word}</div>
-                                        <div className="text-sm text-gray-600">[{word.phonetic}]</div>
-                                        <div className="text-sm text-text600 italic">{word.transliteration}</div>
-                                      </div>
-                                      <div className="text-right">
-                                        <div className={`text-sm font-bold ${
-                                          word.lowestScore >= 70 ? 'text-green-600' :
-                                          word.lowestScore >= 50 ? 'text-yellow-600' : 'text-red-600'
-                                        }`}>
-                                          {word.lowestScore}%
-                                        </div>
-                                        <div className="text-xs text-gray-500">
-                                          {word.timesPracticed} practices
-                                        </div>
-                                        {word.improvement > 0 && (
-                                          <div className="text-xs text-green-600">
-                                            +{word.improvement}% improved
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center space-x-2 ml-4">
-                                    <button
-                                      onClick={() => {
-                                        // Practice this word
-                                        // Practice this word - functionality handled by parent component
-                                        setShowDifficultWordsModal(false);
-                                      }}
-                                      className="px-3 py-1 btn-glossy rounded-lg hover:bg-primary-600 text-sm"
-                                    >
-                                      Practice
-                                    </button>
-                                    <button
-                                      onClick={() => removeFromDifficultWords(word.word)}
-                                      className="px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm"
-                                    >
-                                      Remove
-                                    </button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="text-center py-8">
-                            <BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                            <p className="text-gray-500">No difficult words saved yet</p>
-                            <p className="text-sm text-gray-400 mt-2">
-                              Words with scores below 70% will be automatically added here
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-            )}
           </div>
         )}
+
       </div>
     </div>
   );

@@ -1,34 +1,48 @@
 import { supabase } from './supabase';
 
+export interface PronunciationDimension {
+  score: number;
+  feedback: {
+    correct: string[];
+    incorrect: string[];
+    improvement: string[];
+  };
+}
+
 export interface PronunciationWord {
   word: string;
-  score: number;
+  score: number; // Average of 6 dimension scores
   needsPractice: boolean;
   feedback: string;
+  dimensions: {
+    soundAccuracy: PronunciationDimension;
+    stressEmphasis: PronunciationDimension;
+    smoothness: PronunciationDimension;
+    correctSpeed: PronunciationDimension;
+    intonationRhythm: PronunciationDimension;
+    understandability: PronunciationDimension;
+  };
   commonMistakes?: string[];
   difficulty?: string;
   soundsToFocus?: string[];
   improvementTips?: string[];
-  syllableAnalysis?: Array<{
-    syllable: string;
-    score: number;
-    feedback: string;
-    phoneticExpected: string;
-    phoneticActual?: string;
-  }>;
 }
 
 export interface PronunciationData {
   overallScore: number;
+  sentenceScore: number;
   words: PronunciationWord[];
   hasPronunciationErrors: boolean;
   suggestions: string[];
-  scoringBreakdown?: {
-    vowelAccuracy: number;
-    consonantAccuracy: number;
-    rhythm: number;
-    stress: number;
+  sentenceDimensions?: {
+    soundAccuracy: PronunciationDimension;
+    stressEmphasis: PronunciationDimension;
+    smoothness: PronunciationDimension;
+    correctSpeed: PronunciationDimension;
+    intonationRhythm: PronunciationDimension;
+    understandability: PronunciationDimension;
   };
+  source?: 'practice' | 'voice' | 'suggested';
 }
 
 export interface MessageAnalysis {

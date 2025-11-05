@@ -35,6 +35,7 @@ import ProfilePictureModal from './ProfilePictureModal';
 import Toolbar from './Toolbar';
 import VocabularyBuilderModal from './VocabularyBuilderModal';
 import ConversationSummaryModal from './ConversationSummaryModal';
+import SuggestedResponseCard from './SuggestedResponseCard';
 import { SessionData } from '../types/sessionData';
 import { generateConversationSummary, ConversationSummary } from '../utils/summaryGenerator';
 
@@ -276,6 +277,15 @@ export default function Dashboard({ user }: DashboardProps) {
   const [messageStatus, setMessageStatus] = useState<{[key: string]: MessageStatus}>({});
   const [showVocabBuilder, setShowVocabBuilder] = useState(false);
   const [lastSuggestionUsed, setLastSuggestionUsed] = useState<{[messageId: string]: string}>({});
+  
+  // State for pronunciation practice from suggested responses
+  const [recordedAudioBlobs, setRecordedAudioBlobs] = useState<Map<string, { blob: Blob, text: string }>>(new Map());
+  const [responseRecordingState, setResponseRecordingState] = useState<{[responseId: string]: boolean}>({});
+  const [responseAnalyzingState, setResponseAnalyzingState] = useState<{[responseId: string]: boolean}>({});
+  const [responseShowAnalyze, setResponseShowAnalyze] = useState<{[responseId: string]: boolean}>({});
+  const [responseHasBeenAnalyzed, setResponseHasBeenAnalyzed] = useState<{[responseId: string]: boolean}>({});
+  const [practiceRecorders, setPracticeRecorders] = useState<{[responseId: string]: MediaRecorder}>({});
+  const [pendingPronunciationAnalysis, setPendingPronunciationAnalysis] = useState<{audioBlob: Blob, text: string, responseId: string} | null>(null);
 
   const updateMessageStatus = (messageId: string, status: MessageStatus | null) => {
     setMessageStatus(prev => {
@@ -851,7 +861,9 @@ export default function Dashboard({ user }: DashboardProps) {
       // Update current message but don't show toolbar automatically
       setCurrentAIMessage(data.message);
       
-      // Don't auto-generate suggestions - user must click button to show them
+      // Auto-generate 3 contextual suggestions after initial AI response
+      const messageId = '2'; // First AI message ID
+      await generateContextualSuggestionsForInitialResponse(messageId, data.message, userMessage);
 
     } catch (error) {
       console.error('❌ === ERROR SENDING INITIAL MESSAGE ===');
@@ -883,9 +895,291 @@ export default function Dashboard({ user }: DashboardProps) {
     }
   };
 
+  // Unified function to generate suggestions using OpenAI
+  // Automatically detects most recent bot message if not provided
+  const generateSuggestionsUsingOpenAI = async (
+    messageId: string,
+    botMessage?: string,
+    userContext?: string
+  ) => {
+    console.log('🎯 === GENERATING SUGGESTIONS USING OPENAI ===');
+    console.log('Message ID:', messageId);
+    
+    // Auto-detect most recent bot message if not provided
+    let aiMessage: string;
+    if (botMessage) {
+      aiMessage = botMessage;
+      console.log('Using provided bot message:', aiMessage);
+    } else {
+      // Find most recent assistant message from chatMessages
+      const assistantMessages = chatMessages.filter(msg => msg.role === 'assistant');
+      const mostRecentBotMessage = assistantMessages[assistantMessages.length - 1];
+      
+      if (!mostRecentBotMessage) {
+        console.error('❌ No bot message found in chatMessages');
+        // Fallback: use generateContextualFallbacks
+        const contextualFallbacks = generateContextualFallbacks('');
+        setSuggestedResponses(prev => ({
+          ...prev,
+          [messageId]: contextualFallbacks
+        }));
+        return;
+      }
+      
+      aiMessage = mostRecentBotMessage.content;
+      console.log('Auto-detected bot message:', aiMessage);
+    }
+    
+    // Get conversation context (from first user message or provided userContext)
+    let conversationContext: string = userContext || '';
+    if (!conversationContext) {
+      const firstUserMessage = chatMessages.find(msg => msg.role === 'user');
+      if (firstUserMessage) {
+        conversationContext = firstUserMessage.content;
+        console.log('Using first user message as context:', conversationContext);
+      }
+    }
+    
+    // Detect question type - expanded readiness detection
+    const isReadinessQuestion = /sind.*bereit|bist.*bereit|ready|bereit.*beginnen|bereit.*starten|bereit.*mit|mit.*rollenspiel|rollenspiel.*beginnen|rollenspiel.*starten|möchten.*starten|können.*beginnen|kann.*anfangen|starten.*wir/i.test(aiMessage);
+    const isYesNoQuestion = /\?/.test(aiMessage) && (/sind|bist|haben|hast|kannst|können|ist|soll|möchten/i.test(aiMessage));
+    const isInformationalQuestion = /\?/.test(aiMessage) && (/was|wie|wo|wann|warum|welche|welcher|welches/i.test(aiMessage));
+    const containsQuestion = /\?/.test(aiMessage) || /sind sie|bist du|können sie|kannst du|haben sie|hast du/i.test(aiMessage.toLowerCase());
+    
+    console.log('Question detection:', {
+      isReadinessQuestion,
+      isYesNoQuestion,
+      isInformationalQuestion,
+      containsQuestion
+    });
+    
+    // Build enhanced prompt based on question type
+    // Check readiness questions FIRST, then informational, then yes/no
+    let questionInstruction = '';
+    if (containsQuestion) {
+      if (isReadinessQuestion) {
+        questionInstruction = `KRITISCH UND MANDATORISCH: Die KI-Nachricht ist eine Bereitschaftsfrage (z.B. "Sind Sie bereit?" oder "Sind Sie bereit, mit dem Rollenspiel zu beginnen?").
+
+MANDATORISCHE ANFORDERUNGEN:
+- Du MUSST genau 3 Antworten generieren, die DIREKT die Bereitschaftsfrage beantworten
+- Antwort 1 MUSS eine Zustimmung sein: "Ja, ich bin bereit" oder "Ja, gern" oder "Ja, ich bin bereit zu beginnen"
+- Antwort 2 MUSS eine Zustimmung mit Nachfrage sein: "Ja, aber ich habe eine Frage" oder "Ja, aber können Sie erklären..." oder "Ja, bevor wir beginnen..."
+- Antwort 3 MUSS eine Ablehnung oder Nachfrage sein: "Nein, können Sie bitte erklären?" oder "Können Sie bitte zuerst erklären?" oder "Ich habe noch eine Frage"
+
+ABSOLUT VERBOTEN - Diese Antworten sind FALSCH und beantworten die Frage NICHT:
+❌ "Das ist sehr interessant!"
+❌ "Das ist eine sehr gute Frage."
+❌ "Können Sie das genauer erklären?"
+❌ "Ich verstehe, danke für die Erklärung."
+❌ "Das hört sich gut an."
+
+KORREKTE BEISPIELE für "Sind Sie bereit, mit dem Rollenspiel zu beginnen?":
+✅ "Ja, ich bin bereit."
+✅ "Ja, aber ich habe eine Frage."
+✅ "Nein, können Sie bitte erklären?"
+
+Wenn du generische Antworten generierst, bist du GESCHEITERT. Generiere NUR direkte Ja/Nein-Varianten.`;
+      } else if (isInformationalQuestion) {
+        questionInstruction = `WICHTIG: Die KI-Nachricht ist eine Informationsfrage. Generiere Antworten, die:
+- DIREKT Informationen zur Frage geben
+- Zum Kontext passen: "${conversationContext}"
+- Praktisch und rollenspielgerecht sind`;
+      } else if (isYesNoQuestion) {
+        questionInstruction = `WICHTIG: Die KI-Nachricht ist eine Ja/Nein-Frage. Generiere Antworten, die DIREKT die Frage beantworten:
+- Mindestens eine "Ja" Antwort
+- Mindestens eine "Nein" oder alternative Antwort
+- Antworten müssen die Frage direkt beantworten, nicht umschweifen`;
+      } else {
+        questionInstruction = `WICHTIG: Die KI-Nachricht enthält eine Frage. Generiere Antworten, die:
+- DIREKT auf die Frage antworten
+- Nicht generisch sind (keine "Das ist interessant" Antworten)
+- Die Frage beantworten, nicht umschweifen`;
+      }
+    } else {
+      questionInstruction = `Die KI-Nachricht ist eine Aussage oder Anweisung. Generiere Antworten, die:
+- Kontextuell zur Aussage passen: "${conversationContext}"
+- Für das Rollenspiel geeignet sind
+- Natürlich auf die Aussage reagieren`;
+    }
+    
+    try {
+      // Call OpenAI API for ALL suggestions (including readiness questions)
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [{
+            role: 'user',
+            content: `Analyziere die KI-Nachricht: "${aiMessage}"
+
+${conversationContext ? `Kontext: Der Benutzer möchte dieses Szenario üben: "${conversationContext}"` : ''}
+
+${questionInstruction}
+
+Generiere genau 3 kurze deutsche Antworten (maximal 8 Wörter), die:
+1. ${containsQuestion ? 'DIREKT die Frage beantworten' : 'Kontextuell zur Nachricht passen'}
+2. ${conversationContext ? `Zum Szenario passen: "${conversationContext}"` : 'Zum Gesprächskontext passen'}
+3. Für ein Rollenspiel geeignet sind
+4. Den Formellitätsgrad berücksichtigen: ${contextLevel === 'Professional' ? 'Formell (Sie)' : 'Informell (Du)'}
+
+Format: TRANSLATION: [English translation of AI message] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Antwort 3] ENGLISH: [Answer 1] | [Answer 2] | [Answer 3]`
+          }],
+          conversationId: selectedConversation || 'helper',
+          contextLevel,
+          difficultyLevel,
+          conversationContext: conversationContext,
+          systemInstruction: `Du bist ein Experte für deutsche Rollenspiele. Deine Aufgabe: Generiere 3 passende deutsche Antworten.
+
+${isReadinessQuestion ? '🚨🚨🚨 KRITISCH UND MANDATORISCH 🚨🚨🚨\nDie KI-Nachricht ist eine Bereitschaftsfrage (z.B. "Sind Sie bereit?" oder "Sind Sie bereit, mit dem Rollenspiel zu beginnen?").\n\nMANDATORISCHE ANFORDERUNGEN:\n- Du MUSST genau 3 Antworten generieren, die DIREKT die Frage beantworten\n- Antwort 1 MUSS eine Zustimmung sein: "Ja, ich bin bereit" oder ähnlich\n- Antwort 2 MUSS eine Zustimmung mit Nachfrage sein: "Ja, aber ich habe eine Frage" oder ähnlich\n- Antwort 3 MUSS eine Ablehnung/Nachfrage sein: "Nein, können Sie bitte erklären?" oder ähnlich\n\nABSOLUT VERBOTEN - Diese Antworten sind FALSCH:\n❌ "Das ist sehr interessant!"\n❌ "Das ist eine sehr gute Frage."\n❌ "Können Sie das genauer erklären?"\n❌ "Ich verstehe, danke für die Erklärung."\n\nKORREKTE BEISPIELE:\n✅ "Ja, ich bin bereit."\n✅ "Ja, aber ich habe eine Frage."\n✅ "Nein, können Sie bitte erklären?"\n\nWenn du generische Antworten generierst, bist du GESCHEITERT. Generiere NUR direkte Ja/Nein-Varianten.' : containsQuestion ? 'KRITISCH: Die KI-Nachricht ist eine Frage. Die Antworten MÜSSEN die Frage direkt beantworten, nicht umschweifen oder generisch sein.' : 'Die KI-Nachricht ist eine Aussage. Generiere passende, kontextuelle Reaktionen.'}
+
+${conversationContext ? `Kontext: "${conversationContext}"` : ''}
+KI-Nachricht: "${aiMessage}"
+Formellitätsgrad: ${contextLevel}
+
+Regeln:
+- Antworten müssen zur Frage/Aussage passen
+- Keine generischen Antworten wie "Das ist interessant" wenn eine Frage gestellt wird
+${isReadinessQuestion ? '- Für Bereitschaftsfragen: IMMER Ja/Nein-Varianten mit direkten Antworten\n- Beispiel RICHTIG: "Ja, ich bin bereit" | "Ja, aber ich habe eine Frage" | "Nein, können Sie bitte erklären"\n- Beispiel FALSCH: "Das ist sehr interessant" | "Können Sie das genauer erklären?" | "Ich verstehe, danke"\n- Wenn die Antworten generisch sind, bist du GESCHEITERT' : '- Für Fragen: Direkte, hilfreiche Antworten generieren'}
+- Für Aussagen: Natürliche, kontextuelle Reaktionen
+
+Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1] | [e2] | [e3]`
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const content = data.message;
+        
+        console.log('📡 API Response for suggestions:', content);
+        
+        // Parse translation and suggestions
+        const translationMatch = content.match(/TRANSLATION:\s*(.+?)(?=SUGGESTIONS:|$)/);
+        const suggestionsMatch = content.match(/SUGGESTIONS:\s*(.+?)(?=ENGLISH:|$)/);
+        const englishMatch = content.match(/ENGLISH:\s*(.+)/);
+        
+        if (translationMatch) {
+          setTranslatedMessages(prev => {
+            // Only set if doesn't exist (preserve user translations)
+            if (prev[messageId]) {
+              console.log('Translation already exists, preserving user translation');
+              return prev;
+            }
+            return {
+              ...prev,
+              [messageId]: translationMatch[1].trim()
+            };
+          });
+        }
+        
+        if (suggestionsMatch && englishMatch) {
+          const germanSuggestions = suggestionsMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+          const englishTranslations = englishMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+          
+          const pairedSuggestions = germanSuggestions.map((german: string, index: number) => ({
+            german: german.trim(),
+            english: englishTranslations[index] ? englishTranslations[index].trim() : ''
+          }));
+          
+          console.log('✅ Generated suggestions:', pairedSuggestions);
+          
+          // Validate suggestions for readiness questions - reject generic responses
+          if (isReadinessQuestion) {
+            const genericPatterns = [
+              /das ist.*interessant/i,
+              /das ist.*gute.*frage/i,
+              /können.*sie.*erklären/i,
+              /ich verstehe/i,
+              /danke.*erklärung/i,
+              /das hört.*gut/i
+            ];
+            
+            const hasGenericResponses = pairedSuggestions.some(suggestion => {
+              const germanText = suggestion.german.toLowerCase();
+              return genericPatterns.some(pattern => pattern.test(germanText));
+            });
+            
+            const hasDirectResponses = pairedSuggestions.some(suggestion => {
+              const germanText = suggestion.german.toLowerCase();
+              return /^ja[,!.]|^nein[,!.]|bereit|aber.*frage/i.test(germanText);
+            });
+            
+            if (hasGenericResponses || !hasDirectResponses) {
+              console.warn('⚠️ OpenAI returned generic responses for readiness question, using fallback');
+              const contextualFallbacks = generateContextualFallbacks(aiMessage);
+              setSuggestedResponses(prev => ({
+                ...prev,
+                [messageId]: contextualFallbacks
+              }));
+              return;
+            }
+          }
+          
+          setSuggestedResponses(prev => ({
+            ...prev,
+            [messageId]: pairedSuggestions
+          }));
+          
+          // Don't automatically show suggestions - only show when user clicks question mark icon
+        } else {
+          console.log('⚠️ Could not parse suggestions from API response, using fallback');
+          // Fallback to contextual suggestions
+          const contextualFallbacks = generateContextualFallbacks(aiMessage);
+          setSuggestedResponses(prev => ({
+            ...prev,
+            [messageId]: contextualFallbacks
+          }));
+          // Don't automatically show suggestions - only show when user clicks question mark icon
+        }
+      } else {
+        const errorText = await response.text();
+        console.error('❌ API call failed:', response.status, errorText);
+        // Fallback to contextual suggestions
+        const contextualFallbacks = generateContextualFallbacks(aiMessage);
+        setSuggestedResponses(prev => ({
+          ...prev,
+          [messageId]: contextualFallbacks
+        }));
+        // Don't automatically show suggestions - only show when user clicks question mark icon
+      }
+    } catch (error) {
+      console.error('❌ Error generating suggestions:', error);
+      // Fallback to contextual suggestions
+      const contextualFallbacks = generateContextualFallbacks(aiMessage);
+      setSuggestedResponses(prev => ({
+        ...prev,
+        [messageId]: contextualFallbacks
+      }));
+      // Don't automatically show suggestions - only show when user clicks question mark icon
+    }
+  };
+
+  // Generate 3 contextual suggestions for initial AI response
+  const generateContextualSuggestionsForInitialResponse = async (messageId: string, aiMessage: string, userContext: string) => {
+    console.log('🎯 === GENERATING CONTEXTUAL SUGGESTIONS FOR INITIAL RESPONSE ===');
+    console.log('Message ID:', messageId);
+    console.log('AI Message:', aiMessage);
+    console.log('User Context:', userContext);
+    
+    // Use unified function with provided bot message and user context
+    await generateSuggestionsUsingOpenAI(messageId, aiMessage, userContext);
+  };
+
   // Generate contextual fallback suggestions based on AI message content
   const generateContextualFallbacks = (germanText: string) => {
     const text = germanText.toLowerCase();
+    
+    // Check for readiness questions FIRST - this is critical!
+    if (text.includes('bereit') && (text.includes('rollenspiel') || text.includes('beginnen') || text.includes('starten') || text.includes('mit dem'))) {
+      console.log('✅ Fallback: Detected readiness question, returning appropriate responses');
+      return [
+        { german: 'Ja, ich bin bereit.', english: 'Yes, I am ready.' },
+        { german: 'Ja, aber ich habe eine Frage.', english: 'Yes, but I have a question.' },
+        { german: 'Nein, können Sie bitte erklären?', english: 'No, can you please explain?' }
+      ];
+    }
     
     // Specific question patterns and their direct answers
     if (text.includes('welche details') || text.includes('which details') || text.includes('am wichtigsten')) {
@@ -984,213 +1278,9 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('German text:', germanText);
     console.log('🚨 FUNCTION CALLED - Starting suggestion generation...');
     
-    // Fetch conversation context from database
-    // For now, we'll get context from the first user message in chat
-    let conversationContext = '';
-    
-    // Find the first user message to use as context
-    const firstUserMessage = chatMessages.find(msg => msg.role === 'user');
-    if (firstUserMessage) {
-      conversationContext = firstUserMessage.content;
-      console.log('📝 Using first user message as context:', conversationContext);
-    }
-    
-    console.log('🎯 Generating contextual suggestions for:', germanText);
-    
-    // Check if this is a readiness question - provide direct answers
-    const isReadinessQuestion = /sind.*bereit|bist.*bereit|ready|bereit.*beginnen/i.test(germanText);
-    
-    if (isReadinessQuestion) {
-      console.log('✅ Detected readiness question - using hardcoded responses');
-      // Provide direct yes/no/maybe answers to readiness questions
-      const directResponses = contextLevel === 'Professional' 
-        ? [
-            { german: "Ja, ich bin bereit.", english: "Yes, I am ready." },
-            { german: "Absolut, ich freue mich darauf.", english: "Absolutely, I'm looking forward to it." },
-            { german: "Nein, ich möchte noch Kontext geben.", english: "No, I want to provide more context." }
-          ]
-        : [
-            { german: "Ja, ich bin bereit.", english: "Yes, I'm ready." },
-            { german: "Absolut, fangen wir an!", english: "Absolutely, let's start!" },
-            { german: "Nein, ich möchte mehr Kontext geben.", english: "No, I want to provide more context." }
-          ];
-      
-      setSuggestedResponses(prev => ({
-        ...prev,
-        [messageId]: directResponses
-      }));
-      
-      setTranslatedMessages(prev => {
-        if (prev[messageId]) return prev;
-        return {
-          ...prev,
-          [messageId]: germanText
-        };
-      });
-      
-      return;
-    }
-    
-    // For other questions, use AI generation
-    // Frame the AI's message as a user question to generate direct answers
-    const messagesForSuggestion = [{
-      role: 'user' as const,
-      content: germanText
-    }];
-    
-    console.log('📤 Sending messages to API:', messagesForSuggestion.length, 'messages');
-    
-    try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: messagesForSuggestion,
-          conversationId: selectedConversation || 'helper',
-          contextLevel,
-          difficultyLevel,
-          conversationContext: conversationContext,
-          systemInstruction: `Die Frage: "${germanText}"
-
-Aufgabe: 3 kurze Antworten auf DIESE Frage.
-
-Regeln:
-- Direkte Antworten zur Frage
-- Max 8 Wörter
-- Deutsch
-- Wenn Frage "Sind Sie bereit?" → Antworten: "Ja, ich bin bereit." / "Nein, nicht bereit." / "Ja, fangen wir an."
-
-Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Antwort 3] ENGLISH: [Answer 1] | [Answer 2] | [Answer 3]`
-        })
-      });
-
-      console.log('📡 API Response status:', response.status);
-      console.log('📡 API Response ok:', response.ok);
-      
-      if (response.ok) {
-        const data = await response.json();
-        const content = data.message;
-        
-        console.log('📡 API Response received for contextual suggestions:', content.substring(0, 300) + '...');
-        console.log('📡 Full API response:', content);
-        console.log('📡 Response data structure:', data);
-        
-        // Parse translation and suggestions - handle both old and new formats
-        const translationMatch = content.match(/TRANSLATION:\s*(.+?)(?=SUGGESTIONS:|$)/);
-        const suggestionsMatch = content.match(/SUGGESTIONS:\s*(.+?)(?=ENGLISH:|$)/);
-        const englishMatch = content.match(/ENGLISH:\s*(.+)/);
-        
-        console.log('🔍 Parsing debug:', {
-          translationMatch: translationMatch ? translationMatch[1] : null,
-          suggestionsMatch: suggestionsMatch ? suggestionsMatch[1] : null,
-          englishMatch: englishMatch ? englishMatch[1] : null,
-          content: content.substring(0, 200) + '...'
-        });
-        
-        if (translationMatch) {
-          // Only set translation if one doesn't already exist
-          // This prevents overwriting user's manual translation when generating suggestions
-          setTranslatedMessages(prev => {
-            if (prev[messageId]) {
-              console.log('📝 Translation already exists, keeping user translation for message:', messageId);
-              return prev;
-            }
-            return {
-              ...prev,
-              [messageId]: translationMatch[1].trim()
-            };
-          });
-        }
-        
-        // Try new format first (with English translations)
-        if (suggestionsMatch && englishMatch) {
-          const germanSuggestions = suggestionsMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-          const englishTranslations = englishMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-          
-          // Pair German suggestions with their English translations
-          const pairedSuggestions = germanSuggestions.map((german: string, index: number) => ({
-            german: german.trim(),
-            english: englishTranslations[index] ? englishTranslations[index].trim() : ''
-          }));
-          
-          console.log('New format - German suggestions:', germanSuggestions);
-          console.log('New format - English translations:', englishTranslations);
-          console.log('New format - Paired suggestions:', pairedSuggestions);
-          
-          setSuggestedResponses(prev => ({
-            ...prev,
-            [messageId]: pairedSuggestions
-          }));
-        } else if (suggestionsMatch) {
-          // Fallback: old format (German suggestions only)
-          const suggestions = suggestionsMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-          
-          // Clean up any English translations that might be in parentheses or brackets
-          const cleanedSuggestions = suggestions.map((suggestion: string) => {
-            // Remove English text in parentheses like (English translation)
-            let cleaned = suggestion.replace(/\([^)]*[A-Za-z][^)]*\)/g, '');
-            // Remove English text in brackets like [English translation]
-            cleaned = cleaned.replace(/\[[^\]]*[A-Za-z][^\]]*\]/g, '');
-            // Remove any remaining English text patterns
-            cleaned = cleaned.replace(/\([^)]*\)/g, '');
-            cleaned = cleaned.replace(/\[[^\]]*\]/g, '');
-            // Trim whitespace
-            return cleaned.trim();
-          }).filter((s: string) => s.length > 0);
-          
-          console.log('Old format - Original suggestions:', suggestions);
-          console.log('Old format - Cleaned suggestions:', cleanedSuggestions);
-          
-          setSuggestedResponses(prev => ({
-            ...prev,
-            [messageId]: cleanedSuggestions
-          }));
-        } else {
-          console.log('No suggestions match found in:', content);
-          // Set contextual fallback suggestions based on the AI's message
-          const contextualFallbacks = generateContextualFallbacks(germanText);
-          console.log('Setting contextual fallback suggestions:', contextualFallbacks);
-          
-          setSuggestedResponses(prev => ({
-            ...prev,
-            [messageId]: contextualFallbacks
-          }));
-        }
-      } else {
-        console.error('❌ API call failed with status:', response.status);
-        console.error('❌ Response status text:', response.statusText);
-        const errorText = await response.text();
-        console.error('❌ Error response body:', errorText);
-        
-        // Try to get more specific error information
-        try {
-          const errorData = JSON.parse(errorText);
-          console.error('❌ Parsed error data:', errorData);
-        } catch (e) {
-          console.error('❌ Could not parse error response as JSON');
-        }
-      }
-    } catch (error) {
-      console.error('❌ Error generating translation and suggestions:', error);
-      console.error('❌ Error details:', {
-        messageId,
-        germanText,
-        error: (error as Error).message,
-        stack: (error as Error).stack
-      });
-      
-      // Set contextual fallback suggestions based on the AI's message
-      const contextualFallbacks = generateContextualFallbacks(germanText);
-      console.log('Setting contextual error fallback suggestions:', contextualFallbacks);
-      
-      setSuggestedResponses(prev => ({
-        ...prev,
-        [messageId]: contextualFallbacks
-      }));
-    }
+    // Use unified function with provided bot message
+    // It will auto-detect conversation context from chatMessages
+    await generateSuggestionsUsingOpenAI(messageId, germanText);
   };
 
   // Audio cache is now handled by the centralized TTS service
@@ -3627,6 +3717,118 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     }
   };
 
+  // Practice recording handlers for suggested responses
+  const handlePracticeResponse = async (responseId: string, responseText: string) => {
+    console.log('🎤 === PRACTICE RESPONSE CLICKED ===');
+    console.log('Response ID:', responseId);
+    console.log('Response Text:', responseText);
+
+    // Check if already recording - stop recording
+    if (responseRecordingState[responseId]) {
+      const recorder = practiceRecorders[responseId];
+      if (recorder && recorder.state !== 'inactive') {
+        recorder.stop();
+      }
+      return;
+    }
+
+    // Start recording
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+        console.log('🎤 === RECORDING STOPPED FOR RESPONSE ===');
+        console.log('Audio blob size:', audioBlob.size, 'bytes');
+        
+        // Store audio blob
+        setRecordedAudioBlobs(prev => {
+          const newMap = new Map(prev);
+          newMap.set(responseId, { blob: audioBlob, text: responseText });
+          return newMap;
+        });
+
+        // Show Analyze button
+        setResponseShowAnalyze(prev => ({
+          ...prev,
+          [responseId]: true
+        }));
+
+        // Stop recording state
+        setResponseRecordingState(prev => ({
+          ...prev,
+          [responseId]: false
+        }));
+
+        // Clean up recorder
+        setPracticeRecorders(prev => {
+          const newRecorders = { ...prev };
+          delete newRecorders[responseId];
+          return newRecorders;
+        });
+
+        // Stop all tracks
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      
+      // Update state
+      setResponseRecordingState(prev => ({
+        ...prev,
+        [responseId]: true
+      }));
+      
+      setPracticeRecorders(prev => ({
+        ...prev,
+        [responseId]: recorder
+      }));
+    } catch (error) {
+      console.error('❌ Error starting practice recording:', error);
+      alert('Microphone access denied. Please allow microphone access to use voice input.');
+    }
+  };
+
+  // Analyze handler - navigates to pronunciation tab
+  const handleAnalyzeResponse = (responseId: string, responseText: string) => {
+    console.log('🔍 === ANALYZE RESPONSE CLICKED ===');
+    console.log('Response ID:', responseId);
+    console.log('Response Text:', responseText);
+
+    const audioData = recordedAudioBlobs.get(responseId);
+    if (!audioData) {
+      console.error('❌ No audio blob found for response:', responseId);
+      alert('Please record audio first before analyzing.');
+      return;
+    }
+
+    // Set pending analysis
+    setPendingPronunciationAnalysis({
+      audioBlob: audioData.blob,
+      text: responseText,
+      responseId
+    });
+
+    // Navigate to pronunciation tab - ensure toolbar is visible and expanded
+    setToolbarActiveTab('pronunciation');
+    setShowToolbar(true);
+    setToolbarCollapsed(false);
+
+    // Mark as analyzed
+    setResponseHasBeenAnalyzed(prev => ({
+      ...prev,
+      [responseId]: true
+    }));
+  };
+
   // Modal recording functions
   const startModalRecording = async (isForConversationInput: boolean = false) => {
     try {
@@ -5981,45 +6183,25 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       <div className="text-xs font-medium text-gray-600 mb-1">Suggested responses:</div>
                       {suggestedResponses[message.id] ? (
                         suggestedResponses[message.id].map((suggestion, index) => {
+                          const responseId = `${message.id}-${index}`;
                           const suggestionText = typeof suggestion === 'string' ? suggestion : suggestion.german;
-                          const suggestionTranslation = typeof suggestion === 'object' ? suggestion.english : null;
-                          const translationKey = `${message.id}-${index}`;
-                          const isShowingTranslation = showSuggestionTranslation[translationKey];
+                          const suggestionTranslation = typeof suggestion === 'string' 
+                            ? translatedMessages[message.id] || '' 
+                            : suggestion.english;
                           
                           return (
-                            <div key={index} className="bg-primary-50 hover:bg-primary-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors">
-                              <div className="flex items-center justify-between">
-                                <button
-                                  onClick={() => useSuggestedResponse(suggestionText, message.id)}
-                                  className="flex-1 text-left"
-                                >
-                                  <div className="font-medium">{suggestionText}</div>
-                                  {isShowingTranslation && suggestionTranslation && (
-                                    <div className="text-gray-500 text-xs mt-1">{suggestionTranslation}</div>
-                                  )}
-                                </button>
-                                <div className="flex items-center space-x-1">
-                                  <button
-                                    onClick={() => speakText(suggestionText)}
-                                    className="p-1 hover:bg-gray-100 rounded transition-colors"
-                                    title="Listen"
-                                  >
-                                    <svg className="h-3 w-3 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
-                                      <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM15.657 6.343a1 1 0 011.414 0A9.972 9.972 0 0119 12a9.972 9.972 0 01-1.929 5.657 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 12a7.971 7.971 0 00-1.343-4.243 1 1 0 010-1.414z" clipRule="evenodd" />
-                                    </svg>
-                                  </button>
-                                  {suggestionTranslation && (
-                                    <button
-                                      onClick={() => toggleSuggestionTranslation(message.id, index)}
-                                      className="px-2 py-1 text-xs bg-white hover:bg-gray-50 border border-gray-300 rounded transition-colors"
-                                      title={isShowingTranslation ? "Hide translation" : "Show translation"}
-                                    >
-                                      {isShowingTranslation ? "DE" : "EN"}
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
+                            <SuggestedResponseCard
+                              key={responseId}
+                              response={suggestionText}
+                              translation={suggestionTranslation}
+                              responseId={responseId}
+                              onPractice={handlePracticeResponse}
+                              isRecording={responseRecordingState[responseId] || false}
+                              isAnalyzing={responseAnalyzingState[responseId] || false}
+                              showAnalyze={responseShowAnalyze[responseId] || false}
+                              hasBeenAnalyzed={responseHasBeenAnalyzed[responseId] || false}
+                              onAnalyze={handleAnalyzeResponse}
+                            />
                           );
                         })
                       ) : (
@@ -6206,6 +6388,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       }
                     }}
                     onPronunciationComplete={handlePronunciationComplete}
+                    pendingPronunciationAnalysis={pendingPronunciationAnalysis}
                     onUpdatePersistentVocab={(newVocab) => {
                       console.log('📚 === DASHBOARD ONUPDATE PERSISTENT VOCAB CALLED ===');
                       console.log('New vocab received:', newVocab);

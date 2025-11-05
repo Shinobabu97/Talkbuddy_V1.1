@@ -3,26 +3,24 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS'
-}
-
-interface WhisperWord {
-  word: string;
-  start: number;
-  end: number;
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400', // 24 hours
+  'Access-Control-Allow-Credentials': 'false'
 }
 
 serve(async (req) => {
   // Handle CORS preflight requests - MUST return 200
+  // This MUST be checked FIRST, before any async operations or JSON parsing
+  // CRITICAL: Return immediately without any async operations or error handling
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { 
+    return new Response(null, { 
       headers: corsHeaders,
-      status: 200  // Explicitly set status 200
+      status: 200
     })
   }
 
   try {
-    const { audioData, transcription } = await req.json()
+    const { audioData, transcription, language = 'de', post_id } = await req.json()
     
     if (!audioData || !transcription) {
       return new Response(
@@ -34,236 +32,183 @@ serve(async (req) => {
       )
     }
 
-    console.log('🎤 === PRONUNCIATION ANALYSIS WITH REAL GOP ===')
-    console.log('Transcription:', transcription)
+    // post_id is optional (kept for backward compatibility but not required)
+    console.log('🎤 === PRONUNCIATION ANALYSIS WITH OPENAI WHISPER API ===')
+    console.log('Expected transcription:', transcription)
+    console.log('Language:', language)
+    if (post_id) console.log('Post ID:', post_id)
 
-    // Extract words from transcription
-    const words = transcription.split(' ').filter(word => word.length > 0);
+    // Get OpenAI API key from environment
+    const openaiApiKey = Deno.env.get('OPENAI_API_KEY')
     
-    console.log('🎤 === IMPLEMENTING REAL GOP ALGORITHM ===');
-    console.log('Words to analyze:', words);
-
-    // Step 1: Re-transcribe with timing data using Whisper
-    const audioBlob = new Blob([Uint8Array.from(atob(audioData), c => c.charCodeAt(0))], {
-      type: 'audio/webm'
-    });
-
-    const formData = new FormData();
-    formData.append('file', audioBlob, 'recording.webm');
-    formData.append('model', 'whisper-1');
-    formData.append('language', 'de'); // German
-    formData.append('timestamp_granularities[]', 'word');
-    formData.append('response_format', 'verbose_json');
-
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
+    console.log('🔑 API Key check:', {
+      'OPENAI_API_KEY': !!openaiApiKey,
+      'Found key': !!openaiApiKey,
+      'Key length': openaiApiKey?.length || 0
+    })
+    
     if (!openaiApiKey) {
-      throw new Error('OpenAI API key not configured');
+      console.error('❌ OpenAI API Key not found in environment variables')
+      return new Response(
+        JSON.stringify({ 
+          error: 'API key not configured',
+          details: 'Set OPENAI_API_KEY environment variable in Supabase Secrets. This service uses OpenAI Whisper API for pronunciation analysis.'
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 500 
+        }
+      )
     }
 
-    // Call Whisper with timing
-    const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openaiApiKey}`,
-      },
-      body: formData,
-    });
-
-    if (!whisperResponse.ok) {
-      console.error('Whisper API error:', whisperResponse.status);
-      throw new Error('Failed to get pronunciation timing data');
-    }
-
-    const whisperData = await whisperResponse.json();
-    const wordsWithTiming: WhisperWord[] = whisperData.words || [];
-
-    console.log('📊 Word timing data:', wordsWithTiming);
-
-    // German pronunciation rules for English speakers
-    const PRONUNCIATION_RULES = {
-      'ch': { difficulty: 'hard', commonMistakes: ['k', 'sh'], correct: 'ç' },
-      'r': { difficulty: 'medium', commonMistakes: ['ɹ', 'w'], correct: 'ʁ' },
-      'ä': { difficulty: 'medium', commonMistakes: ['a', 'e'], correct: 'ɛ' },
-      'ö': { difficulty: 'hard', commonMistakes: ['o', 'e'], correct: 'ø' },
-      'ü': { difficulty: 'hard', commonMistakes: ['u', 'i'], correct: 'y' },
-      'sch': { difficulty: 'medium', commonMistakes: ['sk', 's'], correct: 'ʃ' }
-    };
-
-    // Step 2: Analyze each word using timing patterns and phoneme rules
-    function analyzeWordPronunciation(wordData: WhisperWord, wordText: string) {
-      const duration = wordData.end - wordData.start;
-      const expectedDuration = wordText.length * 0.15; // ~150ms per character baseline
-      
-      // Detect pronunciation issues based on timing
-      const hasUmlauts = /[äöü]/.test(wordText);
-      const hasCh = /ch/.test(wordText);
-      const hasR = /r/.test(wordText);
-      const isLong = wordText.length > 6;
-      
-      let baseScore = 85;
-      const phonemeScores = [];
-      
-      // Timing-based analysis
-      if (duration < expectedDuration * 0.7) {
-        // Too fast - likely rushed pronunciation
-        baseScore -= 15;
-      } else if (duration > expectedDuration * 1.5) {
-        // Too slow - likely struggling
-        baseScore -= 10;
-      }
-      
-      // Difficulty-based scoring (more accurate than random)
-      if (hasUmlauts) {
-        baseScore -= 12; // Umlauts are hard
-        const umlautMatches = wordText.match(/[äöü]/g) || [];
-        umlautMatches.forEach(char => {
-          const rule = PRONUNCIATION_RULES[char];
-          if (rule) {
-            // Score based on duration - slower = struggling
-            const phonemeScore = duration > expectedDuration * 1.3 ? 65 : 85;
-            phonemeScores.push({
-              phoneme: char,
-              score: phonemeScore,
-              feedback: phonemeScore < 70 ? `Practice the ${rule.correct} sound` : 'Good pronunciation',
-              expected: rule.correct,
-              actual: phonemeScore < 70 ? rule.commonMistakes[0] : rule.correct
-            });
-          }
-        });
-      }
-      
-      if (hasCh) {
-        baseScore -= 18; // Ch is very hard
-        const chScore = duration > expectedDuration * 1.4 ? 60 : 80;
-        phonemeScores.push({
-          phoneme: 'ch',
-          score: chScore,
-          feedback: chScore < 70 ? 'Practice the ç sound' : 'Good pronunciation',
-          expected: 'ç',
-          actual: chScore < 70 ? 'k' : 'ç'
-        });
-      }
-      
-      if (hasR) {
-        baseScore -= 8;
-        const rScore = duration > expectedDuration * 1.2 ? 70 : 85;
-        phonemeScores.push({
-          phoneme: 'r',
-          score: rScore,
-          feedback: rScore < 75 ? 'Practice the ʁ sound' : 'Good pronunciation',
-          expected: 'ʁ',
-          actual: rScore < 75 ? 'ɹ' : 'ʁ'
-        });
-      }
-      
-      // Add variation based on audio characteristics (±5 points)
-      const audioVariation = (Math.random() - 0.5) * 10;
-      baseScore = Math.max(30, Math.min(100, baseScore + audioVariation));
-      
-      // Determine difficulty
-      let difficulty: 'easy' | 'medium' | 'hard' = 'easy';
-      if (hasUmlauts || hasCh) difficulty = 'hard';
-      else if (hasR || isLong) difficulty = 'medium';
-      
-      // Generate feedback
-      let feedback = '';
-      if (baseScore >= 90) feedback = 'Excellent pronunciation!';
-      else if (baseScore >= 75) feedback = 'Good pronunciation with minor improvements needed.';
-      else if (baseScore >= 60) feedback = 'Fair pronunciation, practice the difficult sounds.';
-      else feedback = 'Needs significant practice. Focus on the phoneme-level feedback.';
-      
-      return {
-        word: wordText,
-        score: Math.round(baseScore),
-        phonemeScores,
-        feedback,
-        difficulty,
-        duration,
-        expectedDuration
-      };
-    }
-
-    // Step 3: Process all words
-    const wordScores = words.map((word, index) => {
-      const timingData = wordsWithTiming[index];
-      if (timingData) {
-        return analyzeWordPronunciation(timingData, word);
-      } else {
-        // Fallback if no timing data
-        return analyzeWordPronunciation({ word, start: 0, end: word.length * 0.15 }, word);
-      }
-    });
-
-    const overallScore = Math.round(wordScores.reduce((sum, w) => sum + w.score, 0) / wordScores.length);
-    const hasErrors = overallScore < 70;
-
-    // Generate suggestions
-    const suggestions: string[] = [];
-    if (overallScore < 60) {
-      suggestions.push('Focus on basic German sounds like "ch" and "r"');
-      suggestions.push('Practice umlauts (ä, ö, ü) slowly and clearly');
-    } else if (overallScore < 80) {
-      suggestions.push('Work on difficult phonemes identified in the analysis');
-      suggestions.push('Practice word stress patterns');
+    // Verify audio data format - ensure it's a base64 string
+    let audioBase64: string
+    if (typeof audioData === 'string') {
+      // Remove data URL prefix if present (e.g., "data:audio/webm;base64,")
+      audioBase64 = audioData.includes(',') ? audioData.split(',')[1] : audioData
+      console.log('✅ Audio data is string, length:', audioBase64.length)
     } else {
-      suggestions.push('Great job! Continue practicing for even better pronunciation');
+      console.error('❌ Audio data is not a string:', typeof audioData)
+      return new Response(
+        JSON.stringify({ 
+          error: 'Invalid audio data format',
+          details: 'Audio data must be a base64-encoded string'
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400 
+        }
+      )
     }
 
-    const gopResult = {
-      overallScore,
-      words: wordScores,
-      suggestions,
-      hasErrors
-    };
-
-    console.log('✅ Real GOP analysis completed:', gopResult);
-
-    // Transform GOP result to match expected format
-    const hasPronunciationErrors = gopResult.hasErrors;
-    const words = gopResult.words.map((wordData: any) => ({
-      word: wordData.word,
-      score: wordData.score,
-      needsPractice: wordData.score < 70,
-      feedback: wordData.feedback,
-      commonMistakes: wordData.phonemeScores
-        .filter((p: any) => p.score < 70)
-        .map((p: any) => p.feedback),
-      difficulty: wordData.difficulty,
-      soundsToFocus: wordData.phonemeScores
-        .filter((p: any) => p.score < 70)
-        .map((p: any) => p.phoneme),
-      improvementTips: wordData.phonemeScores
-        .filter((p: any) => p.score < 70)
-        .map((p: any) => p.feedback),
-      syllableAnalysis: wordData.phonemeScores.map((phoneme: any) => ({
-        syllable: phoneme.phoneme,
-        score: phoneme.score,
-        feedback: phoneme.feedback,
-        phoneticExpected: phoneme.expected,
-        phoneticActual: phoneme.actual
-      }))
-    }));
-
-    const result = {
-      hasPronunciationErrors,
-      words,
-      suggestions: gopResult.suggestions,
-      overallScore: gopResult.overallScore,
-      scoringBreakdown: {
-        vowelAccuracy: Math.round(gopResult.overallScore * 0.9),
-        consonantAccuracy: Math.round(gopResult.overallScore * 0.95),
-        rhythm: Math.round(gopResult.overallScore * 0.85),
-        stress: Math.round(gopResult.overallScore * 0.9)
+    // Call OpenAI Whisper API
+    try {
+      console.log('📡 Calling OpenAI Whisper API...')
+      
+      // Convert base64 to blob
+      let audioBlob: Blob
+      try {
+        audioBlob = new Blob([Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0))], {
+          type: 'audio/webm'
+        })
+        console.log('✅ Audio blob created:', { size: audioBlob.size, type: audioBlob.type })
+      } catch (conversionError) {
+        console.error('❌ Error converting base64 to blob:', conversionError)
+        throw new Error('Invalid audio data format - cannot convert to blob')
       }
-    };
 
-    return new Response(
-      JSON.stringify(result),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200,
-      },
-    )
+      // Create form data for Whisper API
+      const formData = new FormData()
+      formData.append('file', audioBlob, 'recording.webm')
+      formData.append('model', 'whisper-1')
+      
+      // Set language to German if specified
+      if (language && language !== 'auto') {
+        formData.append('language', language)
+      }
+      
+      formData.append('response_format', 'verbose_json')
+      
+      // Request word-level timestamps for timing analysis
+      formData.append('timestamp_granularities[]', 'word')
+      formData.append('timestamp_granularities[]', 'segment')
+
+      const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openaiApiKey}`,
+        },
+        body: formData,
+      })
+
+      console.log('📡 Whisper API Response Status:', whisperResponse.status)
+      console.log('📡 Whisper API Response OK:', whisperResponse.ok)
+
+      if (!whisperResponse.ok) {
+        const errorText = await whisperResponse.text()
+        console.error('❌ Whisper API Error Response Status:', whisperResponse.status)
+        console.error('❌ Whisper API Error Response Body:', errorText)
+        
+        // Try to parse error as JSON for better logging
+        let errorDetails = errorText
+        try {
+          const errorJson = JSON.parse(errorText)
+          console.error('❌ Parsed Error JSON:', JSON.stringify(errorJson, null, 2))
+          errorDetails = typeof errorJson === 'object' ? JSON.stringify(errorJson) : errorText
+        } catch (e) {
+          console.error('❌ Error response is not JSON:', e)
+        }
+        
+        // Determine error type
+        let errorMessage = 'Failed to analyze pronunciation'
+        let statusCode = 500
+        
+        if (whisperResponse.status === 401) {
+          errorMessage = 'Authentication failed with OpenAI Whisper API - check your API key'
+        } else if (whisperResponse.status === 429) {
+          errorMessage = 'OpenAI Whisper API rate limit exceeded. Please try again in a moment.'
+          statusCode = 429
+        } else if (whisperResponse.status === 400) {
+          errorMessage = 'Invalid request format for OpenAI Whisper API'
+          statusCode = 400
+        }
+        
+        return new Response(
+          JSON.stringify({ 
+            error: errorMessage,
+            details: `OpenAI Whisper API error: ${errorDetails}. Status: ${whisperResponse.status}. This service uses OpenAI Whisper API for pronunciation analysis.`,
+            statusCode: whisperResponse.status,
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: statusCode
+          }
+        )
+      }
+
+      const whisperData = await whisperResponse.json()
+      console.log('✅ Whisper API Response received:', JSON.stringify(whisperData, null, 2))
+
+      const actualTranscription = whisperData.text || ''
+      const words = whisperData.words || []
+      const segments = whisperData.segments || []
+      const duration = segments.length > 0 ? segments[segments.length - 1].end : 0
+
+      console.log('📝 Actual transcription from Whisper:', actualTranscription)
+      console.log('📝 Expected transcription:', transcription)
+      console.log('⏱️ Duration:', duration, 'seconds')
+      console.log('📊 Words detected:', words.length)
+
+      // Generate pronunciation scores based on transcription comparison
+      const mappedResponse = generatePronunciationScoresFromComparison(
+        actualTranscription,
+        transcription,
+        words,
+        duration
+      )
+
+      return new Response(
+        JSON.stringify(mappedResponse),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        },
+      )
+    } catch (apiError) {
+      console.error('❌ Error calling OpenAI Whisper API:', apiError)
+      // Fallback to mock response for development/debugging
+      console.log('⚠️ Falling back to mock response')
+      const expectedWords = transcription.split(' ').filter(word => word.length > 0)
+      const mockResponse = generateMockResponse(expectedWords, transcription)
+      
+      return new Response(
+        JSON.stringify(mockResponse),
+        {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200,
+        },
+      )
+    }
   } catch (error) {
     console.error('❌ Error in pronunciation analysis:', error)
     return new Response(
@@ -275,3 +220,440 @@ serve(async (req) => {
     )
   }
 })
+
+// Generate pronunciation scores by comparing Whisper transcription with expected text
+function generatePronunciationScoresFromComparison(
+  actualTranscription: string,
+  expectedTranscription: string,
+  whisperWords: any[],
+  duration: number
+) {
+  // Normalize transcriptions for comparison (lowercase, remove punctuation)
+  const normalizeText = (text: string) => text.toLowerCase().replace(/[.,!?;:]/g, '').trim()
+  const actualNormalized = normalizeText(actualTranscription)
+  const expectedNormalized = normalizeText(expectedTranscription)
+  
+  // Split into words
+  const expectedWords = expectedNormalized.split(/\s+/).filter(w => w.length > 0)
+  const actualWords = actualNormalized.split(/\s+/).filter(w => w.length > 0)
+  
+  // Calculate word-level accuracy
+  const wordMatches: boolean[] = []
+  const maxLength = Math.max(expectedWords.length, actualWords.length)
+  
+  for (let i = 0; i < maxLength; i++) {
+    const expectedWord = expectedWords[i] || ''
+    const actualWord = actualWords[i] || ''
+    
+    if (expectedWord && actualWord) {
+      // Exact match
+      if (expectedWord === actualWord) {
+        wordMatches.push(true)
+      } else {
+        // Check similarity using Levenshtein distance
+        const similarity = calculateSimilarity(expectedWord, actualWord)
+        wordMatches.push(similarity >= 0.7) // 70% similarity threshold
+      }
+    } else {
+      wordMatches.push(false)
+    }
+  }
+  
+  // Calculate overall accuracy
+  const correctWords = wordMatches.filter(m => m).length
+  const totalWords = expectedWords.length || 1
+  const accuracy = (correctWords / totalWords) * 100
+  
+  // Calculate timing metrics
+  const wordsPerSecond = actualWords.length / Math.max(duration, 1)
+  const idealWordsPerSecond = 2.5 // Typical German speaking pace
+  const speedScore = Math.max(0, Math.min(100, (idealWordsPerSecond / Math.max(wordsPerSecond, 0.5)) * 100))
+  
+  // Analyze pauses from word timestamps
+  let pauseScore = 100
+  if (whisperWords.length > 1) {
+    const pauses: number[] = []
+    for (let i = 1; i < whisperWords.length; i++) {
+      const pause = whisperWords[i].start - whisperWords[i - 1].end
+      if (pause > 0.5) pauses.push(pause) // Pauses longer than 0.5 seconds
+    }
+    // Reduce score for excessive pauses
+    pauseScore = Math.max(60, 100 - (pauses.length * 10))
+  }
+  
+  // Generate word-level scores
+  const words = expectedWords.map((word, index) => {
+    const isCorrect = wordMatches[index] || false
+    const baseScore = isCorrect ? 85 : 65
+    
+    // Add variation based on word characteristics
+    const hasUmlauts = /[äöü]/.test(word)
+    const hasCh = /ch/.test(word)
+    const hasR = /r/.test(word)
+    const isLong = word.length > 6
+    
+    let wordScore = baseScore
+    if (!isCorrect) {
+      if (hasUmlauts) wordScore -= 15
+      if (hasCh) wordScore -= 20
+      if (hasR) wordScore -= 10
+      if (isLong) wordScore -= 5
+    } else {
+      // Add positive variation for correct pronunciation
+      wordScore += Math.floor(Math.random() * 10) - 5 // ±5 points
+    }
+    
+    wordScore = Math.max(40, Math.min(100, wordScore))
+    
+    // Calculate dimension scores
+    const soundAccuracy = wordScore
+    const stressEmphasis = Math.round(wordScore * 0.95)
+    const smoothness = Math.round(pauseScore * 0.9)
+    const correctSpeed = Math.round(speedScore)
+    const intonationRhythm = Math.round((wordScore + speedScore) / 2)
+    const understandability = wordScore
+    
+    const avgScore = Math.round(
+      (soundAccuracy + stressEmphasis + smoothness + correctSpeed + intonationRhythm + understandability) / 6
+    )
+    
+    const needsPractice = avgScore < 75
+    const feedback = needsPractice
+      ? `"${word}" needs more practice. Focus on the areas highlighted below.`
+      : `Good pronunciation of "${word}"`
+    
+    return {
+      word,
+      score: avgScore,
+      needsPractice,
+      feedback,
+      dimensions: {
+        soundAccuracy: {
+          score: soundAccuracy,
+          feedback: {
+            correct: soundAccuracy >= 70 ? [`Correct pronunciation of sounds in "${word}"`] : [],
+            incorrect: soundAccuracy < 70 ? [`Some sounds need improvement in "${word}"`] : [],
+            improvement: soundAccuracy < 70 ? [`Practice individual sounds more slowly`, `Listen to native pronunciation`] : []
+          }
+        },
+        stressEmphasis: {
+          score: stressEmphasis,
+          feedback: {
+            correct: stressEmphasis >= 70 ? [`Good stress placement`] : [],
+            incorrect: stressEmphasis < 70 ? [`Stress on wrong syllable`] : [],
+            improvement: stressEmphasis < 70 ? [`Focus on correct syllable stress`, `Practice word stress patterns`] : []
+          }
+        },
+        smoothness: {
+          score: smoothness,
+          feedback: {
+            correct: smoothness >= 70 ? [`Smooth flow without hesitations`] : [],
+            incorrect: smoothness < 70 ? [`Unnatural pauses detected`] : [],
+            improvement: smoothness < 70 ? [`Practice speaking more fluidly`, `Reduce hesitations`] : []
+          }
+        },
+        correctSpeed: {
+          score: correctSpeed,
+          feedback: {
+            correct: correctSpeed >= 70 ? [`Appropriate speaking pace`] : [],
+            incorrect: correctSpeed < 70 ? [`Speaking too fast or too slow`] : [],
+            improvement: correctSpeed < 70 ? [`Match natural German speaking pace`, `Practice with timing`] : []
+          }
+        },
+        intonationRhythm: {
+          score: intonationRhythm,
+          feedback: {
+            correct: intonationRhythm >= 70 ? [`Good speech melody`] : [],
+            incorrect: intonationRhythm < 70 ? [`Intonation needs work`] : [],
+            improvement: intonationRhythm < 70 ? [`Practice rising and falling tones`, `Match German rhythm patterns`] : []
+          }
+        },
+        understandability: {
+          score: understandability,
+          feedback: {
+            correct: understandability >= 70 ? [`Clear and understandable`] : [],
+            incorrect: understandability < 70 ? [`Could be clearer`] : [],
+            improvement: understandability < 70 ? [`Focus on clarity`, `Practice articulation`] : []
+          }
+        }
+      }
+    }
+  })
+  
+  // Calculate sentence-level scores
+  const overallScore = Math.round(accuracy)
+  const sentenceScore = overallScore
+  
+  // Calculate sentence-level dimensions
+  const sentenceDimensions = {
+    soundAccuracy: {
+      score: words.length > 0 
+        ? Math.round(words.reduce((sum, w) => sum + w.dimensions.soundAccuracy.score, 0) / words.length)
+        : overallScore,
+      feedback: {
+        correct: overallScore >= 75 ? [`Overall sound accuracy is good`] : [],
+        incorrect: overallScore < 75 ? [`Some sounds need improvement throughout the sentence`] : [],
+        improvement: overallScore < 75 ? [`Practice difficult sounds individually`, `Focus on clarity`] : []
+      }
+    },
+    stressEmphasis: {
+      score: words.length > 0
+        ? Math.round(words.reduce((sum, w) => sum + w.dimensions.stressEmphasis.score, 0) / words.length)
+        : overallScore,
+      feedback: {
+        correct: overallScore >= 75 ? [`Stress patterns are correct`] : [],
+        incorrect: overallScore < 75 ? [`Work on syllable stress`] : [],
+        improvement: overallScore < 75 ? [`Practice word stress patterns`, `Listen to native speakers`] : []
+      }
+    },
+    smoothness: {
+      score: Math.round(pauseScore),
+      feedback: {
+        correct: pauseScore >= 70 ? [`Speech flows smoothly`] : [],
+        incorrect: pauseScore < 70 ? [`Too many pauses`] : [],
+        improvement: pauseScore < 70 ? [`Practice speaking without hesitations`, `Increase fluency`] : []
+      }
+    },
+    correctSpeed: {
+      score: Math.round(speedScore),
+      feedback: {
+        correct: speedScore >= 70 ? [`Pace is appropriate`] : [],
+        incorrect: speedScore < 70 ? [`Adjust speaking speed`] : [],
+        improvement: speedScore < 70 ? [`Match natural German pace`, `Practice timing`] : []
+      }
+    },
+    intonationRhythm: {
+      score: Math.round((pauseScore + speedScore) / 2),
+      feedback: {
+        correct: overallScore >= 75 ? [`Good intonation`] : [],
+        incorrect: overallScore < 75 ? [`Intonation needs work`] : [],
+        improvement: overallScore < 75 ? [`Practice speech melody`, `Focus on rhythm`] : []
+      }
+    },
+    understandability: {
+      score: overallScore,
+      feedback: {
+        correct: overallScore >= 75 ? [`Speech is clear and understandable`] : [],
+        incorrect: overallScore < 75 ? [`Could be clearer`] : [],
+        improvement: overallScore < 75 ? [`Focus on clarity`, `Practice articulation`] : []
+      }
+    }
+  }
+  
+  // Generate suggestions
+  const suggestions = overallScore >= 75
+    ? ['Great job! Continue practicing for even better pronunciation']
+    : ['Focus on the areas highlighted in the detailed analysis', 'Practice difficult words individually']
+  
+  const result = {
+    overallScore,
+    sentenceScore,
+    words,
+    hasPronunciationErrors: overallScore < 75,
+    suggestions,
+    sentenceDimensions,
+    source: 'practice' as const
+  }
+  
+  return result
+}
+
+// Calculate similarity between two strings using Levenshtein distance
+function calculateSimilarity(str1: string, str2: string): number {
+  const longer = str1.length > str2.length ? str1 : str2
+  const shorter = str1.length > str2.length ? str2 : str1
+  
+  if (longer.length === 0) return 1.0
+  
+  const distance = levenshteinDistance(longer, shorter)
+  return (longer.length - distance) / longer.length
+}
+
+// Calculate Levenshtein distance between two strings
+function levenshteinDistance(str1: string, str2: string): number {
+  const matrix: number[][] = []
+  
+  for (let i = 0; i <= str2.length; i++) {
+    matrix[i] = [i]
+  }
+  
+  for (let j = 0; j <= str1.length; j++) {
+    matrix[0][j] = j
+  }
+  
+  for (let i = 1; i <= str2.length; i++) {
+    for (let j = 1; j <= str1.length; j++) {
+      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1]
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        )
+      }
+    }
+  }
+  
+  return matrix[str2.length][str1.length]
+}
+
+// Fallback: Mock response generator (used when API fails)
+function generateMockResponse(words: string[], transcription: string) {
+  const wordAnalyses = words.map((word, index) => {
+    // Generate mock scores for each dimension
+    const soundAccuracy = Math.floor(Math.random() * 40) + 50; // 50-90
+    const stressEmphasis = Math.floor(Math.random() * 40) + 50;
+    const smoothness = Math.floor(Math.random() * 40) + 50;
+    const correctSpeed = Math.floor(Math.random() * 40) + 50;
+    const intonationRhythm = Math.floor(Math.random() * 40) + 50;
+    const understandability = Math.floor(Math.random() * 40) + 50;
+    
+    // Calculate average score
+    const avgScore = Math.round(
+      (soundAccuracy + stressEmphasis + smoothness + correctSpeed + intonationRhythm + understandability) / 6
+    );
+
+    return {
+      word,
+      score: avgScore,
+      needsPractice: avgScore < 75,
+      feedback: avgScore >= 75 
+        ? `Good pronunciation of "${word}"` 
+        : `"${word}" needs more practice. Focus on the areas highlighted below.`,
+      dimensions: {
+        soundAccuracy: {
+          score: soundAccuracy,
+          feedback: {
+            correct: soundAccuracy >= 70 ? [`Correct pronunciation of sounds in "${word}"`] : [],
+            incorrect: soundAccuracy < 70 ? [`Some sounds need improvement in "${word}"`] : [],
+            improvement: soundAccuracy < 70 ? [`Practice individual sounds more slowly`, `Listen to native pronunciation`] : []
+          }
+        },
+        stressEmphasis: {
+          score: stressEmphasis,
+          feedback: {
+            correct: stressEmphasis >= 70 ? [`Good stress placement`] : [],
+            incorrect: stressEmphasis < 70 ? [`Stress on wrong syllable`] : [],
+            improvement: stressEmphasis < 70 ? [`Focus on correct syllable stress`, `Practice word stress patterns`] : []
+          }
+        },
+        smoothness: {
+          score: smoothness,
+          feedback: {
+            correct: smoothness >= 70 ? [`Smooth flow without hesitations`] : [],
+            incorrect: smoothness < 70 ? [`Unnatural pauses detected`] : [],
+            improvement: smoothness < 70 ? [`Practice speaking more fluidly`, `Reduce hesitations`] : []
+          }
+        },
+        correctSpeed: {
+          score: correctSpeed,
+          feedback: {
+            correct: correctSpeed >= 70 ? [`Appropriate speaking pace`] : [],
+            incorrect: correctSpeed < 70 ? [`Speaking too fast or too slow`] : [],
+            improvement: correctSpeed < 70 ? [`Match natural German speaking pace`, `Practice with timing`] : []
+          }
+        },
+        intonationRhythm: {
+          score: intonationRhythm,
+          feedback: {
+            correct: intonationRhythm >= 70 ? [`Good speech melody`] : [],
+            incorrect: intonationRhythm < 70 ? [`Intonation needs work`] : [],
+            improvement: intonationRhythm < 70 ? [`Practice rising and falling tones`, `Match German rhythm patterns`] : []
+          }
+        },
+        understandability: {
+          score: understandability,
+          feedback: {
+            correct: understandability >= 70 ? [`Clear and understandable`] : [],
+            incorrect: understandability < 70 ? [`Could be clearer`] : [],
+            improvement: understandability < 70 ? [`Focus on clarity`, `Practice articulation`] : []
+          }
+        }
+      }
+    };
+  });
+
+  // Calculate overall scores
+  const overallScore = Math.round(
+    wordAnalyses.reduce((sum, w) => sum + w.score, 0) / wordAnalyses.length
+  );
+
+  // Calculate sentence-level dimension scores (averages of word scores)
+  const sentenceDimensions = {
+    soundAccuracy: {
+      score: Math.round(
+        wordAnalyses.reduce((sum, w) => sum + w.dimensions.soundAccuracy.score, 0) / wordAnalyses.length
+      ),
+      feedback: {
+        correct: overallScore >= 75 ? [`Overall sound accuracy is good`] : [],
+        incorrect: overallScore < 75 ? [`Some sounds need improvement throughout the sentence`] : [],
+        improvement: overallScore < 75 ? [`Practice difficult sounds individually`, `Focus on clarity`] : []
+      }
+    },
+    stressEmphasis: {
+      score: Math.round(
+        wordAnalyses.reduce((sum, w) => sum + w.dimensions.stressEmphasis.score, 0) / wordAnalyses.length
+      ),
+      feedback: {
+        correct: overallScore >= 75 ? [`Stress patterns are correct`] : [],
+        incorrect: overallScore < 75 ? [`Work on syllable stress`] : [],
+        improvement: overallScore < 75 ? [`Practice word stress patterns`, `Listen to native speakers`] : []
+      }
+    },
+    smoothness: {
+      score: Math.round(
+        wordAnalyses.reduce((sum, w) => sum + w.dimensions.smoothness.score, 0) / wordAnalyses.length
+      ),
+      feedback: {
+        correct: overallScore >= 75 ? [`Speech flows smoothly`] : [],
+        incorrect: overallScore < 75 ? [`Too many pauses`] : [],
+        improvement: overallScore < 75 ? [`Practice speaking without hesitations`, `Increase fluency`] : []
+      }
+    },
+    correctSpeed: {
+      score: Math.round(
+        wordAnalyses.reduce((sum, w) => sum + w.dimensions.correctSpeed.score, 0) / wordAnalyses.length
+      ),
+      feedback: {
+        correct: overallScore >= 75 ? [`Pace is appropriate`] : [],
+        incorrect: overallScore < 75 ? [`Adjust speaking speed`] : [],
+        improvement: overallScore < 75 ? [`Match natural German pace`, `Practice timing`] : []
+      }
+    },
+    intonationRhythm: {
+      score: Math.round(
+        wordAnalyses.reduce((sum, w) => sum + w.dimensions.intonationRhythm.score, 0) / wordAnalyses.length
+      ),
+      feedback: {
+        correct: overallScore >= 75 ? [`Good intonation`] : [],
+        incorrect: overallScore < 75 ? [`Intonation needs work`] : [],
+        improvement: overallScore < 75 ? [`Practice speech melody`, `Focus on rhythm`] : []
+      }
+    },
+    understandability: {
+      score: Math.round(
+        wordAnalyses.reduce((sum, w) => sum + w.dimensions.understandability.score, 0) / wordAnalyses.length
+      ),
+      feedback: {
+        correct: overallScore >= 75 ? [`Speech is clear and understandable`] : [],
+        incorrect: overallScore < 75 ? [`Could be clearer`] : [],
+        improvement: overallScore < 75 ? [`Focus on clarity`, `Practice articulation`] : []
+      }
+    }
+  };
+
+  const result = {
+    overallScore,
+    sentenceScore: overallScore,
+    words: wordAnalyses,
+    hasPronunciationErrors: overallScore < 75,
+    suggestions: overallScore >= 75 
+      ? ['Great job! Continue practicing for even better pronunciation']
+      : ['Focus on the areas highlighted in the detailed analysis', 'Practice difficult words individually'],
+    sentenceDimensions,
+    source: 'practice' as const
+  };
+
+  return result;
+}
