@@ -2964,19 +2964,41 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Ant
     console.log('📚 === WORDS WITH MEANINGS GENERATED ===');
     console.log('Final words with meanings:', wordsWithMeanings);
     
-    // Add to persistent vocabulary with meanings
+    // Dedupe by word (case-insensitive) and exclude existing persistent vocab
+    const existingWordsLower = new Set(persistentVocab.map(v => v.word.toLowerCase()));
+    const seen = new Set<string>();
+    const uniqueWithMeanings = wordsWithMeanings.filter(item => {
+      const lower = item.word.toLowerCase();
+      if (seen.has(lower)) return false;
+      seen.add(lower);
+      return !existingWordsLower.has(lower);
+    });
+
+    // Add to persistent vocabulary with meanings (deduped)
     setPersistentVocab(prev => {
-      const updated = [...wordsWithMeanings, ...prev];
-      console.log('📚 === UPDATED PERSISTENT VOCAB WITH MEANINGS ===');
+      const updated = [...uniqueWithMeanings, ...prev];
+      console.log('📚 === UPDATED PERSISTENT VOCAB WITH MEANINGS (DEDUPED) ===');
       console.log('New persistent vocab count:', updated.length);
       console.log('New persistent vocab items:', updated);
       return updated;
     });
     
-    // Set new vocabulary items for the Toolbar (with meanings already generated)
-    console.log('📚 === SETTING NEW VOCAB ITEMS FOR TOOLBAR ===');
-    console.log('Items being sent to Toolbar:', wordsWithMeanings);
-    setNewVocabItems(wordsWithMeanings);
+    // Set new vocabulary items for the Toolbar (deduped and excluding existing)
+    console.log('📚 === SETTING NEW VOCAB ITEMS FOR TOOLBAR (DEDUPED) ===');
+    console.log('Items being sent to Toolbar:', uniqueWithMeanings);
+    setNewVocabItems(prev => {
+      const prevSeen = new Set((prev || []).map(i => i.word.toLowerCase()));
+      const merged = [...uniqueWithMeanings.filter(i => !prevSeen.has(i.word.toLowerCase())), ...(prev || [])];
+      // Final dedupe on merge
+      const finalSeen = new Set<string>();
+      const final = merged.filter(i => {
+        const lower = i.word.toLowerCase();
+        if (finalSeen.has(lower)) return false;
+        finalSeen.add(lower);
+        return true;
+      });
+      return final;
+    });
     
     // Open toolbox with vocab tab active
     setToolbarActiveTab('vocab');
@@ -3374,35 +3396,14 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             errorMessage += `📚 Vocabulary: ${vocabErrors}\n`;
             console.log('Vocabulary errors detected:', data.corrections.vocabulary);
             
-            // Auto-add vocabulary corrections (only for current session and avoid duplicates)
+            // Auto-add vocabulary corrections from grammar is disabled for vocabulary isolation
             if (selectedConversation) {
-              console.log('📚 === AUTO-ADDING VOCABULARY FROM ERRORS ===');
+              console.log('📚 === AUTO-ADDING VOCABULARY FROM ERRORS (DISABLED) ===');
               console.log('Vocabulary corrections count:', data.corrections.vocabulary.length);
               console.log('Current persistent vocab count:', persistentVocab.length);
               console.log('Current vocabAdditionTracker:', Array.from(vocabAdditionTracker));
               console.log('Timestamp:', new Date().toISOString());
               console.log('Stack trace:', new Error().stack);
-              
-              data.corrections.vocabulary.forEach((v: any, index: number) => {
-                console.log(`📚 Processing vocabulary ${index + 1}:`, v.correct, v.meaning);
-                // Check if word already exists in persistent vocab to avoid duplicates
-                const wordExists = persistentVocab.some(item => item.word === v.correct);
-                console.log(`📚 Word "${v.correct}" exists:`, wordExists);
-                console.log(`📚 Current persistent vocab words:`, persistentVocab.map(item => item.word));
-                
-                // Also check if word is already in tracker
-                const wordKey = `${v.correct}-${selectedConversation}`;
-                const inTracker = vocabAdditionTracker.has(wordKey);
-                console.log(`📚 Word "${v.correct}" in tracker:`, inTracker);
-                console.log(`📚 Word key:`, wordKey);
-                
-                if (!wordExists && !inTracker) {
-                  console.log(`📚 Adding word "${v.correct}" to vocabulary`);
-                  handleAddToVocab(v.correct, v.meaning);
-                } else {
-                  console.log(`📚 Skipping duplicate word "${v.correct}" - exists: ${wordExists}, in tracker: ${inTracker}`);
-                }
-              });
             }
           }
           
@@ -5397,11 +5398,11 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 <span>Progress</span>
               </button>
               <button
-                onClick={() => setShowVocabBuilder(true)}
                 className={`flex-1 px-3 py-2 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center space-x-1.5 text-text-muted hover:text-primary hover:bg-primary/10 border border-gray-200`}
+                title="Podcasts"
               >
                 <BookOpen className="h-3.5 w-3.5" />
-                <span>Vocab</span>
+                <span>Podcasts</span>
               </button>
             </div>
           )}
@@ -5419,9 +5420,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 <BarChart3 className="h-5 w-5" />
               </button>
               <button
-                onClick={() => setShowVocabBuilder(true)}
                 className="p-3 rounded-xl transition-all duration-200 text-gray-600 hover:text-primary hover:bg-primary/10 flex items-center justify-center"
-                title="Vocab List"
+                title="Podcasts"
               >
                 <BookOpen className="h-5 w-5" />
               </button>
@@ -6222,6 +6222,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       setPersistentVocab(newVocab);
                       console.log('📚 === PERSISTENT VOCAB UPDATED ===');
                     }}
+                    onOpenVocabBuilder={() => setShowVocabBuilder(true)}
                   />
                 </div>
               ) : (

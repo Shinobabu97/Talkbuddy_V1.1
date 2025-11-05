@@ -354,6 +354,7 @@ interface ToolbarProps {
   onWordLearned?: (word?: string) => void;
   lastGermanVoiceMessage?: any;
   onPronunciationComplete?: (score: number, word: string) => void;
+  onOpenVocabBuilder?: () => void; // Added to open builder from right panel
 }
 
 interface VocabItem {
@@ -427,7 +428,8 @@ export default function Toolbar({
   onAddExperience,
   onWordLearned,
   lastGermanVoiceMessage,
-  onPronunciationComplete
+  onPronunciationComplete,
+  onOpenVocabBuilder
 }: ToolbarProps) {
   const [internalActiveTab, setInternalActiveTab] = useState<'vocab' | 'explain' | 'pronunciation'>('explain');
   
@@ -574,8 +576,18 @@ export default function Toolbar({
     }
   };
   
-  // Use persistent vocabulary from props instead of local state
-  const vocabItems = persistentVocab.map(item => ({
+  // Use persistent vocabulary from props instead of local state (deduped by word)
+  const dedupedPersistent = (() => {
+    const seen = new Set<string>();
+    return persistentVocab.filter(item => {
+      const lower = (item.word || '').toLowerCase();
+      if (seen.has(lower)) return false;
+      seen.add(lower);
+      return true;
+    });
+  })();
+
+  const vocabItems = dedupedPersistent.map(item => ({
     word: item.word,
     meaning: item.meaning,
     timestamp: new Date().toISOString(),
@@ -583,10 +595,14 @@ export default function Toolbar({
     category: 'conversation',
     theme: 'general'
   }));
+
+  // Filter new vocab items to exclude any already present in vocabItems
+  const persistentWordsLower = new Set(dedupedPersistent.map(i => (i.word || '').toLowerCase()));
+  const filteredNewVocabItems = (newVocabItems || []).filter(i => !persistentWordsLower.has((i.word || '').toLowerCase()));
   const [grammarExplanation, setGrammarExplanation] = useState<string>('');
   const [speakingTips, setSpeakingTips] = useState<string>('');
   const [isLoadingExplanation, setIsLoadingExplanation] = useState(false);
-  const [vocabFilter, setVocabFilter] = useState<string>('all');
+  const [vocabFilter, setVocabFilter] = useState<string>('conversation');
   const [explanationCache, setExplanationCache] = useState<{[key: string]: {grammar: string, tips: string}}>({});
   const [showGrammarSection, setShowGrammarSection] = useState<boolean>(false);
   const [showSpeakingSection, setShowSpeakingSection] = useState<boolean>(false);
@@ -2655,16 +2671,8 @@ export default function Toolbar({
       <div className="flex-1 overflow-y-auto p-4">
         {activeTab === 'vocab' && (
           <div className="space-y-6">
-            {/* Vocabulary Filter */}
+            {/* Vocabulary Tabs: Conversation | Vocabulary Builder */}
             <div className="flex space-x-2">
-              <button
-                onClick={() => setVocabFilter('all')}
-                className={`px-3 py-1 rounded text-sm ${
-                  vocabFilter === 'all' ? 'btn-glossy' : 'bg-gray-200 text-gray-700'
-                }`}
-              >
-                All
-              </button>
               <button
                 onClick={() => setVocabFilter('conversation')}
                 className={`px-3 py-1 rounded text-sm ${
@@ -2673,7 +2681,13 @@ export default function Toolbar({
               >
                 Conversation
               </button>
-                </div>
+              <button
+                onClick={onOpenVocabBuilder}
+                className={`px-3 py-1 rounded text-sm bg-gray-200 text-gray-700 hover:bg-gray-300`}
+              >
+                Vocabulary Builder
+              </button>
+            </div>
 
             {/* Instructions Section */}
             <div className="bg-background-light border border-gray-200 rounded-lg p-4">
@@ -2694,10 +2708,10 @@ export default function Toolbar({
                   <Star className="h-3 w-3 mr-2 mt-0.5 flex-shrink-0" />
                   <span><strong>Star:</strong> Add words to My Vocabulary for practice in the Vocab List on the Left Panel</span>
                 </li>
-                <li className="flex items-start">
-                  <BookOpen className="h-3 w-3 mr-2 mt-0.5 flex-shrink-0" />
-                  <span><strong>Vocab List:</strong> Access the full vocabulary builder with topic-based words, flashcards, and test mode from the left panel</span>
-                </li>
+              <li className="flex items-start">
+                <BookOpen className="h-3 w-3 mr-2 mt-0.5 flex-shrink-0" />
+                <span><strong>Vocabulary Builder:</strong> Access topic-based words, flashcards, and test mode using the tab above on the right panel</span>
+              </li>
               </ul>
             </div>
 
@@ -2766,10 +2780,10 @@ export default function Toolbar({
               </div>
 
             {/* New Vocabulary Items */}
-            {newVocabItems && newVocabItems.length > 0 && (
+            {filteredNewVocabItems && filteredNewVocabItems.length > 0 && (
               <div className="space-y-3">
                 <h3 className="font-semibold text-gray-900">New Words</h3>
-                {newVocabItems.map((item, index) => {
+                {filteredNewVocabItems.map((item, index) => {
                   const isStarred = myVocab.has(item.word);
                   return (
                       <div key={index} className="bg-background-light border border-gray-200 rounded-lg p-3">
