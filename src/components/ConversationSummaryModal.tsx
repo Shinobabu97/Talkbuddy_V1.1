@@ -72,8 +72,8 @@ const ConversationSummaryModal: React.FC<ConversationSummaryModalProps> = ({
                   <Mic className="h-5 w-5 text-pink-600" />
                   <h3 className="font-semibold text-gray-900">Pronunciation</h3>
                 </div>
-                <p className="text-2xl font-bold text-pink-600">{summary.stats.pronunciationSuccessRate}%</p>
-                <p className="text-xs text-gray-600">accuracy</p>
+                <p className="text-2xl font-bold text-pink-600">{summary.stats.pronunciationSuccessRate}/100</p>
+                <p className="text-xs text-gray-600">latest sentence score</p>
               </div>
             )}
 
@@ -84,10 +84,10 @@ const ConversationSummaryModal: React.FC<ConversationSummaryModalProps> = ({
               </div>
               <p className="text-2xl font-bold text-indigo-600">
                 {summary.stats.pronunciationAttempts > 0
-                  ? `${summary.stats.pronunciationSuccessRate}/100`
+                  ? `${summary.stats.averageSentenceScore}/100`
                   : '0/100'}
               </p>
-              <p className="text-xs text-gray-600">pronunciation score</p>
+              <p className="text-xs text-gray-600">average sentence pronunciation</p>
             </div>
           </div>
 

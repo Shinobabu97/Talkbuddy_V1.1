@@ -20,8 +20,10 @@ export interface SessionData {
     word: string;
     score: number;
     timestamp: string;
-    isSuccess: boolean; // score >= 70
+    isSuccess: boolean; // score >= threshold
+    type: 'word' | 'sentence';
   }[];
+  lastSentenceScore?: number;
   
   // Grammar tracking
   grammarMistakes: {

@@ -1037,6 +1037,12 @@ export default function Toolbar({
             }
             
             setPronunciationAnalysis(data);
+
+            if (onPronunciationComplete && (data.sentenceScore ?? data.overallScore)) {
+              const sentenceScore = data.sentenceScore ?? data.overallScore;
+              onPronunciationComplete(sentenceScore, pendingPronunciationAnalysis.text, 'sentence');
+              console.log('📊 Pronunciation score sent to Dashboard:', sentenceScore);
+            }
           } catch (error) {
             console.error('❌ Error in pronunciation analysis:', error);
             alert(`Pronunciation analysis failed: ${(error as Error).message}`);

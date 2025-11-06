@@ -75,6 +75,7 @@ export interface SessionSummary {
     lastAnalyzed: string;
   }>;
   overallPronunciationScore: number;
+  averageSentenceScore: number;
   improvementAreas: string[];
 }
 
@@ -174,6 +175,7 @@ export async function getSessionSummary(conversationId: string): Promise<{
           problemWords: [],
           grammarTopics: [],
           overallPronunciationScore: 0,
+          averageSentenceScore: 0,
           improvementAreas: [],
         },
       };
@@ -188,11 +190,19 @@ export async function getSessionSummary(conversationId: string): Promise<{
     const allWords: { [word: string]: { scores: number[]; lastAnalyzed: string } } = {};
     let totalPronunciationScore = 0;
     let pronunciationCount = 0;
+    let totalSentenceScore = 0;
+    let sentenceScoreCount = 0;
 
     pronunciationAnalyses.forEach(analysis => {
       if (analysis.pronunciation_data) {
         totalPronunciationScore += analysis.pronunciation_data.overallScore;
         pronunciationCount++;
+
+        const sentenceScore = analysis.pronunciation_data.sentenceScore ?? analysis.pronunciation_data.overallScore;
+        if (typeof sentenceScore === 'number') {
+          totalSentenceScore += sentenceScore;
+          sentenceScoreCount++;
+        }
 
         analysis.pronunciation_data.words.forEach(word => {
           if (word.needsPractice) {
@@ -245,6 +255,10 @@ export async function getSessionSummary(conversationId: string): Promise<{
       ? Math.round(totalPronunciationScore / pronunciationCount) 
       : 0;
 
+    const averageSentenceScore = sentenceScoreCount > 0
+      ? Math.round(totalSentenceScore / sentenceScoreCount)
+      : 0;
+
     // Generate improvement areas
     const improvementAreas: string[] = [];
     if (problemWords.length > 0) {
@@ -264,6 +278,7 @@ export async function getSessionSummary(conversationId: string): Promise<{
       problemWords,
       grammarTopics: grammarTopicsArray,
       overallPronunciationScore,
+      averageSentenceScore,
       improvementAreas,
     };
 
