@@ -318,9 +318,35 @@ function generatePronunciationScoresFromComparison(
     )
     
     const needsPractice = avgScore < 75
-    const feedback = needsPractice
-      ? `"${word}" needs more practice. Focus on the areas highlighted below.`
-      : `Good pronunciation of "${word}"`
+    
+    // Check dimension scores to align feedback with dimension-level assessment
+    const dimensionScores = [soundAccuracy, stressEmphasis, smoothness, correctSpeed, intonationRhythm, understandability]
+    const amberDimensions = dimensionScores.filter(score => score >= 60 && score < 80).length
+    const redDimensions = dimensionScores.filter(score => score < 60).length
+    const greenDimensions = dimensionScores.filter(score => score >= 80).length
+    
+    // Generate feedback aligned with dimension scores
+    let feedback: string
+    if (redDimensions > 0) {
+      // If any dimension is Red, emphasize urgent need for practice
+      if (redDimensions >= 3) {
+        feedback = `"${word}" needs significant practice. Multiple areas require attention - see details below.`
+      } else {
+        feedback = `"${word}" needs more practice. Focus on the areas highlighted below.`
+      }
+    } else if (amberDimensions >= 3) {
+      // Multiple Amber dimensions
+      feedback = `"${word}" needs more practice. Focus on the areas highlighted below.`
+    } else if (amberDimensions > 0) {
+      // If some dimensions are Amber, acknowledge good parts but note improvement needed
+      feedback = `Good pronunciation of "${word}" with some areas for improvement. See details below.`
+    } else if (greenDimensions === 6) {
+      // All dimensions are Green
+      feedback = `Excellent pronunciation of "${word}"`
+    } else {
+      // Mostly good
+      feedback = `Good pronunciation of "${word}"`
+    }
     
     return {
       word,
@@ -333,7 +359,9 @@ function generatePronunciationScoresFromComparison(
           feedback: {
             correct: soundAccuracy >= 70 ? [`Correct pronunciation of sounds in "${word}"`] : [],
             incorrect: soundAccuracy < 70 ? [`Some sounds need improvement in "${word}"`] : [],
-            improvement: soundAccuracy < 70 ? [`Practice individual sounds more slowly`, `Listen to native pronunciation`] : []
+            improvement: soundAccuracy < 80 ? soundAccuracy < 60 
+              ? [`Practice individual sounds more slowly`, `Listen to native pronunciation`, `Focus on correct articulation`]
+              : [`Practice individual sounds more slowly`, `Listen to native pronunciation`] : []
           }
         },
         stressEmphasis: {
@@ -341,7 +369,9 @@ function generatePronunciationScoresFromComparison(
           feedback: {
             correct: stressEmphasis >= 70 ? [`Good stress placement`] : [],
             incorrect: stressEmphasis < 70 ? [`Stress on wrong syllable`] : [],
-            improvement: stressEmphasis < 70 ? [`Focus on correct syllable stress`, `Practice word stress patterns`] : []
+            improvement: stressEmphasis < 80 ? stressEmphasis < 60
+              ? [`Focus on correct syllable stress`, `Practice word stress patterns`, `Listen carefully to native speakers`]
+              : [`Focus on correct syllable stress`, `Practice word stress patterns`] : []
           }
         },
         smoothness: {
@@ -349,7 +379,9 @@ function generatePronunciationScoresFromComparison(
           feedback: {
             correct: smoothness >= 70 ? [`Smooth flow without hesitations`] : [],
             incorrect: smoothness < 70 ? [`Unnatural pauses detected`] : [],
-            improvement: smoothness < 70 ? [`Practice speaking more fluidly`, `Reduce hesitations`] : []
+            improvement: smoothness < 80 ? smoothness < 60
+              ? [`Practice speaking more fluidly`, `Reduce hesitations`, `Work on connecting words smoothly`]
+              : [`Practice speaking more fluidly`, `Reduce hesitations`] : []
           }
         },
         correctSpeed: {
@@ -357,7 +389,9 @@ function generatePronunciationScoresFromComparison(
           feedback: {
             correct: correctSpeed >= 70 ? [`Appropriate speaking pace`] : [],
             incorrect: correctSpeed < 70 ? [`Speaking too fast or too slow`] : [],
-            improvement: correctSpeed < 70 ? [`Match natural German speaking pace`, `Practice with timing`] : []
+            improvement: correctSpeed < 80 ? correctSpeed < 60
+              ? [`Match natural German speaking pace`, `Practice with timing`, `Record yourself and compare`]
+              : [`Match natural German speaking pace`, `Practice with timing`] : []
           }
         },
         intonationRhythm: {
@@ -365,7 +399,9 @@ function generatePronunciationScoresFromComparison(
           feedback: {
             correct: intonationRhythm >= 70 ? [`Good speech melody`] : [],
             incorrect: intonationRhythm < 70 ? [`Intonation needs work`] : [],
-            improvement: intonationRhythm < 70 ? [`Practice rising and falling tones`, `Match German rhythm patterns`] : []
+            improvement: intonationRhythm < 80 ? intonationRhythm < 60
+              ? [`Practice rising and falling tones`, `Match German rhythm patterns`, `Focus on natural speech flow`]
+              : [`Practice rising and falling tones`, `Match German rhythm patterns`] : []
           }
         },
         understandability: {
@@ -373,77 +409,122 @@ function generatePronunciationScoresFromComparison(
           feedback: {
             correct: understandability >= 70 ? [`Clear and understandable`] : [],
             incorrect: understandability < 70 ? [`Could be clearer`] : [],
-            improvement: understandability < 70 ? [`Focus on clarity`, `Practice articulation`] : []
+            improvement: understandability < 80 ? understandability < 60
+              ? [`Focus on clarity`, `Practice articulation`, `Speak more clearly and distinctly`]
+              : [`Focus on clarity`, `Practice articulation`] : []
           }
         }
       }
     }
   })
   
-  // Calculate sentence-level scores
-  const overallScore = Math.round(accuracy)
-  const sentenceScore = overallScore
+  // Calculate sentence-level dimension scores first
+  const soundAccuracyScore = words.length > 0 
+    ? Math.round(words.reduce((sum, w) => sum + w.dimensions.soundAccuracy.score, 0) / words.length)
+    : Math.round(accuracy)
+  const stressEmphasisScore = words.length > 0
+    ? Math.round(words.reduce((sum, w) => sum + w.dimensions.stressEmphasis.score, 0) / words.length)
+    : Math.round(accuracy)
+  const smoothnessScore = Math.round(pauseScore)
+  const correctSpeedScore = Math.round(speedScore)
+  const intonationRhythmScore = Math.round((pauseScore + speedScore) / 2)
+  const understandabilityScore = Math.round(accuracy)
   
-  // Calculate sentence-level dimensions
+  // Calculate sentence-level dimensions with feedback based on calculated scores
   const sentenceDimensions = {
     soundAccuracy: {
-      score: words.length > 0 
-        ? Math.round(words.reduce((sum, w) => sum + w.dimensions.soundAccuracy.score, 0) / words.length)
-        : overallScore,
+      score: soundAccuracyScore,
       feedback: {
-        correct: overallScore >= 75 ? [`Overall sound accuracy is good`] : [],
-        incorrect: overallScore < 75 ? [`Some sounds need improvement throughout the sentence`] : [],
-        improvement: overallScore < 75 ? [`Practice difficult sounds individually`, `Focus on clarity`] : []
+        correct: soundAccuracyScore >= 75 ? [`Overall sound accuracy is good`] : [],
+        incorrect: soundAccuracyScore < 75 ? [`Some sounds need improvement throughout the sentence`] : [],
+        improvement: soundAccuracyScore < 80 ? soundAccuracyScore < 60
+          ? [`Practice difficult sounds individually`, `Focus on clarity`, `Work on articulation throughout the sentence`]
+          : [`Practice difficult sounds individually`, `Focus on clarity`] : []
       }
     },
     stressEmphasis: {
-      score: words.length > 0
-        ? Math.round(words.reduce((sum, w) => sum + w.dimensions.stressEmphasis.score, 0) / words.length)
-        : overallScore,
+      score: stressEmphasisScore,
       feedback: {
-        correct: overallScore >= 75 ? [`Stress patterns are correct`] : [],
-        incorrect: overallScore < 75 ? [`Work on syllable stress`] : [],
-        improvement: overallScore < 75 ? [`Practice word stress patterns`, `Listen to native speakers`] : []
+        correct: stressEmphasisScore >= 75 ? [`Stress patterns are correct`] : [],
+        incorrect: stressEmphasisScore < 75 ? [`Work on syllable stress`] : [],
+        improvement: stressEmphasisScore < 80 ? stressEmphasisScore < 60
+          ? [`Practice word stress patterns`, `Listen to native speakers`, `Focus on correct syllable emphasis`]
+          : [`Practice word stress patterns`, `Listen to native speakers`] : []
       }
     },
     smoothness: {
-      score: Math.round(pauseScore),
+      score: smoothnessScore,
       feedback: {
-        correct: pauseScore >= 70 ? [`Speech flows smoothly`] : [],
-        incorrect: pauseScore < 70 ? [`Too many pauses`] : [],
-        improvement: pauseScore < 70 ? [`Practice speaking without hesitations`, `Increase fluency`] : []
+        correct: smoothnessScore >= 70 ? [`Speech flows smoothly`] : [],
+        incorrect: smoothnessScore < 70 ? [`Too many pauses`] : [],
+        improvement: smoothnessScore < 80 ? smoothnessScore < 60
+          ? [`Practice speaking without hesitations`, `Increase fluency`, `Work on connecting words smoothly`]
+          : [`Practice speaking without hesitations`, `Increase fluency`] : []
       }
     },
     correctSpeed: {
-      score: Math.round(speedScore),
+      score: correctSpeedScore,
       feedback: {
-        correct: speedScore >= 70 ? [`Pace is appropriate`] : [],
-        incorrect: speedScore < 70 ? [`Adjust speaking speed`] : [],
-        improvement: speedScore < 70 ? [`Match natural German pace`, `Practice timing`] : []
+        correct: correctSpeedScore >= 70 ? [`Pace is appropriate`] : [],
+        incorrect: correctSpeedScore < 70 ? [`Adjust speaking speed`] : [],
+        improvement: correctSpeedScore < 80 ? correctSpeedScore < 60
+          ? [`Match natural German pace`, `Practice timing`, `Record yourself and compare with native speakers`]
+          : [`Match natural German pace`, `Practice timing`] : []
       }
     },
     intonationRhythm: {
-      score: Math.round((pauseScore + speedScore) / 2),
+      score: intonationRhythmScore,
       feedback: {
-        correct: overallScore >= 75 ? [`Good intonation`] : [],
-        incorrect: overallScore < 75 ? [`Intonation needs work`] : [],
-        improvement: overallScore < 75 ? [`Practice speech melody`, `Focus on rhythm`] : []
+        correct: intonationRhythmScore >= 70 ? [`Good intonation`] : [],
+        incorrect: intonationRhythmScore < 70 ? [`Intonation needs work`] : [],
+        improvement: intonationRhythmScore < 80 ? intonationRhythmScore < 60
+          ? [`Practice speech melody`, `Focus on rhythm`, `Work on natural speech flow`]
+          : [`Practice speech melody`, `Focus on rhythm`] : []
       }
     },
     understandability: {
-      score: overallScore,
+      score: understandabilityScore,
       feedback: {
-        correct: overallScore >= 75 ? [`Speech is clear and understandable`] : [],
-        incorrect: overallScore < 75 ? [`Could be clearer`] : [],
-        improvement: overallScore < 75 ? [`Focus on clarity`, `Practice articulation`] : []
+        correct: understandabilityScore >= 75 ? [`Speech is clear and understandable`] : [],
+        incorrect: understandabilityScore < 75 ? [`Could be clearer`] : [],
+        improvement: understandabilityScore < 80 ? understandabilityScore < 60
+          ? [`Focus on clarity`, `Practice articulation`, `Speak more clearly and distinctly`]
+          : [`Focus on clarity`, `Practice articulation`] : []
       }
     }
   }
   
-  // Generate suggestions
-  const suggestions = overallScore >= 75
-    ? ['Great job! Continue practicing for even better pronunciation']
-    : ['Focus on the areas highlighted in the detailed analysis', 'Practice difficult words individually']
+  // Calculate sentence-level scores as average of all 6 dimension scores
+  const dimensionScores = [
+    sentenceDimensions.soundAccuracy.score,
+    sentenceDimensions.stressEmphasis.score,
+    sentenceDimensions.smoothness.score,
+    sentenceDimensions.correctSpeed.score,
+    sentenceDimensions.intonationRhythm.score,
+    sentenceDimensions.understandability.score
+  ];
+  const overallScore = Math.round(
+    dimensionScores.reduce((sum, score) => sum + score, 0) / dimensionScores.length
+  );
+  const sentenceScore = overallScore;
+  
+  // Generate sentence-level feedback aligned with dimension scores
+  const sentenceAmberDimensions = dimensionScores.filter(score => score >= 60 && score < 80).length
+  const sentenceRedDimensions = dimensionScores.filter(score => score < 60).length
+  const sentenceGreenDimensions = dimensionScores.filter(score => score >= 80).length
+  
+  // Generate suggestions aligned with dimension scores
+  const suggestions = sentenceRedDimensions > 0
+    ? sentenceRedDimensions >= 3
+      ? ['Multiple areas need significant improvement', 'Practice each dimension individually', 'Focus on the areas highlighted in the detailed analysis']
+      : ['Some areas need significant improvement', 'Focus on the areas highlighted in the detailed analysis', 'Practice difficult words individually']
+    : sentenceAmberDimensions >= 3
+    ? ['Focus on the areas highlighted in the detailed analysis', 'Practice difficult words individually']
+    : sentenceAmberDimensions > 0
+    ? ['Good overall pronunciation with some areas for improvement', 'Review the detailed dimension feedback']
+    : sentenceGreenDimensions === 6
+    ? ['Excellent pronunciation! Continue practicing for consistency']
+    : ['Great job! Continue practicing for even better pronunciation']
   
   const result = {
     overallScore,

@@ -7,6 +7,7 @@ interface SuggestedResponseCardProps {
   translation: string;
   responseId: string;
   onPractice: (responseId: string, response: string) => void;
+  onStop?: (responseId: string, response: string) => void;
   isRecording?: boolean;
   isAnalyzing?: boolean;
   showAnalyze?: boolean;
@@ -19,6 +20,7 @@ export default function SuggestedResponseCard({
   translation,
   responseId,
   onPractice,
+  onStop,
   isRecording = false,
   isAnalyzing = false,
   showAnalyze = false,
@@ -54,6 +56,15 @@ export default function SuggestedResponseCard({
 
   const handlePractice = () => {
     onPractice(responseId, response);
+  };
+
+  const handleStop = () => {
+    if (onStop) {
+      onStop(responseId, response);
+    } else {
+      // Fallback: if onStop not provided, use onPractice (which handles stop case)
+      onPractice(responseId, response);
+    }
   };
 
   return (
@@ -113,7 +124,7 @@ export default function SuggestedResponseCard({
         {/* Stop Recording Button */}
         {isRecording && (
           <button
-            onClick={handlePractice}
+            onClick={handleStop}
             className="flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition-colors"
           >
             <MicOff className="h-3.5 w-3.5" />
@@ -121,7 +132,7 @@ export default function SuggestedResponseCard({
           </button>
         )}
 
-        {/* Analyze Button */}
+        {/* Analyze Button - Only show when showAnalyze is true AND not recording */}
         {showAnalyze && !isRecording && (
           <button
             onClick={() => onAnalyze && onAnalyze(responseId, response)}
