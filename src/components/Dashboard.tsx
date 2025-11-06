@@ -937,23 +937,37 @@ export default function Dashboard({ user }: DashboardProps) {
       console.log('Auto-detected bot message:', aiMessage);
     }
     
-    // Enhanced conversation context extraction: Get last 2-3 messages for better context
+    // Enhanced conversation context extraction: Get last 3-4 messages for better context
     let conversationContext: string = userContext || '';
     let conversationHistory: string = '';
+    let previousUserResponse: string = '';
     
     // Find the current bot message index
     const currentBotMessageIndex = chatMessages.findIndex(msg => 
       msg.id === messageId && msg.role === 'assistant'
     );
     
-    // Get last 2-3 messages (including current bot message and previous messages)
+    // Extract the user's previous response that triggered this bot message
+    if (currentBotMessageIndex > 0) {
+      // Find the user message that immediately precedes this bot message
+      for (let i = currentBotMessageIndex - 1; i >= 0; i--) {
+        if (chatMessages[i].role === 'user') {
+          previousUserResponse = chatMessages[i].content;
+          console.log('📝 Found previous user response:', previousUserResponse);
+          break;
+        }
+      }
+    }
+    
+    // Get last 3-4 messages (including current bot message and previous messages)
+    // This provides better context for generating relevant suggestions
     if (currentBotMessageIndex >= 0) {
-      const startIndex = Math.max(0, currentBotMessageIndex - 2);
+      const startIndex = Math.max(0, currentBotMessageIndex - 3);
       const recentMessages = chatMessages.slice(startIndex, currentBotMessageIndex + 1);
       conversationHistory = recentMessages.map(msg => 
         `${msg.role === 'user' ? 'User' : 'Bot'}: ${msg.content}`
       ).join(' -> ');
-      console.log('📜 Conversation history (last 2-3 messages):', conversationHistory);
+      console.log('📜 Conversation history (last 3-4 messages):', conversationHistory);
     }
     
     // Also get initial user context if available (for first message)
@@ -989,6 +1003,7 @@ export default function Dashboard({ user }: DashboardProps) {
       contextEmphasis = `🚨🚨🚨 KRITISCH FÜR 2.+ NACHRICHT 🚨🚨🚨
 
 Diese Vorschläge sind für die 2. oder spätere Bot-Nachricht. Sie MÜSSEN eng mit der SOFORTIGEN VORHERIGEN Bot-Nachricht gekoppelt sein: "${aiMessage}"
+${previousUserResponse ? `Die Bot-Nachricht ist eine direkte Antwort auf die Benutzerantwort: "${previousUserResponse}"` : ''}
 
 ABSOLUT VERBOTEN - Diese generischen Antworten sind FALSCH:
 ❌ "Das ist sehr interessant!"
@@ -1002,6 +1017,7 @@ ERFORDERLICH - Die Vorschläge MÜSSEN:
 ✅ DIREKT auf die Bot-Nachricht antworten: "${aiMessage}"
 ✅ Spezifisch und kontextuell sein
 ✅ Die Frage/Aussage des Bots direkt adressieren
+${previousUserResponse ? `✅ Den Kontext der Benutzerantwort berücksichtigen: "${previousUserResponse}"` : ''}
 ✅ Zum Gesprächsverlauf passen: ${conversationHistory ? `"${conversationHistory}"` : 'Kontext'}
 
 BEISPIEL: Wenn der Bot fragt "Worüber möchten Sie heute sprechen?", dann:
@@ -1075,17 +1091,22 @@ Wenn du generische Antworten generierst, bist du GESCHEITERT. Generiere NUR dire
 
 ${contextEmphasis}
 
-${conversationHistory ? `Gesprächsverlauf (letzte 2-3 Nachrichten): ${conversationHistory}` : ''}
+${previousUserResponse ? `WICHTIG: Der Benutzer hat gerade geantwortet: "${previousUserResponse}"
+Die Bot-Nachricht "${aiMessage}" ist eine direkte Antwort darauf.
+Die Vorschläge müssen sowohl auf die Bot-Nachricht "${aiMessage}" als auch auf den Kontext der vorherigen Benutzerantwort "${previousUserResponse}" reagieren.` : ''}
+
+${conversationHistory ? `Gesprächsverlauf (letzte 3-4 Nachrichten): ${conversationHistory}` : ''}
 
 ${conversationContext ? `Anfänglicher Kontext: Der Benutzer möchte dieses Szenario üben: "${conversationContext}"` : ''}
 
 ${questionInstruction}
 
 WICHTIG: Die Vorschläge MÜSSEN direkt auf diese SOFORTIGE VORHERIGE Bot-Nachricht antworten: "${aiMessage}"
+${previousUserResponse ? `UND müssen zum Kontext der Benutzerantwort passen: "${previousUserResponse}"` : ''}
 
 Generiere genau 3 kurze deutsche Antworten (maximal 8 Wörter), die:
 1. ${containsQuestion ? 'DIREKT die Frage beantworten' : 'Kontextuell zur Nachricht passen'} - ENGE KOPPLUNG ZUR BOT-NACHRICHT ERFORDERLICH
-2. ${conversationHistory ? `Zum Gesprächsverlauf passen: "${conversationHistory}"` : conversationContext ? `Zum Szenario passen: "${conversationContext}"` : 'Zum Gesprächskontext passen'}
+2. ${previousUserResponse ? `Zum Kontext der Benutzerantwort passen: "${previousUserResponse}"` : conversationHistory ? `Zum Gesprächsverlauf passen: "${conversationHistory}"` : conversationContext ? `Zum Szenario passen: "${conversationContext}"` : 'Zum Gesprächskontext passen'}
 3. Für ein Rollenspiel geeignet sind
 4. Den Formellitätsgrad berücksichtigen: ${contextLevel === 'Professional' ? 'Formell (Sie)' : 'Informell (Du)'}
 5. ${isSecondOrSubsequentMessage ? 'NICHT generisch sind - sie müssen spezifisch auf die Bot-Nachricht antworten' : 'Zum Kontext passen'}
@@ -1103,6 +1124,7 @@ Format: TRANSLATION: [English translation of AI message] SUGGESTIONS: [Antwort 1
 ${isSecondOrSubsequentMessage ? `🚨🚨🚨 KRITISCH FÜR 2.+ NACHRICHT 🚨🚨🚨
 
 Diese Vorschläge sind für die 2. oder spätere Bot-Nachricht. Sie MÜSSEN eng mit der SOFORTIGEN VORHERIGEN Bot-Nachricht gekoppelt sein.
+${previousUserResponse ? `Die Bot-Nachricht ist eine Antwort auf: "${previousUserResponse}"` : ''}
 
 ABSOLUT VERBOTEN für 2.+ Nachrichten:
 ❌ Generische Antworten wie "Das ist sehr interessant!"
@@ -1115,6 +1137,7 @@ ERFORDERLICH für 2.+ Nachrichten:
 ✅ DIREKTE Antworten auf die Bot-Nachricht: "${aiMessage}"
 ✅ Spezifisch und kontextuell
 ✅ Direkte Adressierung der Frage/Aussage des Bots
+${previousUserResponse ? `✅ Berücksichtigung des Kontexts der Benutzerantwort: "${previousUserResponse}"` : ''}
 ✅ Zum Gesprächsverlauf passend: ${conversationHistory ? `"${conversationHistory}"` : 'Kontext'}
 
 BEISPIEL RICHTIG (wenn Bot fragt "Worüber möchten Sie heute sprechen?"):
@@ -1125,9 +1148,10 @@ BEISPIEL FALSCH (generische Antworten):
 
 Wenn du generische Antworten für 2.+ Nachrichten generierst, bist du GESCHEITERT.` : ''}
 
-${isReadinessQuestion ? '🚨🚨🚨 KRITISCH UND MANDATORISCH 🚨🚨🚨\nDie KI-Nachricht ist eine Bereitschaftsfrage (z.B. "Sind Sie bereit?" oder "Sind Sie bereit, mit dem Rollenspiel zu beginnen?").\n\nMANDATORISCHE ANFORDERUNGEN:\n- Du MUSST genau 3 Antworten generieren, die DIREKT die Frage beantworten\n- Antwort 1 MUSS eine Zustimmung sein: "Ja, ich bin bereit" oder ähnlich\n- Antwort 2 MUSS eine Zustimmung mit Nachfrage sein: "Ja, aber ich habe eine Frage" oder ähnlich\n- Antwort 3 MUSS eine Ablehnung/Nachfrage sein: "Nein, können Sie bitte erklären?" oder ähnlich\n\nABSOLUT VERBOTEN - Diese Antworten sind FALSCH:\n❌ "Das ist sehr interessant!"\n❌ "Das ist eine sehr gute Frage."\n❌ "Können Sie das genauer erklären?"\n❌ "Ich verstehe, danke für die Erklärung."\n\nKORREKTE BEISPIELE:\n✅ "Ja, ich bin bereit."\n✅ "Ja, aber ich habe eine Frage."\n✅ "Nein, können Sie bitte erklären?"\n\nWenn du generische Antworten generierst, bist du GESCHEITERT. Generiere NUR direkte Ja/Nein-Varianten.' : containsQuestion ? `KRITISCH: Die KI-Nachricht ist eine Frage. Die Antworten MÜSSEN die Frage direkt beantworten, nicht umschweifen oder generisch sein.${isSecondOrSubsequentMessage ? ' Für 2.+ Nachrichten: KEINE generischen Antworten - sie müssen spezifisch auf diese Frage antworten.' : ''}` : `Die KI-Nachricht ist eine Aussage. Generiere passende, kontextuelle Reaktionen.${isSecondOrSubsequentMessage ? ' Für 2.+ Nachrichten: KEINE generischen Antworten - sie müssen spezifisch auf diese Aussage reagieren.' : ''}`}
+${isReadinessQuestion ? '🚨🚨🚨 KRITISCH UND MANDATORISCH 🚨🚨🚨\nDie KI-Nachricht ist eine Bereitschaftsfrage (z.B. "Sind Sie bereit?" oder "Sind Sie bereit, mit dem Rollenspiel zu beginnen?").\n\nMANDATORISCHE ANFORDERUNGEN:\n- Du MUSST genau 3 Antworten generieren, die DIREKT die Frage beantworten\n- Antwort 1 MUSS eine Zustimmung sein: "Ja, ich bin bereit" oder ähnlich\n- Antwort 2 MUSS eine Zustimmung mit Nachfrage sein: "Ja, aber ich habe eine Frage" oder ähnlich\n- Antwort 3 MUSS eine Ablehnung/Nachfrage sein: "Nein, können Sie bitte erklären?" oder ähnlich\n\nABSOLUT VERBOTEN - Diese Antworten sind FALSCH:\n❌ "Das ist sehr interessant!"\n❌ "Das ist eine sehr gute Frage."\n❌ "Können Sie das genauer erklären?"\n❌ "Ich verstehe, danke für die Erklärung."\n\nKORREKTE BEISPIELE:\n✅ "Ja, ich bin bereit."\n✅ "Ja, aber ich habe eine Frage."\n✅ "Nein, können Sie bitte erklären?"\n\nWenn du generische Antworten generierst, bist du GESCHEITERT. Generiere NUR direkte Ja/Nein-Varianten.' : containsQuestion ? `KRITISCH: Die KI-Nachricht ist eine Frage. Die Antworten MÜSSEN die Frage direkt beantworten, nicht umschweifen oder generisch sein.${isSecondOrSubsequentMessage ? ` Für 2.+ Nachrichten: KEINE generischen Antworten - sie müssen spezifisch auf diese Frage antworten.${previousUserResponse ? ` Berücksichtige den Kontext: Der Benutzer hat geantwortet "${previousUserResponse}" und die Bot-Nachricht "${aiMessage}" reagiert darauf.` : ''}` : ''}` : `Die KI-Nachricht ist eine Aussage. Generiere passende, kontextuelle Reaktionen.${isSecondOrSubsequentMessage ? ` Für 2.+ Nachrichten: KEINE generischen Antworten - sie müssen spezifisch auf diese Aussage reagieren.${previousUserResponse ? ` Berücksichtige den Kontext: Der Benutzer hat geantwortet "${previousUserResponse}" und die Bot-Nachricht "${aiMessage}" reagiert darauf.` : ''}` : ''}`}
 
 ${conversationHistory ? `Gesprächsverlauf: "${conversationHistory}"` : ''}
+${previousUserResponse ? `Vorherige Benutzerantwort: "${previousUserResponse}"` : ''}
 ${conversationContext ? `Anfänglicher Kontext: "${conversationContext}"` : ''}
 KI-Nachricht: "${aiMessage}"
 Formellitätsgrad: ${contextLevel}
@@ -2067,6 +2091,33 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
       console.log('Has session token:', !!session?.access_token);
       console.log('Onboarding data exists:', !!onboardingData);
       
+      // Build full conversation history from chatMessages state
+      // This ensures bot responses are contextually relevant to the entire conversation flow
+      const conversationHistoryMessages = chatMessages
+        .filter(msg => {
+          // Include all messages up to but not including the current user message
+          // The current user message will be added separately
+          return msg.id !== messageId;
+        })
+        .map(msg => ({
+          role: msg.role === 'assistant' ? 'assistant' : 'user',
+          content: msg.content
+        }));
+      
+      // Add the current user message to the conversation history
+      const messagesToSend = [
+        ...conversationHistoryMessages,
+        {
+          role: 'user' as const,
+          content: userMessage
+        }
+      ];
+      
+      console.log('📜 === CONVERSATION HISTORY ===');
+      console.log('Total messages in history:', conversationHistoryMessages.length);
+      console.log('Messages being sent:', messagesToSend.length);
+      console.log('Conversation history:', conversationHistoryMessages.map(m => `${m.role}: ${m.content.substring(0, 50)}...`));
+      
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
         headers: {
@@ -2074,10 +2125,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: [{
-            role: 'user',
-            content: userMessage
-          }],
+          messages: messagesToSend,
           conversationId: selectedConversation,
           contextLevel,
           difficultyLevel,
