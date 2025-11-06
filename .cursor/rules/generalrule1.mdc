@@ -1,0 +1,7 @@
+---
+alwaysApply: true
+---
+1. always use supabase MCP to perform operations on Database. If Supabase MCP is not available, warn me and i will turn it
+2. always use Context7 to get the latest updates on code implementation
+3. always make minimal changes to code
+4. Always do regression testing to ensure that other functionalities are not impacted by the changes being done

@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { Play, Mic, Volume2, Target, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Play, Mic, Volume2, Target, RotateCcw, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { PronunciationData, PronunciationWord } from '../lib/analysisStorage';
 import { germanTTS } from '../lib/tts';
 
@@ -9,36 +9,58 @@ interface PronunciationSentenceViewProps {
   onRepracticeWord?: (word: string) => void;
   onRepracticeSentence?: () => void;
   onPlayCorrectPronunciation?: () => void;
-  isRecordingWord?: boolean;
-  practicingWord?: string | null;
-  onStopWordRecording?: () => void;
+  onPracticeWord?: (word: string) => void;
+  onPracticeSentence?: () => void;
+  isRecordingWord?: (word: string) => boolean;
   isRecordingSentence?: boolean;
-  globalPlaybackSpeed?: number;
-  onSpeedChange?: (speed: number) => void;
+  onStopRecording?: () => void;
+  onAnalyzeWord?: (word: string) => void;
+  onAnalyzeSentence?: () => void;
+  isWordReadyForAnalysis?: (word: string) => boolean;
+  isSentenceReadyForAnalysis?: boolean;
+  isWordAnalyzed?: (word: string) => boolean; // Add flag to check if word has been analyzed
 }
 
 interface WordDetailsProps {
   word: PronunciationWord;
   onRepractice: () => void;
   onClose: () => void;
+  onPracticeWord?: (word: string) => void;
   isRecording?: boolean;
-  onStopWordRecording?: () => void;
+  onStopRecording?: () => void;
+  onAnalyzeWord?: (word: string) => void;
+  isReadyForAnalysis?: boolean;
+  hasBeenAnalyzed?: boolean; // Add flag to show Practice button after analysis
 }
 
-const WordDetails: React.FC<WordDetailsProps> = ({ word, onRepractice, onClose, isRecording = false, onStopWordRecording }) => {
-  const [showSyllables, setShowSyllables] = useState(false);
-  const [showTips, setShowTips] = useState(false);
+// Helper function to get RAG color based on score
+const getRAGColor = (score: number) => {
+  if (score < 70) return { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-200' };
+  if (score >= 70 && score < 90) return { bg: 'bg-amber-100', text: 'text-amber-800', border: 'border-amber-200' };
+  return { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-200' };
+};
 
-  const getScoreColor = (score: number) => {
-    if (score >= 90) return 'text-green-600';
-    if (score >= 70) return 'text-yellow-600';
-    return 'text-red-600';
-  };
+const WordDetails: React.FC<WordDetailsProps> = ({ 
+  word, 
+  onRepractice, 
+  onClose,
+  onPracticeWord,
+  isRecording = false,
+  onStopRecording,
+  onAnalyzeWord,
+  isReadyForAnalysis = false,
+  hasBeenAnalyzed = false
+}) => {
+  const [showDimensions, setShowDimensions] = useState(false);
+  const colors = getRAGColor(word.score);
 
-  const getScoreBg = (score: number) => {
-    if (score >= 90) return 'bg-green-100';
-    if (score >= 70) return 'bg-yellow-100';
-    return 'bg-red-100';
+  const dimensionNames = {
+    soundAccuracy: 'Sound Accuracy',
+    stressEmphasis: 'Stress & Emphasis',
+    smoothness: 'Smoothness (Fluency)',
+    correctSpeed: 'Correct Speed',
+    intonationRhythm: 'Intonation & Rhythm',
+    understandability: 'Understandability'
   };
 
   return (
@@ -62,9 +84,9 @@ const WordDetails: React.FC<WordDetailsProps> = ({ word, onRepractice, onClose, 
         </button>
       </div>
 
-      {/* Score Display */}
+      {/* Overall Score */}
       <div className="flex items-center space-x-3 mb-4">
-        <div className={`px-3 py-1 rounded-full text-sm font-medium ${getScoreBg(word.score)} ${getScoreColor(word.score)}`}>
+        <div className={`px-3 py-1 rounded-full text-sm font-medium ${colors.bg} ${colors.text}`}>
           {word.score}/100
         </div>
         <span className="text-sm text-gray-600">
@@ -72,119 +94,277 @@ const WordDetails: React.FC<WordDetailsProps> = ({ word, onRepractice, onClose, 
         </span>
       </div>
 
-      {/* Feedback */}
+      {/* Overall Feedback */}
       <div className="mb-4">
         <p className="text-sm text-gray-700">{word.feedback}</p>
       </div>
 
-      {/* Syllable Analysis */}
-      {word.syllableAnalysis && word.syllableAnalysis.length > 0 && (
-        <div className="mb-4">
+      {/* 6 Dimensions - Always show header when dimensions exist */}
+      {word.dimensions && (
+        <div className="space-y-3 mb-4">
           <button
-            onClick={() => setShowSyllables(!showSyllables)}
-            className="flex items-center space-x-2 text-sm font-medium text-primary-600 hover:text-primary-800"
+            onClick={() => setShowDimensions(!showDimensions)}
+            className="flex items-center space-x-2 text-sm font-medium text-primary-600 hover:text-primary-800 w-full text-left"
           >
-            {showSyllables ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            <span>Syllable Analysis</span>
+            {showDimensions ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            <span>Assessment Dimensions</span>
           </button>
           
-          {showSyllables && (
-            <div className="mt-2 space-y-2">
-              {word.syllableAnalysis.map((syllable, index) => (
-                <div key={index} className="bg-gray-50 rounded p-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-sm">{syllable.syllable}</span>
-                    <div className={`px-2 py-1 rounded text-xs ${getScoreBg(syllable.score)} ${getScoreColor(syllable.score)}`}>
-                      {syllable.score}/100
+          {showDimensions && (
+            <div className="space-y-3 pl-4">
+              {Object.entries(word.dimensions).map(([key, dimension]) => {
+                const dimColors = getRAGColor(dimension.score);
+                return (
+                  <div key={key} className="border border-gray-200 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-gray-700">
+                        {dimensionNames[key as keyof typeof dimensionNames]}
+                      </span>
+                      <div className={`px-2 py-1 rounded text-xs font-medium ${dimColors.bg} ${dimColors.text}`}>
+                        {dimension.score}/100
+                      </div>
                     </div>
+                    
+                    {/* Progress Bar */}
+                    <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+                      <div
+                        className={`h-2 rounded-full transition-all ${dimColors.bg.replace('100', '500')}`}
+                        style={{ width: `${dimension.score}%` }}
+                      />
+                    </div>
+
+                    {/* Feedback */}
+                    {dimension.feedback.correct.length > 0 && (
+                      <div className="mb-2">
+                        <span className="text-xs font-medium text-green-700">✓ Correct:</span>
+                        <ul className="text-xs text-gray-600 mt-1 space-y-1">
+                          {dimension.feedback.correct.map((item, idx) => (
+                            <li key={idx}>• {item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    {dimension.feedback.incorrect.length > 0 && (
+                      <div className="mb-2">
+                        <span className="text-xs font-medium text-red-700">✗ Needs Improvement:</span>
+                        <ul className="text-xs text-gray-600 mt-1 space-y-1">
+                          {dimension.feedback.incorrect.map((item, idx) => (
+                            <li key={idx}>• {item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    {dimension.feedback.improvement.length > 0 && (
+                      <div>
+                        <span className="text-xs font-medium text-blue-700">💡 How to Improve:</span>
+                        <ul className="text-xs text-gray-600 mt-1 space-y-1">
+                          {dimension.feedback.improvement.map((item, idx) => (
+                            <li key={idx}>• {item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
-                  <p className="text-xs text-gray-600 mt-1">{syllable.feedback}</p>
-                  {syllable.phoneticExpected && (
-                    <div className="text-xs text-gray-500 mt-1">
-                      Expected: {syllable.phoneticExpected}
-                      {syllable.phoneticActual && (
-                        <span> | Actual: {syllable.phoneticActual}</span>
+                );
+              })}
+              
+              {/* Practice/Stop/Analyze buttons inside dimensions section */}
+              {onPracticeWord && (
+                <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
+                  {isRecording ? (
+                    <>
+                      <div className="flex items-center space-x-2 px-3 py-2 bg-red-100 text-red-800 rounded-lg text-sm">
+                        <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                        <span className="text-xs font-medium">Recording...</span>
+                      </div>
+                      <button
+                        onClick={onStopRecording}
+                        className="flex items-center space-x-2 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm"
+                      >
+                        <Mic className="h-4 w-4" />
+                        <span>Stop</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      {/* Practice button - Show when not recording, not analyzing, and either analyzed (Practice Again) or no recording yet */}
+                      {!isReadyForAnalysis && (
+                        <button
+                          onClick={() => onPracticeWord(word.word)}
+                          className="flex items-center space-x-2 px-3 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 text-sm"
+                        >
+                          <Mic className="h-4 w-4" />
+                          <span>{hasBeenAnalyzed ? 'Practice Again' : 'Practice'}</span>
+                        </button>
                       )}
-                    </div>
+                      {/* Analyse button - Only show when ready for analysis AND not recording */}
+                      {isReadyForAnalysis && onAnalyzeWord && (
+                        <button
+                          onClick={() => onAnalyzeWord(word.word)}
+                          className="flex items-center space-x-2 px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm"
+                        >
+                          <Target className="h-4 w-4" />
+                          <span>Analyse</span>
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
-              ))}
+              )}
             </div>
           )}
         </div>
       )}
+    </div>
+  );
+};
 
-      {/* Improvement Tips */}
-      {(word.improvementTips && word.improvementTips.length > 0) && (
-        <div className="mb-4">
+interface SentenceDetailsProps {
+  pronunciationData: PronunciationData;
+  onClose: () => void;
+}
+
+const SentenceDetails: React.FC<SentenceDetailsProps> = ({ pronunciationData, onClose }) => {
+  const [showDimensions, setShowDimensions] = useState(false);
+  
+  // Recalculate overall score from dimensions if available to ensure accuracy
+  let overallScore = pronunciationData.overallScore;
+  if (pronunciationData.sentenceDimensions) {
+    const dimensionScores = [
+      pronunciationData.sentenceDimensions.soundAccuracy?.score || 0,
+      pronunciationData.sentenceDimensions.stressEmphasis?.score || 0,
+      pronunciationData.sentenceDimensions.smoothness?.score || 0,
+      pronunciationData.sentenceDimensions.correctSpeed?.score || 0,
+      pronunciationData.sentenceDimensions.intonationRhythm?.score || 0,
+      pronunciationData.sentenceDimensions.understandability?.score || 0
+    ];
+    const calculatedScore = Math.round(
+      dimensionScores.reduce((sum, score) => sum + score, 0) / dimensionScores.length
+    );
+    // Always use calculated score from dimensions to ensure accuracy
+    overallScore = calculatedScore;
+    console.log('✅ Using calculated sentence score from dimensions:', {
+      calculated: calculatedScore,
+      stored: pronunciationData.overallScore,
+      dimensions: dimensionScores
+    });
+  }
+  
+  const colors = getRAGColor(overallScore);
+
+  const dimensionNames = {
+    soundAccuracy: 'Sound Accuracy',
+    stressEmphasis: 'Stress & Emphasis',
+    smoothness: 'Smoothness (Fluency)',
+    correctSpeed: 'Correct Speed',
+    intonationRhythm: 'Intonation & Rhythm',
+    understandability: 'Understandability'
+  };
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-lg max-w-2xl">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-xl font-semibold text-gray-800">Sentence-Level Assessment</h3>
+        <button
+          onClick={onClose}
+          className="text-gray-400 hover:text-gray-600 text-xl"
+        >
+          ×
+        </button>
+      </div>
+
+      {/* Overall Score */}
+      <div className="flex items-center space-x-3 mb-4">
+        <div className={`px-4 py-2 rounded-full text-lg font-medium ${colors.bg} ${colors.text}`}>
+          Overall: {overallScore}/100
+        </div>
+        <span className="text-sm text-gray-600">
+          Sentence Score: {overallScore}/100
+        </span>
+      </div>
+
+      {/* Sentence-Level Dimensions */}
+      {pronunciationData.sentenceDimensions && (
+        <div className="space-y-3">
           <button
-            onClick={() => setShowTips(!showTips)}
-            className="flex items-center space-x-2 text-sm font-medium text-green-600 hover:text-green-800"
+            onClick={() => setShowDimensions(!showDimensions)}
+            className="flex items-center space-x-2 text-sm font-medium text-primary-600 hover:text-primary-800 w-full text-left"
           >
-            {showTips ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            <span>Improvement Tips</span>
+            {showDimensions ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            <span>Assessment Dimensions</span>
           </button>
           
-          {showTips && (
-            <div className="mt-2 space-y-1">
-              {word.improvementTips.map((tip, index) => (
-                <div key={index} className="text-sm text-gray-700 bg-green-50 rounded p-2">
-                  • {tip}
-                </div>
-              ))}
+          {showDimensions && (
+            <div className="space-y-3">
+              {Object.entries(pronunciationData.sentenceDimensions).map(([key, dimension]) => {
+                const dimColors = getRAGColor(dimension.score);
+                return (
+                  <div key={key} className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-gray-700">
+                        {dimensionNames[key as keyof typeof dimensionNames]}
+                      </span>
+                      <div className={`px-2 py-1 rounded text-xs font-medium ${dimColors.bg} ${dimColors.text}`}>
+                        {dimension.score}/100
+                      </div>
+                    </div>
+                    
+                    {/* Progress Bar */}
+                    <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+                      <div
+                        className={`h-2 rounded-full transition-all ${dimColors.bg.replace('100', '500')}`}
+                        style={{ width: `${dimension.score}%` }}
+                      />
+                    </div>
+
+                    {/* Feedback */}
+                    {dimension.feedback.correct.length > 0 && (
+                      <div className="mb-2">
+                        <span className="text-xs font-medium text-green-700">✓ Correct:</span>
+                        <ul className="text-xs text-gray-600 mt-1 space-y-1">
+                          {dimension.feedback.correct.map((item, idx) => (
+                            <li key={idx}>• {item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    {dimension.feedback.incorrect.length > 0 && (
+                      <div className="mb-2">
+                        <span className="text-xs font-medium text-red-700">✗ Needs Improvement:</span>
+                        <ul className="text-xs text-gray-600 mt-1 space-y-1">
+                          {dimension.feedback.incorrect.map((item, idx) => (
+                            <li key={idx}>• {item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    {dimension.feedback.improvement.length > 0 && (
+                      <div>
+                        <span className="text-xs font-medium text-blue-700">💡 How to Improve:</span>
+                        <ul className="text-xs text-gray-600 mt-1 space-y-1">
+                          {dimension.feedback.improvement.map((item, idx) => (
+                            <li key={idx}>• {item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
       )}
 
-      {/* Common Mistakes */}
-      {word.commonMistakes && word.commonMistakes.length > 0 && (
-        <div className="mb-4">
-          <h5 className="text-sm font-medium text-gray-700 mb-2">Common Mistakes:</h5>
-          <div className="space-y-1">
-            {word.commonMistakes.map((mistake, index) => (
-              <div key={index} className="text-sm text-red-600 bg-red-50 rounded p-2">
-                • {mistake}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Sounds to Focus */}
-      {word.soundsToFocus && word.soundsToFocus.length > 0 && (
-        <div className="mb-4">
-          <h5 className="text-sm font-medium text-gray-700 mb-2">Focus on these sounds:</h5>
-          <div className="flex flex-wrap gap-1">
-            {word.soundsToFocus.map((sound, index) => (
-              <span key={index} className="px-2 py-1 bg-primary-100 text-primary-800 rounded text-xs">
-                {sound}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Repractice Button */}
       <button
-        onClick={isRecording ? onStopWordRecording : onRepractice}
-        className={`w-full py-2 px-4 rounded-lg flex items-center justify-center space-x-2 ${
-          isRecording 
-            ? 'bg-red-500 hover:bg-red-600 text-white' 
-            : 'bg-primary-500 hover:bg-primary-600 text-white'
-        }`}
+        onClick={onClose}
+        className="mt-4 w-full py-2 px-4 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 transition-colors"
       >
-        {isRecording ? (
-          <>
-            <Mic className="h-4 w-4" />
-            <span>Stop Recording</span>
-          </>
-        ) : (
-          <>
-            <RotateCcw className="h-4 w-4" />
-            <span>Repractice this word</span>
-          </>
-        )}
+        Close
       </button>
     </div>
   );
@@ -196,113 +376,136 @@ const PronunciationSentenceView: React.FC<PronunciationSentenceViewProps> = ({
   onRepracticeWord,
   onRepracticeSentence,
   onPlayCorrectPronunciation,
-  isRecordingWord = false,
-  practicingWord,
-  onStopWordRecording,
+  onPracticeWord,
+  onPracticeSentence,
+  isRecordingWord = () => false,
   isRecordingSentence = false,
-  globalPlaybackSpeed = 1.0,
-  onSpeedChange
+  onStopRecording,
+  onAnalyzeWord,
+  onAnalyzeSentence,
+  isWordReadyForAnalysis = () => false,
+  isSentenceReadyForAnalysis = false,
+  isWordAnalyzed = () => false
 }) => {
   const [selectedWord, setSelectedWord] = useState<PronunciationWord | null>(null);
-  const [sentenceSpeed, setSentenceSpeed] = useState(globalPlaybackSpeed);
-
-  // Check if this is a practice analysis
-  const isPracticeAnalysis = pronunciationData.source === 'practice';
-
-  const getWordColor = (score: number) => {
-    if (score >= 90) return 'text-green-600 bg-green-50 border-green-200';
-    if (score >= 70) return 'text-yellow-600 bg-yellow-50 border-yellow-200';
-    return 'text-red-600 bg-red-50 border-red-200';
-  };
-
-  const getWordScore = (word: string): number => {
-    // Try exact match first
-    let wordData = pronunciationData.words.find(w => w.word === word);
-    
-    // If no exact match, try case-insensitive match
-    if (!wordData) {
-      wordData = pronunciationData.words.find(w => w.word.toLowerCase() === word.toLowerCase());
-    }
-    
-    // If still no match, try removing punctuation
-    if (!wordData) {
-      const cleanWord = word.replace(/[.,!?;:]/, '');
-      wordData = pronunciationData.words.find(w => w.word === cleanWord);
-    }
-    
-    // NEW: Add partial matching as final fallback
-    if (!wordData) {
-      wordData = pronunciationData.words.find(w => 
-        w.word.toLowerCase().includes(word.toLowerCase()) ||
-        word.toLowerCase().includes(w.word.toLowerCase())
+  const [showSentenceDetails, setShowSentenceDetails] = useState(false);
+  
+  // Update selectedWord when pronunciationData changes (e.g., after Analyze is clicked)
+  useEffect(() => {
+    if (selectedWord) {
+      const updatedWord = pronunciationData.words.find(w => 
+        w.word.toLowerCase() === selectedWord.word.toLowerCase()
       );
+      if (updatedWord) {
+        setSelectedWord(updatedWord);
+      }
     }
-    
-    console.log(`Word: "${word}", Found: ${!!wordData}, Score: ${wordData?.score || 0}`);
+  }, [pronunciationData.words, selectedWord]);
+
+  const words = sentence.split(' ').filter(word => word.length > 0);
+
+  const getWordScore = (wordText: string): number => {
+    const wordData = pronunciationData.words.find(w => 
+      w.word.toLowerCase() === wordText.toLowerCase().replace(/[.,!?;:]/, '')
+    );
     return wordData?.score || 0;
   };
 
-  const handleWordClick = (word: string) => {
-    const wordData = pronunciationData.words.find(w => w.word === word);
+  const handleWordClick = (wordText: string) => {
+    const cleanWord = wordText.replace(/[.,!?;:]/, '');
+    const wordData = pronunciationData.words.find(w => 
+      w.word.toLowerCase() === cleanWord.toLowerCase()
+    );
     if (wordData) {
       setSelectedWord(wordData);
-    }
-  };
-
-  const handleRepracticeWord = () => {
-    if (selectedWord && onRepracticeWord) {
-      onRepracticeWord(selectedWord.word);
-    }
-    setSelectedWord(null);
-  };
-
-  const handleRepracticeSentence = () => {
-    if (onRepracticeSentence) {
-      onRepracticeSentence();
-    }
-  };
-
-  const handlePlayCorrect = () => {
-    if (onPlayCorrectPronunciation) {
-      onPlayCorrectPronunciation();
+      // If dimensions section is collapsed, keep it collapsed but ensure word is visible
     } else {
-      // Fallback: use TTS directly
-      germanTTS.speak(sentence);
+      // If word not found in current data, clear selection
+      setSelectedWord(null);
     }
   };
 
-  const handlePlayWord = async (word: string) => {
-    try {
-      await germanTTS.speak(word);
-    } catch (error) {
-      console.error('Error playing word:', error);
+  // Helper to get dimension-level feedback for word click
+  const getWordClickFeedback = (word: PronunciationWord) => {
+    const rating = word.score >= 90 ? 'Green' : word.score >= 70 ? 'Amber' : 'Red';
+    const dimensions = word.dimensions || {};
+    
+    if (rating === 'Green') {
+      // Show acknowledgements for what was done correctly
+      const correctDimensions = Object.entries(dimensions)
+        .filter(([_, dim]) => dim.score >= 90)
+        .map(([key, dim]) => ({
+          name: {
+            soundAccuracy: 'Sound Accuracy',
+            stressEmphasis: 'Stress & Emphasis',
+            smoothness: 'Smoothness (Fluency)',
+            correctSpeed: 'Correct Speed',
+            intonationRhythm: 'Intonation & Rhythm',
+            understandability: 'Understandability'
+          }[key as keyof typeof dimensions] || key,
+          feedback: dim.feedback.correct
+        }))
+        .filter(d => d.feedback.length > 0);
+      
+      return { type: 'acknowledgement', dimensions: correctDimensions };
+    } else {
+      // Show feedback for what could be improved (Amber and Red dimensions)
+      // For Amber/Red overall rating, show Amber dimensions (70-89) for improvement
+      const amberDimensions = Object.entries(dimensions)
+        .filter(([_, dim]) => dim.score >= 70 && dim.score < 90)
+        .map(([key, dim]) => ({
+          name: {
+            soundAccuracy: 'Sound Accuracy',
+            stressEmphasis: 'Stress & Emphasis',
+            smoothness: 'Smoothness (Fluency)',
+            correctSpeed: 'Correct Speed',
+            intonationRhythm: 'Intonation & Rhythm',
+            understandability: 'Understandability'
+          }[key as keyof typeof dimensions] || key,
+          feedback: [...dim.feedback.incorrect, ...dim.feedback.improvement]
+        }))
+        .filter(d => d.feedback.length > 0);
+      
+      return { type: 'improvement', dimensions: amberDimensions };
     }
   };
 
-  const handleSpeedChange = (newSpeed: number) => {
-    setSentenceSpeed(newSpeed);
-    if (onSpeedChange) {
-      onSpeedChange(newSpeed);
+  const handleSentenceScoreClick = () => {
+    const rating = pronunciationData.overallScore >= 90 ? 'Green' : pronunciationData.overallScore >= 70 ? 'Amber' : 'Red';
+    
+    // Only show popup for Amber/Red ratings
+    if (rating === 'Amber' || rating === 'Red') {
+      setShowSentenceDetails(true);
+    } else {
+      // For Green, just show the details normally
+      setShowSentenceDetails(true);
     }
   };
 
-  // Split sentence into words for display
-  const words = sentence.split(' ').filter(word => word.length > 0);
+  // Helper to get sentence-level feedback for dimensions with Amber rating
+  const getSentenceFeedback = () => {
+    if (!pronunciationData.sentenceDimensions) return [];
+    
+    return Object.entries(pronunciationData.sentenceDimensions)
+      .filter(([_, dim]) => dim.score >= 70 && dim.score < 90) // Amber dimensions
+      .map(([key, dim]) => ({
+        name: {
+          soundAccuracy: 'Sound Accuracy',
+          stressEmphasis: 'Stress & Emphasis',
+          smoothness: 'Smoothness (Fluency)',
+          correctSpeed: 'Correct Speed',
+          intonationRhythm: 'Intonation & Rhythm',
+          understandability: 'Understandability'
+        }[key as keyof typeof pronunciationData.sentenceDimensions] || key,
+        feedback: [...dim.feedback.incorrect, ...dim.feedback.improvement]
+      }))
+      .filter(d => d.feedback.length > 0);
+  };
 
   return (
     <div className="bg-white border border-purple-200 rounded-lg p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-purple-700">Pronunciation Analysis</h3>
-        <div className="flex items-center space-x-2">
-          <div className={`px-2 py-1 rounded text-xs font-medium ${
-            pronunciationData.overallScore >= 90 ? 'bg-green-100 text-green-800' :
-            pronunciationData.overallScore >= 70 ? 'bg-yellow-100 text-yellow-800' :
-            'bg-red-100 text-red-800'
-          }`}>
-            Overall: {pronunciationData.overallScore}/100
-            {isPracticeAnalysis && <span className="ml-1 text-xs opacity-75">(Practice)</span>}
-          </div>
-        </div>
       </div>
 
       <div className="flex gap-4">
@@ -314,11 +517,13 @@ const PronunciationSentenceView: React.FC<PronunciationSentenceViewProps> = ({
               {words.map((word, index) => {
                 const cleanWord = word.replace(/[.,!?;:]/, '');
                 const score = getWordScore(cleanWord);
+                const colors = getRAGColor(score);
+                
                 return (
                   <div key={index} className="flex items-center gap-1">
                     <button
                       onClick={() => handleWordClick(cleanWord)}
-                      className={`px-3 py-1 rounded-lg border text-sm font-medium hover:shadow-md transition-all ${getWordColor(score)}`}
+                      className={`px-3 py-1 rounded-lg border text-sm font-medium hover:shadow-md transition-all ${colors.bg} ${colors.text} ${colors.border}`}
                     >
                       {word}
                       {score > 0 && (
@@ -333,47 +538,59 @@ const PronunciationSentenceView: React.FC<PronunciationSentenceViewProps> = ({
             </div>
           </div>
 
+          {/* Overall Sentence Score */}
+          <div className="mb-4 flex items-center gap-3 flex-wrap">
+            <button
+              onClick={handleSentenceScoreClick}
+              className={`px-4 py-2 rounded-lg border-2 text-sm font-medium hover:shadow-md transition-all ${getRAGColor(pronunciationData.overallScore).bg} ${getRAGColor(pronunciationData.overallScore).text} ${getRAGColor(pronunciationData.overallScore).border}`}
+            >
+              Overall Sentence Score: {pronunciationData.overallScore}/100 - Click for Details
+            </button>
+            {onPracticeSentence && (
+              <div className="flex items-center gap-2">
+                {isRecordingSentence ? (
+                  <button
+                    onClick={onStopRecording}
+                    className="flex items-center space-x-2 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+                  >
+                    <Mic className="h-4 w-4 animate-pulse" />
+                    <span>Stop</span>
+                  </button>
+                ) : (
+                  <>
+                    {!isSentenceReadyForAnalysis && (
+                      <button
+                        onClick={onPracticeSentence}
+                        className="flex items-center space-x-2 px-3 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
+                      >
+                        <Mic className="h-4 w-4" />
+                        <span>Practice Sentence</span>
+                      </button>
+                    )}
+                    {isSentenceReadyForAnalysis && onAnalyzeSentence && (
+                      <button
+                        onClick={onAnalyzeSentence}
+                        className="flex items-center space-x-2 px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
+                      >
+                        <Target className="h-4 w-4" />
+                        <span>Analyse</span>
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Practice Controls */}
           <div className="flex items-center space-x-3">
             <button
-              onClick={handlePlayCorrect}
+              onClick={onPlayCorrectPronunciation}
               className="flex items-center space-x-2 px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600"
             >
               <Volume2 className="h-4 w-4" />
               <span>Hear correct pronunciation</span>
             </button>
-            
-            <button
-              onClick={handleRepracticeSentence}
-              className={`flex items-center space-x-2 px-3 py-2 rounded-lg ${
-                isRecordingSentence
-                  ? 'bg-red-500 text-white hover:bg-red-600'
-                  : 'bg-primary-500 text-white hover:bg-primary-600'
-              }`}
-            >
-              <Mic className="h-4 w-4" />
-              <span>{isRecordingSentence ? 'Stop Recording' : 'Practice sentence'}</span>
-            </button>
-          </div>
-
-          {/* Speed Control */}
-          <div className="mt-3 flex items-center space-x-2">
-            <span className="text-sm text-gray-600">Playback Speed:</span>
-            <div className="flex items-center space-x-1">
-              {[0.5, 0.75, 1.0, 1.25, 1.5].map(speed => (
-                <button
-                  key={speed}
-                  onClick={() => handleSpeedChange(speed)}
-                  className={`px-2 py-1 text-xs rounded ${
-                    sentenceSpeed === speed
-                      ? 'bg-primary-500 text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  {speed}x
-                </button>
-              ))}
-            </div>
           </div>
         </div>
 
@@ -382,14 +599,90 @@ const PronunciationSentenceView: React.FC<PronunciationSentenceViewProps> = ({
           <div className="w-80">
             <WordDetails
               word={selectedWord}
-              onRepractice={handleRepracticeWord}
+              onRepractice={() => {
+                if (onRepracticeWord) {
+                  onRepracticeWord(selectedWord.word);
+                }
+                setSelectedWord(null);
+              }}
               onClose={() => setSelectedWord(null)}
-              isRecording={isRecordingWord && practicingWord === selectedWord.word}
-              onStopRecording={onStopWordRecording}
+              onPracticeWord={onPracticeWord}
+              isRecording={onPracticeWord ? isRecordingWord(selectedWord.word) : false}
+              onStopRecording={onStopRecording}
+              onAnalyzeWord={onAnalyzeWord}
+              isReadyForAnalysis={onAnalyzeWord ? isWordReadyForAnalysis(selectedWord.word) : false}
+              hasBeenAnalyzed={isWordAnalyzed(selectedWord.word)}
             />
+            {/* Word Click Feedback Modal */}
+            {(() => {
+              const feedback = getWordClickFeedback(selectedWord);
+              if (feedback.dimensions.length === 0) return null;
+              
+              return (
+                <div className="mt-4 bg-white border border-gray-200 rounded-lg p-4 shadow-lg">
+                  <h5 className="text-sm font-semibold text-gray-800 mb-3">
+                    {feedback.type === 'acknowledgement' 
+                      ? '✓ What You Did Well:' 
+                      : '💡 Areas for Improvement:'}
+                  </h5>
+                  <div className="space-y-3">
+                    {feedback.dimensions.map((dim, idx) => (
+                      <div key={idx} className="border-l-2 border-primary-200 pl-3">
+                        <p className="text-xs font-medium text-gray-700 mb-1">{dim.name}:</p>
+                        <ul className="text-xs text-gray-600 space-y-1">
+                          {dim.feedback.map((item, itemIdx) => (
+                            <li key={itemIdx}>• {item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
+
+      {/* Sentence Details Modal */}
+      {showSentenceDetails && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl max-h-[90vh] overflow-y-auto">
+            <SentenceDetails
+              pronunciationData={pronunciationData}
+              onClose={() => setShowSentenceDetails(false)}
+            />
+            {/* Sentence Feedback for Amber/Red ratings */}
+            {(() => {
+              const rating = pronunciationData.overallScore >= 90 ? 'Green' : pronunciationData.overallScore >= 70 ? 'Amber' : 'Red';
+              if (rating === 'Green') return null;
+              
+              const feedback = getSentenceFeedback();
+              if (feedback.length === 0) return null;
+              
+              return (
+                <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <h5 className="text-sm font-semibold text-amber-800 mb-3">
+                    💡 Areas for Improvement at Sentence Level:
+                  </h5>
+                  <div className="space-y-3">
+                    {feedback.map((dim, idx) => (
+                      <div key={idx} className="border-l-2 border-amber-300 pl-3">
+                        <p className="text-xs font-medium text-amber-800 mb-1">{dim.name}:</p>
+                        <ul className="text-xs text-amber-700 space-y-1">
+                          {dim.feedback.map((item, itemIdx) => (
+                            <li key={itemIdx}>• {item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
 
       {/* Suggestions */}
       {pronunciationData.suggestions && pronunciationData.suggestions.length > 0 && (

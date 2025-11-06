@@ -70,7 +70,7 @@ class GermanTTSService {
     return preferredVoice;
   }
 
-  async speakWithSupabase(text: string): Promise<boolean> {
+  async speakWithSupabase(text: string, options: TTSOptions = {}): Promise<boolean> {
     try {
       // Check cache first
       const cachedAudioUrl = this.audioCache.get(text);
@@ -92,7 +92,10 @@ class GermanTTSService {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
         },
-        body: JSON.stringify({ text })
+        body: JSON.stringify({ 
+          text,
+          speed: options.rate ?? 0.8  // Pass speed parameter, default to 0.8 for moderate pace
+        })
       });
 
       console.log('TTS API Response Status:', response.status);
@@ -171,8 +174,8 @@ class GermanTTSService {
   }
 
   async speak(text: string, options: TTSOptions = {}): Promise<void> {
-    // Try Supabase TTS first
-    const supabaseSuccess = await this.speakWithSupabase(text);
+    // Try Supabase TTS first with options
+    const supabaseSuccess = await this.speakWithSupabase(text, options);
     
     if (!supabaseSuccess) {
       console.log('Falling back to browser speech synthesis');

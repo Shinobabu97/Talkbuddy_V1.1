@@ -28,6 +28,7 @@ import {
   X,
   Menu,
   Sparkles,
+  Target,
 } from 'lucide-react';
 import { supabase, AuthUser } from '../lib/supabase';
 import OnboardingFlow from './OnboardingFlow';
@@ -36,6 +37,7 @@ import ProfilePictureModal from './ProfilePictureModal';
 import Toolbar from './Toolbar';
 import VocabularyBuilderModal from './VocabularyBuilderModal';
 import ConversationSummaryModal from './ConversationSummaryModal';
+import SuggestedResponseCard from './SuggestedResponseCard';
 import { SessionData } from '../types/sessionData';
 import { generateConversationSummary, ConversationSummary } from '../utils/summaryGenerator';
 
@@ -154,7 +156,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [recentAchievements, setRecentAchievements] = React.useState<string[]>([]);
 
   // 📊 SESSION TRACKING STATE
-  const [sessionData, setSessionData] = useState<SessionData>({
+  const createInitialSessionData = () : SessionData => ({
     sessionId: `session-${Date.now()}`,
     startTime: new Date().toISOString(),
     wordsLearned: [],
@@ -163,8 +165,26 @@ export default function Dashboard({ user }: DashboardProps) {
     pronunciationAttempts: [],
     grammarMistakes: [],
     correctResponses: 0,
-    totalMessages: 0
+    totalMessages: 0,
+    lastSentenceScore: undefined
   });
+
+  const sessionDataRef = useRef<SessionData>(createInitialSessionData());
+  const [sessionData, setSessionData] = useState<SessionData>(sessionDataRef.current);
+
+  const updateSessionData = React.useCallback((updater: (prev: SessionData) => SessionData) => {
+    setSessionData(prev => {
+      const next = updater(prev);
+      sessionDataRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const resetSessionData = React.useCallback(() => {
+    const next = createInitialSessionData();
+    sessionDataRef.current = next;
+    setSessionData(next);
+  }, []);
 
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [conversationSummary, setConversationSummary] = useState<ConversationSummary | null>(null);
@@ -283,6 +303,21 @@ export default function Dashboard({ user }: DashboardProps) {
   const [lastSuggestionUsed, setLastSuggestionUsed] = useState<{[messageId: string]: string}>({});
   const soundcloudWidgetsRef = useRef<any[]>([]);
   const playingPodcastIdRef = useRef<string | null>(null);
+  
+  // State for pronunciation practice from suggested responses
+  const [recordedAudioBlobs, setRecordedAudioBlobs] = useState<Map<string, { blob: Blob, text: string }>>(new Map());
+  const [responseRecordingState, setResponseRecordingState] = useState<{[responseId: string]: boolean}>({});
+  const [responseAnalyzingState, setResponseAnalyzingState] = useState<{[responseId: string]: boolean}>({});
+  const [responseShowAnalyze, setResponseShowAnalyze] = useState<{[responseId: string]: boolean}>({});
+  const [responseHasBeenAnalyzed, setResponseHasBeenAnalyzed] = useState<{[responseId: string]: boolean}>({});
+  const [practiceRecorders, setPracticeRecorders] = useState<{[responseId: string]: MediaRecorder}>({});
+  const [pendingPronunciationAnalysis, setPendingPronunciationAnalysis] = useState<{audioBlob: Blob, text: string, responseId: string} | null>(null);
+  
+  // State for mic button recording analysis
+  const [micRecordingBlob, setMicRecordingBlob] = useState<Blob | null>(null);
+  const [micRecordingTranscription, setMicRecordingTranscription] = useState<string | null>(null);
+  const [showMicAnalyzeButton, setShowMicAnalyzeButton] = useState(false);
+  const [currentMicMessageId, setCurrentMicMessageId] = useState<string | null>(null);
 
   const updateMessageStatus = (messageId: string, status: MessageStatus | null) => {
     setMessageStatus(prev => {
@@ -874,7 +909,9 @@ export default function Dashboard({ user }: DashboardProps) {
       // Update current message but don't show toolbar automatically
       setCurrentAIMessage(data.message);
       
-      // Don't auto-generate suggestions - user must click button to show them
+      // Auto-generate 3 contextual suggestions after initial AI response
+      const messageId = '2'; // First AI message ID
+      await generateContextualSuggestionsForInitialResponse(messageId, data.message, userMessage);
 
     } catch (error) {
       console.error('❌ === ERROR SENDING INITIAL MESSAGE ===');
@@ -906,9 +943,403 @@ export default function Dashboard({ user }: DashboardProps) {
     }
   };
 
+  // Unified function to generate suggestions using OpenAI
+  // Automatically detects most recent bot message if not provided
+  const generateSuggestionsUsingOpenAI = async (
+    messageId: string,
+    botMessage?: string,
+    userContext?: string
+  ) => {
+    console.log('🎯 === GENERATING SUGGESTIONS USING OPENAI ===');
+    console.log('Message ID:', messageId);
+    
+    // Auto-detect most recent bot message if not provided
+    let aiMessage: string;
+    if (botMessage) {
+      aiMessage = botMessage;
+      console.log('Using provided bot message:', aiMessage);
+    } else {
+      // Find most recent assistant message from chatMessages
+      const assistantMessages = chatMessages.filter(msg => msg.role === 'assistant');
+      const mostRecentBotMessage = assistantMessages[assistantMessages.length - 1];
+      
+      if (!mostRecentBotMessage) {
+        console.error('❌ No bot message found in chatMessages');
+        // Fallback: use generateContextualFallbacks
+        const contextualFallbacks = generateContextualFallbacks('');
+        setSuggestedResponses(prev => ({
+          ...prev,
+          [messageId]: contextualFallbacks
+        }));
+        return;
+      }
+      
+      aiMessage = mostRecentBotMessage.content;
+      console.log('Auto-detected bot message:', aiMessage);
+    }
+    
+    // Enhanced conversation context extraction: Get last 2-3 messages for better context
+    let conversationContext: string = userContext || '';
+    let conversationHistory: string = '';
+    
+    // Find the current bot message index
+    const currentBotMessageIndex = chatMessages.findIndex(msg => 
+      msg.id === messageId && msg.role === 'assistant'
+    );
+    
+    // Get last 2-3 messages (including current bot message and previous messages)
+    if (currentBotMessageIndex >= 0) {
+      const startIndex = Math.max(0, currentBotMessageIndex - 2);
+      const recentMessages = chatMessages.slice(startIndex, currentBotMessageIndex + 1);
+      conversationHistory = recentMessages.map(msg => 
+        `${msg.role === 'user' ? 'User' : 'Bot'}: ${msg.content}`
+      ).join(' -> ');
+      console.log('📜 Conversation history (last 2-3 messages):', conversationHistory);
+    }
+    
+    // Also get initial user context if available (for first message)
+    if (!conversationContext) {
+      const firstUserMessage = chatMessages.find(msg => msg.role === 'user');
+      if (firstUserMessage) {
+        conversationContext = firstUserMessage.content;
+        console.log('Using first user message as context:', conversationContext);
+      }
+    }
+    
+    // Determine if this is 2nd+ bot message (not the first one)
+    const assistantMessages = chatMessages.filter(msg => msg.role === 'assistant');
+    const isSecondOrSubsequentMessage = assistantMessages.length > 1;
+    console.log('📊 Is 2nd+ bot message:', isSecondOrSubsequentMessage, 'Total assistant messages:', assistantMessages.length);
+    
+    // Detect question type - expanded readiness detection
+    const isReadinessQuestion = /sind.*bereit|bist.*bereit|ready|bereit.*beginnen|bereit.*starten|bereit.*mit|mit.*rollenspiel|rollenspiel.*beginnen|rollenspiel.*starten|möchten.*starten|können.*beginnen|kann.*anfangen|starten.*wir/i.test(aiMessage);
+    const isYesNoQuestion = /\?/.test(aiMessage) && (/sind|bist|haben|hast|kannst|können|ist|soll|möchten/i.test(aiMessage));
+    const isInformationalQuestion = /\?/.test(aiMessage) && (/was|wie|wo|wann|warum|welche|welcher|welches/i.test(aiMessage));
+    const containsQuestion = /\?/.test(aiMessage) || /sind sie|bist du|können sie|kannst du|haben sie|hast du/i.test(aiMessage.toLowerCase());
+    
+    console.log('Question detection:', {
+      isReadinessQuestion,
+      isYesNoQuestion,
+      isInformationalQuestion,
+      containsQuestion
+    });
+    
+    // Build enhanced prompt with emphasis on immediate context for 2nd+ messages
+    let contextEmphasis = '';
+    if (isSecondOrSubsequentMessage) {
+      contextEmphasis = `🚨🚨🚨 KRITISCH FÜR 2.+ NACHRICHT 🚨🚨🚨
+
+Diese Vorschläge sind für die 2. oder spätere Bot-Nachricht. Sie MÜSSEN eng mit der SOFORTIGEN VORHERIGEN Bot-Nachricht gekoppelt sein: "${aiMessage}"
+
+ABSOLUT VERBOTEN - Diese generischen Antworten sind FALSCH:
+❌ "Das ist sehr interessant!"
+❌ "Das ist eine sehr gute Frage."
+❌ "Können Sie das genauer erklären?"
+❌ "Ich verstehe, danke für die Erklärung."
+❌ "Das hört sich gut an."
+❌ Jede generische Antwort, die nicht direkt auf die Bot-Nachricht antwortet
+
+ERFORDERLICH - Die Vorschläge MÜSSEN:
+✅ DIREKT auf die Bot-Nachricht antworten: "${aiMessage}"
+✅ Spezifisch und kontextuell sein
+✅ Die Frage/Aussage des Bots direkt adressieren
+✅ Zum Gesprächsverlauf passen: ${conversationHistory ? `"${conversationHistory}"` : 'Kontext'}
+
+BEISPIEL: Wenn der Bot fragt "Worüber möchten Sie heute sprechen?", dann:
+✅ RICHTIG: "Ich möchte über Musik sprechen." | "Können wir über Reisen sprechen?" | "Lass uns über Filme reden."
+❌ FALSCH: "Das ist sehr interessant!" | "Können Sie das genauer erklären?" | "Ich verstehe."
+
+Wenn du generische Antworten generierst, bist du GESCHEITERT.`;
+    }
+    
+    // Build enhanced prompt based on question type
+    // Check readiness questions FIRST, then informational, then yes/no
+    let questionInstruction = '';
+    if (containsQuestion) {
+      if (isReadinessQuestion) {
+        questionInstruction = `KRITISCH UND MANDATORISCH: Die KI-Nachricht ist eine Bereitschaftsfrage (z.B. "Sind Sie bereit?" oder "Sind Sie bereit, mit dem Rollenspiel zu beginnen?").
+
+MANDATORISCHE ANFORDERUNGEN:
+- Du MUSST genau 3 Antworten generieren, die DIREKT die Bereitschaftsfrage beantworten
+- Antwort 1 MUSS eine Zustimmung sein: "Ja, ich bin bereit" oder "Ja, gern" oder "Ja, ich bin bereit zu beginnen"
+- Antwort 2 MUSS eine Zustimmung mit Nachfrage sein: "Ja, aber ich habe eine Frage" oder "Ja, aber können Sie erklären..." oder "Ja, bevor wir beginnen..."
+- Antwort 3 MUSS eine Ablehnung oder Nachfrage sein: "Nein, können Sie bitte erklären?" oder "Können Sie bitte zuerst erklären?" oder "Ich habe noch eine Frage"
+
+ABSOLUT VERBOTEN - Diese Antworten sind FALSCH und beantworten die Frage NICHT:
+❌ "Das ist sehr interessant!"
+❌ "Das ist eine sehr gute Frage."
+❌ "Können Sie das genauer erklären?"
+❌ "Ich verstehe, danke für die Erklärung."
+❌ "Das hört sich gut an."
+
+KORREKTE BEISPIELE für "Sind Sie bereit, mit dem Rollenspiel zu beginnen?":
+✅ "Ja, ich bin bereit."
+✅ "Ja, aber ich habe eine Frage."
+✅ "Nein, können Sie bitte erklären?"
+
+Wenn du generische Antworten generierst, bist du GESCHEITERT. Generiere NUR direkte Ja/Nein-Varianten.`;
+      } else if (isInformationalQuestion) {
+        questionInstruction = `WICHTIG: Die KI-Nachricht ist eine Informationsfrage. Generiere Antworten, die:
+- DIREKT Informationen zur Frage geben
+- Zum Kontext passen: "${conversationContext}"
+- Praktisch und rollenspielgerecht sind`;
+      } else if (isYesNoQuestion) {
+        questionInstruction = `WICHTIG: Die KI-Nachricht ist eine Ja/Nein-Frage. Generiere Antworten, die DIREKT die Frage beantworten:
+- Mindestens eine "Ja" Antwort
+- Mindestens eine "Nein" oder alternative Antwort
+- Antworten müssen die Frage direkt beantworten, nicht umschweifen`;
+      } else {
+        questionInstruction = `WICHTIG: Die KI-Nachricht enthält eine Frage. Generiere Antworten, die:
+- DIREKT auf die Frage antworten
+- Nicht generisch sind (keine "Das ist interessant" Antworten)
+- Die Frage beantworten, nicht umschweifen`;
+      }
+    } else {
+      questionInstruction = `Die KI-Nachricht ist eine Aussage oder Anweisung. Generiere Antworten, die:
+- Kontextuell zur Aussage passen: "${conversationContext}"
+- Für das Rollenspiel geeignet sind
+- Natürlich auf die Aussage reagieren`;
+    }
+    
+    try {
+      // Call OpenAI API for ALL suggestions (including readiness questions)
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [{
+            role: 'user',
+            content: `Analyziere die KI-Nachricht: "${aiMessage}"
+
+${contextEmphasis}
+
+${conversationHistory ? `Gesprächsverlauf (letzte 2-3 Nachrichten): ${conversationHistory}` : ''}
+
+${conversationContext ? `Anfänglicher Kontext: Der Benutzer möchte dieses Szenario üben: "${conversationContext}"` : ''}
+
+${questionInstruction}
+
+WICHTIG: Die Vorschläge MÜSSEN direkt auf diese SOFORTIGE VORHERIGE Bot-Nachricht antworten: "${aiMessage}"
+
+Generiere genau 3 kurze deutsche Antworten (maximal 8 Wörter), die:
+1. ${containsQuestion ? 'DIREKT die Frage beantworten' : 'Kontextuell zur Nachricht passen'} - ENGE KOPPLUNG ZUR BOT-NACHRICHT ERFORDERLICH
+2. ${conversationHistory ? `Zum Gesprächsverlauf passen: "${conversationHistory}"` : conversationContext ? `Zum Szenario passen: "${conversationContext}"` : 'Zum Gesprächskontext passen'}
+3. Für ein Rollenspiel geeignet sind
+4. Den Formellitätsgrad berücksichtigen: ${contextLevel === 'Professional' ? 'Formell (Sie)' : 'Informell (Du)'}
+5. ${isSecondOrSubsequentMessage ? 'NICHT generisch sind - sie müssen spezifisch auf die Bot-Nachricht antworten' : 'Zum Kontext passen'}
+
+${isSecondOrSubsequentMessage ? 'VERBOTEN: Generische Antworten wie "Das ist interessant" - diese sind FALSCH für 2.+ Nachrichten' : ''}
+
+Format: TRANSLATION: [English translation of AI message] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Antwort 3] ENGLISH: [Answer 1] | [Answer 2] | [Answer 3]`
+          }],
+          conversationId: selectedConversation || 'helper',
+          contextLevel,
+          difficultyLevel,
+          conversationContext: conversationContext,
+          systemInstruction: `Du bist ein Experte für deutsche Rollenspiele. Deine Aufgabe: Generiere 3 passende deutsche Antworten.
+
+${isSecondOrSubsequentMessage ? `🚨🚨🚨 KRITISCH FÜR 2.+ NACHRICHT 🚨🚨🚨
+
+Diese Vorschläge sind für die 2. oder spätere Bot-Nachricht. Sie MÜSSEN eng mit der SOFORTIGEN VORHERIGEN Bot-Nachricht gekoppelt sein.
+
+ABSOLUT VERBOTEN für 2.+ Nachrichten:
+❌ Generische Antworten wie "Das ist sehr interessant!"
+❌ "Das ist eine sehr gute Frage."
+❌ "Können Sie das genauer erklären?" (wenn nicht direkt relevant)
+❌ "Ich verstehe, danke für die Erklärung."
+❌ Jede generische Antwort, die nicht direkt auf die Bot-Nachricht antwortet
+
+ERFORDERLICH für 2.+ Nachrichten:
+✅ DIREKTE Antworten auf die Bot-Nachricht: "${aiMessage}"
+✅ Spezifisch und kontextuell
+✅ Direkte Adressierung der Frage/Aussage des Bots
+✅ Zum Gesprächsverlauf passend: ${conversationHistory ? `"${conversationHistory}"` : 'Kontext'}
+
+BEISPIEL RICHTIG (wenn Bot fragt "Worüber möchten Sie heute sprechen?"):
+✅ "Ich möchte über Musik sprechen." | "Können wir über Reisen sprechen?" | "Lass uns über Filme reden."
+
+BEISPIEL FALSCH (generische Antworten):
+❌ "Das ist sehr interessant!" | "Können Sie das genauer erklären?" | "Ich verstehe."
+
+Wenn du generische Antworten für 2.+ Nachrichten generierst, bist du GESCHEITERT.` : ''}
+
+${isReadinessQuestion ? '🚨🚨🚨 KRITISCH UND MANDATORISCH 🚨🚨🚨\nDie KI-Nachricht ist eine Bereitschaftsfrage (z.B. "Sind Sie bereit?" oder "Sind Sie bereit, mit dem Rollenspiel zu beginnen?").\n\nMANDATORISCHE ANFORDERUNGEN:\n- Du MUSST genau 3 Antworten generieren, die DIREKT die Frage beantworten\n- Antwort 1 MUSS eine Zustimmung sein: "Ja, ich bin bereit" oder ähnlich\n- Antwort 2 MUSS eine Zustimmung mit Nachfrage sein: "Ja, aber ich habe eine Frage" oder ähnlich\n- Antwort 3 MUSS eine Ablehnung/Nachfrage sein: "Nein, können Sie bitte erklären?" oder ähnlich\n\nABSOLUT VERBOTEN - Diese Antworten sind FALSCH:\n❌ "Das ist sehr interessant!"\n❌ "Das ist eine sehr gute Frage."\n❌ "Können Sie das genauer erklären?"\n❌ "Ich verstehe, danke für die Erklärung."\n\nKORREKTE BEISPIELE:\n✅ "Ja, ich bin bereit."\n✅ "Ja, aber ich habe eine Frage."\n✅ "Nein, können Sie bitte erklären?"\n\nWenn du generische Antworten generierst, bist du GESCHEITERT. Generiere NUR direkte Ja/Nein-Varianten.' : containsQuestion ? `KRITISCH: Die KI-Nachricht ist eine Frage. Die Antworten MÜSSEN die Frage direkt beantworten, nicht umschweifen oder generisch sein.${isSecondOrSubsequentMessage ? ' Für 2.+ Nachrichten: KEINE generischen Antworten - sie müssen spezifisch auf diese Frage antworten.' : ''}` : `Die KI-Nachricht ist eine Aussage. Generiere passende, kontextuelle Reaktionen.${isSecondOrSubsequentMessage ? ' Für 2.+ Nachrichten: KEINE generischen Antworten - sie müssen spezifisch auf diese Aussage reagieren.' : ''}`}
+
+${conversationHistory ? `Gesprächsverlauf: "${conversationHistory}"` : ''}
+${conversationContext ? `Anfänglicher Kontext: "${conversationContext}"` : ''}
+KI-Nachricht: "${aiMessage}"
+Formellitätsgrad: ${contextLevel}
+
+Regeln:
+- Antworten müssen zur Frage/Aussage passen
+- ${isSecondOrSubsequentMessage ? 'FÜR 2.+ NACHRICHTEN: KEINE generischen Antworten - sie müssen DIREKT auf die Bot-Nachricht antworten' : 'Keine generischen Antworten wie "Das ist interessant" wenn eine Frage gestellt wird'}
+${isReadinessQuestion ? '- Für Bereitschaftsfragen: IMMER Ja/Nein-Varianten mit direkten Antworten\n- Beispiel RICHTIG: "Ja, ich bin bereit" | "Ja, aber ich habe eine Frage" | "Nein, können Sie bitte erklären"\n- Beispiel FALSCH: "Das ist sehr interessant" | "Können Sie das genauer erklären?" | "Ich verstehe, danke"\n- Wenn die Antworten generisch sind, bist du GESCHEITERT' : containsQuestion ? '- Für Fragen: Direkte, hilfreiche Antworten generieren - DIREKT auf die Frage antworten' : '- Für Aussagen: Natürliche, kontextuelle Reaktionen - DIREKT auf die Aussage reagieren'}
+${isSecondOrSubsequentMessage ? '- VERBOTEN für 2.+ Nachrichten: Generische Phrasen wie "Das ist interessant" - diese zeigen, dass du die Aufgabe nicht verstanden hast' : ''}
+
+Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1] | [e2] | [e3]`
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const content = data.message;
+        
+        console.log('📡 API Response for suggestions:', content);
+        
+        // Parse translation and suggestions
+        const translationMatch = content.match(/TRANSLATION:\s*(.+?)(?=SUGGESTIONS:|$)/);
+        const suggestionsMatch = content.match(/SUGGESTIONS:\s*(.+?)(?=ENGLISH:|$)/);
+        const englishMatch = content.match(/ENGLISH:\s*(.+)/);
+        
+        if (translationMatch) {
+          setTranslatedMessages(prev => {
+            // Only set if doesn't exist (preserve user translations)
+            if (prev[messageId]) {
+              console.log('Translation already exists, preserving user translation');
+              return prev;
+            }
+            return {
+              ...prev,
+              [messageId]: translationMatch[1].trim()
+            };
+          });
+        }
+        
+        if (suggestionsMatch && englishMatch) {
+          const germanSuggestions = suggestionsMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+          const englishTranslations = englishMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+          
+          const pairedSuggestions = germanSuggestions.map((german: string, index: number) => ({
+            german: german.trim(),
+            english: englishTranslations[index] ? englishTranslations[index].trim() : ''
+          }));
+          
+          console.log('✅ Generated suggestions:', pairedSuggestions);
+          
+          // Enhanced validation: Check for generic responses for 2nd+ messages or readiness questions
+          const genericPatterns = [
+            /^das ist.*interessant/i,
+            /^das ist.*sehr interessant/i,
+            /^das ist.*gute.*frage/i,
+            /^können.*sie.*das.*genauer.*erklären/i,
+            /^können.*sie.*erklären[^?]*$/i,
+            /^ich verstehe[,.]?$/i,
+            /^ich verstehe, danke/i,
+            /^danke.*erklärung/i,
+            /^das hört.*gut/i,
+            /^das klingt.*gut/i
+          ];
+          
+          // Check if suggestions are generic (not contextually relevant)
+          const hasGenericResponses = pairedSuggestions.some(suggestion => {
+            const germanText = suggestion.german.toLowerCase().trim();
+            return genericPatterns.some(pattern => pattern.test(germanText));
+          });
+          
+          // For readiness questions, check for direct responses
+          if (isReadinessQuestion) {
+            const hasDirectResponses = pairedSuggestions.some(suggestion => {
+              const germanText = suggestion.german.toLowerCase();
+              return /^ja[,!.]|^nein[,!.]|bereit|aber.*frage/i.test(germanText);
+            });
+            
+            if (hasGenericResponses || !hasDirectResponses) {
+              console.warn('⚠️ OpenAI returned generic responses for readiness question, using fallback');
+              const contextualFallbacks = generateContextualFallbacks(aiMessage);
+              setSuggestedResponses(prev => ({
+                ...prev,
+                [messageId]: contextualFallbacks
+              }));
+              return;
+            }
+          }
+          
+          // For 2nd+ messages, reject if all suggestions are generic
+          if (isSecondOrSubsequentMessage && hasGenericResponses) {
+            const genericCount = pairedSuggestions.filter(suggestion => {
+              const germanText = suggestion.german.toLowerCase().trim();
+              return genericPatterns.some(pattern => pattern.test(germanText));
+            }).length;
+            
+            // If 2 or more suggestions are generic, reject and use fallback
+            if (genericCount >= 2) {
+              console.warn('⚠️ OpenAI returned generic responses for 2nd+ message, using fallback');
+              console.warn('⚠️ Generic count:', genericCount, 'out of', pairedSuggestions.length);
+              const contextualFallbacks = generateContextualFallbacks(aiMessage);
+              setSuggestedResponses(prev => ({
+                ...prev,
+                [messageId]: contextualFallbacks
+              }));
+              return;
+            }
+          }
+          
+          setSuggestedResponses(prev => ({
+            ...prev,
+            [messageId]: pairedSuggestions
+          }));
+          
+          // Don't automatically show suggestions - only show when user clicks question mark icon
+        } else {
+          console.log('⚠️ Could not parse suggestions from API response, using fallback');
+          // Fallback to contextual suggestions
+          const contextualFallbacks = generateContextualFallbacks(aiMessage);
+          setSuggestedResponses(prev => ({
+            ...prev,
+            [messageId]: contextualFallbacks
+          }));
+          // Don't automatically show suggestions - only show when user clicks question mark icon
+        }
+      } else {
+        const errorText = await response.text();
+        console.error('❌ API call failed:', response.status, errorText);
+        // Fallback to contextual suggestions
+        const contextualFallbacks = generateContextualFallbacks(aiMessage);
+        setSuggestedResponses(prev => ({
+          ...prev,
+          [messageId]: contextualFallbacks
+        }));
+        // Don't automatically show suggestions - only show when user clicks question mark icon
+      }
+    } catch (error) {
+      console.error('❌ Error generating suggestions:', error);
+      // Fallback to contextual suggestions
+      const contextualFallbacks = generateContextualFallbacks(aiMessage);
+      setSuggestedResponses(prev => ({
+        ...prev,
+        [messageId]: contextualFallbacks
+      }));
+      // Don't automatically show suggestions - only show when user clicks question mark icon
+    }
+  };
+
+  // Generate 3 contextual suggestions for initial AI response
+  const generateContextualSuggestionsForInitialResponse = async (messageId: string, aiMessage: string, userContext: string) => {
+    console.log('🎯 === GENERATING CONTEXTUAL SUGGESTIONS FOR INITIAL RESPONSE ===');
+    console.log('Message ID:', messageId);
+    console.log('AI Message:', aiMessage);
+    console.log('User Context:', userContext);
+    
+    // Use unified function with provided bot message and user context
+    await generateSuggestionsUsingOpenAI(messageId, aiMessage, userContext);
+  };
+
   // Generate contextual fallback suggestions based on AI message content
   const generateContextualFallbacks = (germanText: string) => {
     const text = germanText.toLowerCase();
+    
+    // Check for readiness questions FIRST - this is critical!
+    if (text.includes('bereit') && (text.includes('rollenspiel') || text.includes('beginnen') || text.includes('starten') || text.includes('mit dem'))) {
+      console.log('✅ Fallback: Detected readiness question, returning appropriate responses');
+      return [
+        { german: 'Ja, ich bin bereit.', english: 'Yes, I am ready.' },
+        { german: 'Ja, aber ich habe eine Frage.', english: 'Yes, but I have a question.' },
+        { german: 'Nein, können Sie bitte erklären?', english: 'No, can you please explain?' }
+      ];
+    }
     
     // Specific question patterns and their direct answers
     if (text.includes('welche details') || text.includes('which details') || text.includes('am wichtigsten')) {
@@ -1007,213 +1438,9 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('German text:', germanText);
     console.log('🚨 FUNCTION CALLED - Starting suggestion generation...');
     
-    // Fetch conversation context from database
-    // For now, we'll get context from the first user message in chat
-    let conversationContext = '';
-    
-    // Find the first user message to use as context
-    const firstUserMessage = chatMessages.find(msg => msg.role === 'user');
-    if (firstUserMessage) {
-      conversationContext = firstUserMessage.content;
-      console.log('📝 Using first user message as context:', conversationContext);
-    }
-    
-    console.log('🎯 Generating contextual suggestions for:', germanText);
-    
-    // Check if this is a readiness question - provide direct answers
-    const isReadinessQuestion = /sind.*bereit|bist.*bereit|ready|bereit.*beginnen/i.test(germanText);
-    
-    if (isReadinessQuestion) {
-      console.log('✅ Detected readiness question - using hardcoded responses');
-      // Provide direct yes/no/maybe answers to readiness questions
-      const directResponses = contextLevel === 'Professional' 
-        ? [
-            { german: "Ja, ich bin bereit.", english: "Yes, I am ready." },
-            { german: "Absolut, ich freue mich darauf.", english: "Absolutely, I'm looking forward to it." },
-            { german: "Nein, ich möchte noch Kontext geben.", english: "No, I want to provide more context." }
-          ]
-        : [
-            { german: "Ja, ich bin bereit.", english: "Yes, I'm ready." },
-            { german: "Absolut, fangen wir an!", english: "Absolutely, let's start!" },
-            { german: "Nein, ich möchte mehr Kontext geben.", english: "No, I want to provide more context." }
-          ];
-      
-      setSuggestedResponses(prev => ({
-        ...prev,
-        [messageId]: directResponses
-      }));
-      
-      setTranslatedMessages(prev => {
-        if (prev[messageId]) return prev;
-        return {
-          ...prev,
-          [messageId]: germanText
-        };
-      });
-      
-      return;
-    }
-    
-    // For other questions, use AI generation
-    // Frame the AI's message as a user question to generate direct answers
-    const messagesForSuggestion = [{
-      role: 'user' as const,
-      content: germanText
-    }];
-    
-    console.log('📤 Sending messages to API:', messagesForSuggestion.length, 'messages');
-    
-    try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: messagesForSuggestion,
-          conversationId: selectedConversation || 'helper',
-          contextLevel,
-          difficultyLevel,
-          conversationContext: conversationContext,
-          systemInstruction: `Die Frage: "${germanText}"
-
-Aufgabe: 3 kurze Antworten auf DIESE Frage.
-
-Regeln:
-- Direkte Antworten zur Frage
-- Max 8 Wörter
-- Deutsch
-- Wenn Frage "Sind Sie bereit?" → Antworten: "Ja, ich bin bereit." / "Nein, nicht bereit." / "Ja, fangen wir an."
-
-Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Antwort 3] ENGLISH: [Answer 1] | [Answer 2] | [Answer 3]`
-        })
-      });
-
-      console.log('📡 API Response status:', response.status);
-      console.log('📡 API Response ok:', response.ok);
-      
-      if (response.ok) {
-        const data = await response.json();
-        const content = data.message;
-        
-        console.log('📡 API Response received for contextual suggestions:', content.substring(0, 300) + '...');
-        console.log('📡 Full API response:', content);
-        console.log('📡 Response data structure:', data);
-        
-        // Parse translation and suggestions - handle both old and new formats
-        const translationMatch = content.match(/TRANSLATION:\s*(.+?)(?=SUGGESTIONS:|$)/);
-        const suggestionsMatch = content.match(/SUGGESTIONS:\s*(.+?)(?=ENGLISH:|$)/);
-        const englishMatch = content.match(/ENGLISH:\s*(.+)/);
-        
-        console.log('🔍 Parsing debug:', {
-          translationMatch: translationMatch ? translationMatch[1] : null,
-          suggestionsMatch: suggestionsMatch ? suggestionsMatch[1] : null,
-          englishMatch: englishMatch ? englishMatch[1] : null,
-          content: content.substring(0, 200) + '...'
-        });
-        
-        if (translationMatch) {
-          // Only set translation if one doesn't already exist
-          // This prevents overwriting user's manual translation when generating suggestions
-          setTranslatedMessages(prev => {
-            if (prev[messageId]) {
-              console.log('📝 Translation already exists, keeping user translation for message:', messageId);
-              return prev;
-            }
-            return {
-              ...prev,
-              [messageId]: translationMatch[1].trim()
-            };
-          });
-        }
-        
-        // Try new format first (with English translations)
-        if (suggestionsMatch && englishMatch) {
-          const germanSuggestions = suggestionsMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-          const englishTranslations = englishMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-          
-          // Pair German suggestions with their English translations
-          const pairedSuggestions = germanSuggestions.map((german: string, index: number) => ({
-            german: german.trim(),
-            english: englishTranslations[index] ? englishTranslations[index].trim() : ''
-          }));
-          
-          console.log('New format - German suggestions:', germanSuggestions);
-          console.log('New format - English translations:', englishTranslations);
-          console.log('New format - Paired suggestions:', pairedSuggestions);
-          
-          setSuggestedResponses(prev => ({
-            ...prev,
-            [messageId]: pairedSuggestions
-          }));
-        } else if (suggestionsMatch) {
-          // Fallback: old format (German suggestions only)
-          const suggestions = suggestionsMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-          
-          // Clean up any English translations that might be in parentheses or brackets
-          const cleanedSuggestions = suggestions.map((suggestion: string) => {
-            // Remove English text in parentheses like (English translation)
-            let cleaned = suggestion.replace(/\([^)]*[A-Za-z][^)]*\)/g, '');
-            // Remove English text in brackets like [English translation]
-            cleaned = cleaned.replace(/\[[^\]]*[A-Za-z][^\]]*\]/g, '');
-            // Remove any remaining English text patterns
-            cleaned = cleaned.replace(/\([^)]*\)/g, '');
-            cleaned = cleaned.replace(/\[[^\]]*\]/g, '');
-            // Trim whitespace
-            return cleaned.trim();
-          }).filter((s: string) => s.length > 0);
-          
-          console.log('Old format - Original suggestions:', suggestions);
-          console.log('Old format - Cleaned suggestions:', cleanedSuggestions);
-          
-          setSuggestedResponses(prev => ({
-            ...prev,
-            [messageId]: cleanedSuggestions
-          }));
-        } else {
-          console.log('No suggestions match found in:', content);
-          // Set contextual fallback suggestions based on the AI's message
-          const contextualFallbacks = generateContextualFallbacks(germanText);
-          console.log('Setting contextual fallback suggestions:', contextualFallbacks);
-          
-          setSuggestedResponses(prev => ({
-            ...prev,
-            [messageId]: contextualFallbacks
-          }));
-        }
-      } else {
-        console.error('❌ API call failed with status:', response.status);
-        console.error('❌ Response status text:', response.statusText);
-        const errorText = await response.text();
-        console.error('❌ Error response body:', errorText);
-        
-        // Try to get more specific error information
-        try {
-          const errorData = JSON.parse(errorText);
-          console.error('❌ Parsed error data:', errorData);
-        } catch (e) {
-          console.error('❌ Could not parse error response as JSON');
-        }
-      }
-    } catch (error) {
-      console.error('❌ Error generating translation and suggestions:', error);
-      console.error('❌ Error details:', {
-        messageId,
-        germanText,
-        error: (error as Error).message,
-        stack: (error as Error).stack
-      });
-      
-      // Set contextual fallback suggestions based on the AI's message
-      const contextualFallbacks = generateContextualFallbacks(germanText);
-      console.log('Setting contextual error fallback suggestions:', contextualFallbacks);
-      
-      setSuggestedResponses(prev => ({
-        ...prev,
-        [messageId]: contextualFallbacks
-      }));
-    }
+    // Use unified function with provided bot message
+    // It will auto-detect conversation context from chatMessages
+    await generateSuggestionsUsingOpenAI(messageId, germanText);
   };
 
   // Audio cache is now handled by the centralized TTS service
@@ -2128,6 +2355,15 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Ant
           }
         }
 
+        // Track sentence-level pronunciation score for conversation summary
+        if (data && typeof (data.sentenceScore ?? data.overallScore) === 'number') {
+          handlePronunciationComplete(
+            data.sentenceScore ?? data.overallScore,
+            transcription,
+            'sentence'
+          );
+        }
+
         return data;
       } else {
         console.error('❌ Pronunciation analysis failed:', response.status);
@@ -2903,7 +3139,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Ant
     });
     
     // Track vocabulary addition in session data
-    setSessionData(prev => ({
+    updateSessionData(prev => ({
       ...prev,
       wordsLearned: [...prev.wordsLearned, word]
     }));
@@ -2944,18 +3180,25 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Ant
     console.log('📚 === DASHBOARD HANDLE ADD TO VOCAB COMPLETED ===');
   };
 
-  // Handle pronunciation completion - track sentence pronunciation scores
-  const handlePronunciationComplete = (score: number, word: string) => {
-    setSessionData(prev => ({
+  // Handle pronunciation completion - track pronunciation scores
+  const handlePronunciationComplete = (
+    score: number,
+    word: string,
+    type: 'word' | 'sentence' = 'sentence'
+  ) => {
+    const successThreshold = 65;
+    updateSessionData(prev => ({
       ...prev,
       pronunciationAttempts: [...prev.pronunciationAttempts, {
-        word: word,
-        score: score,
+        word,
+        score,
         timestamp: new Date().toISOString(),
-        isSuccess: score >= 70
-      }]
+        isSuccess: score >= successThreshold,
+        type
+      }],
+      lastSentenceScore: type === 'sentence' ? score : prev.lastSentenceScore
     }));
-    console.log('📊 Session data updated: pronunciation attempt added', { word, score });
+    console.log('📊 Session data updated: pronunciation attempt added', { word, score, type });
   };
 
   // Handle word selection in sentence - no API calls in modal
@@ -3818,10 +4061,15 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
   // Recording functions
   const startRecording = async () => {
     try {
+      console.log('🎤 === STARTING RECORDING ===');
+      // Clear previous mic message ID when starting new recording
+      setCurrentMicMessageId(null);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('✅ Microphone access granted');
+      
       const recorder = new MediaRecorder(stream);
       const chunks: Blob[] = [];
-      let recordingStartTime = Date.now();
+      const recordingStartTime = Date.now();
 
       // Start duration tracking
       const durationInterval = setInterval(() => {
@@ -3834,6 +4082,191 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         }
       }, 1000);
 
+      // Request data periodically to ensure chunks are collected
+      const dataInterval = setInterval(() => {
+        if (recorder.state === 'recording') {
+          recorder.requestData();
+          console.log('📊 Requested data from recorder, chunks count:', chunks.length);
+        }
+      }, 100); // Request data every 100ms
+
+      recorder.ondataavailable = (event) => {
+        console.log('📦 Data available:', event.data.size, 'bytes');
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+          console.log('✅ Chunk added, total chunks:', chunks.length);
+        } else {
+          console.warn('⚠️ Empty chunk received');
+        }
+      };
+
+      recorder.onerror = (event) => {
+        console.error('❌ MediaRecorder error:', event);
+        clearInterval(durationInterval);
+        clearInterval(dataInterval);
+        setIsRecording(false);
+        alert('Recording error occurred. Please try again.');
+      };
+
+      recorder.onstop = async () => {
+        console.log('🛑 === RECORDING STOPPED ===');
+        clearInterval(durationInterval);
+        clearInterval(dataInterval);
+        setRecordingDuration(0);
+        
+        console.log('📊 Total chunks collected:', chunks.length);
+        console.log('📊 Total data size:', chunks.reduce((sum, chunk) => sum + chunk.size, 0), 'bytes');
+        
+        if (chunks.length === 0) {
+          console.error('❌ No chunks collected during recording!');
+          alert('No audio data was recorded. Please try again.');
+          stream.getTracks().forEach(track => track.stop());
+          setIsRecording(false);
+          return;
+        }
+        
+        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+        console.log('✅ Audio blob created:', audioBlob.size, 'bytes');
+        console.log('✅ Audio blob type:', audioBlob.type);
+        
+        // Store audio blob for pronunciation analysis
+        setMicRecordingBlob(audioBlob);
+        // Reset transcription state
+        setMicRecordingTranscription(null);
+        
+        // Create message immediately with placeholder
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const messageId = Date.now().toString();
+        setCurrentMicMessageId(messageId);
+        
+        const audioMessage: ChatMessage = {
+          id: messageId,
+          role: 'user',
+          content: '🎤 Recording...',
+          timestamp: new Date().toISOString(),
+          audioUrl: audioUrl,
+          isAudio: true,
+          isTranscribing: true
+        };
+        
+        console.log('✅ Creating message immediately with placeholder:', messageId);
+        updateMessageStatus(messageId, 'checking');
+        
+        // Add to chat immediately
+        setChatMessages(prev => {
+          console.log('🆕 === ADDING NEW MESSAGE TO CHAT IMMEDIATELY ===');
+          const newMessages = [...prev, audioMessage];
+          console.log('✅ Message added to chat with placeholder');
+          return newMessages;
+        });
+        
+        // Process audio in background (don't await - let it run async)
+        // Pass messageId directly to avoid state timing issues
+        processAudioMessage(audioBlob, messageId).catch(error => {
+          console.error('Error processing audio message:', error);
+        });
+        
+        stream.getTracks().forEach(track => track.stop());
+        console.log('✅ Media stream tracks stopped');
+      };
+
+      console.log('🎤 Starting MediaRecorder...');
+      recorder.start();
+      console.log('✅ MediaRecorder started, state:', recorder.state);
+      setMediaRecorder(recorder);
+      setIsRecording(true);
+      console.log('✅ Recording state set to true');
+    } catch (error) {
+      console.error('❌ Error starting recording:', error);
+      setIsRecording(false);
+      alert('Microphone access denied. Please allow microphone access to use voice input.');
+    }
+  };
+
+  const stopRecording = () => {
+    console.log('🛑 === STOP RECORDING CALLED ===');
+    console.log('MediaRecorder exists:', !!mediaRecorder);
+    console.log('Is recording:', isRecording);
+    console.log('MediaRecorder state:', mediaRecorder?.state);
+    
+    if (mediaRecorder && isRecording) {
+      console.log('✅ Stopping MediaRecorder...');
+      try {
+        if (mediaRecorder.state === 'recording') {
+          mediaRecorder.stop();
+          console.log('✅ MediaRecorder.stop() called');
+        } else {
+          console.warn('⚠️ MediaRecorder is not in recording state:', mediaRecorder.state);
+        }
+        setIsRecording(false);
+        console.log('✅ Recording state set to false');
+      } catch (error) {
+        console.error('❌ Error stopping recorder:', error);
+        setIsRecording(false);
+      }
+    } else {
+      console.warn('⚠️ Cannot stop recording - mediaRecorder or isRecording is false');
+    }
+  };
+
+  // Stop practice recording handler for suggested responses
+  const handleStopPracticeResponse = (responseId: string, responseText: string) => {
+    console.log('🛑 === STOP PRACTICE RESPONSE CLICKED ===');
+    console.log('Response ID:', responseId);
+    console.log('Response Text:', responseText);
+    
+    const recorder = practiceRecorders[responseId];
+    if (recorder && recorder.state !== 'inactive') {
+      console.log('🛑 Stopping recorder for response:', responseId);
+      recorder.stop();
+      // The recorder.onstop handler will set showAnalyze to true
+    } else {
+      console.log('⚠️ No active recorder found for response:', responseId);
+      // Manually set states if recorder not found
+      setResponseRecordingState(prev => ({
+        ...prev,
+        [responseId]: false
+      }));
+    }
+  };
+
+  // Practice recording handlers for suggested responses
+  const handlePracticeResponse = async (responseId: string, responseText: string) => {
+    console.log('🎤 === PRACTICE RESPONSE CLICKED ===');
+    console.log('Response ID:', responseId);
+    console.log('Response Text:', responseText);
+
+    // Check if already recording - stop recording
+    if (responseRecordingState[responseId]) {
+      const recorder = practiceRecorders[responseId];
+      if (recorder && recorder.state !== 'inactive') {
+        recorder.stop();
+      }
+      return;
+    }
+
+    // Reset hasBeenAnalyzed when starting a new practice (Practice Again)
+    // This allows the Analyse button to be enabled again after recording
+    setResponseHasBeenAnalyzed(prev => ({
+      ...prev,
+      [responseId]: false
+    }));
+
+    // Reset showAnalyze initially, will be set to true after recording stops
+    setResponseShowAnalyze(prev => ({
+      ...prev,
+      [responseId]: false
+    }));
+    
+    // Ensure Analyze button is NOT shown while recording
+    console.log('🔄 Reset showAnalyze for response:', responseId, '- Analyze button will be enabled after Stop');
+
+    // Start recording
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           chunks.push(event.data);
@@ -3841,27 +4274,318 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       };
 
       recorder.onstop = async () => {
-        clearInterval(durationInterval);
-        setRecordingDuration(0);
         const audioBlob = new Blob(chunks, { type: 'audio/webm' });
-        await processAudioMessage(audioBlob);
+        console.log('🎤 === RECORDING STOPPED FOR RESPONSE ===');
+        console.log('Audio blob size:', audioBlob.size, 'bytes');
+        
+        // Store audio blob
+        setRecordedAudioBlobs(prev => {
+          const newMap = new Map(prev);
+          newMap.set(responseId, { blob: audioBlob, text: responseText });
+          return newMap;
+        });
+
+        // Show Analyze button - enable it after recording stops
+        setResponseShowAnalyze(prev => {
+          const newState = {
+            ...prev,
+            [responseId]: true
+          };
+          console.log('✅ Analyze button enabled for response:', responseId);
+          console.log('📊 Updated responseShowAnalyze:', newState);
+          return newState;
+        });
+
+        // Stop recording state
+        setResponseRecordingState(prev => ({
+          ...prev,
+          [responseId]: false
+        }));
+
+        // Clean up recorder
+        setPracticeRecorders(prev => {
+          const newRecorders = { ...prev };
+          delete newRecorders[responseId];
+          return newRecorders;
+        });
+
+        // Stop all tracks
         stream.getTracks().forEach(track => track.stop());
       };
 
       recorder.start();
-      setMediaRecorder(recorder);
-      setIsRecording(true);
+      
+      // Update state
+      setResponseRecordingState(prev => ({
+        ...prev,
+        [responseId]: true
+      }));
+      
+      setPracticeRecorders(prev => ({
+        ...prev,
+        [responseId]: recorder
+      }));
     } catch (error) {
-      console.error('Error starting recording:', error);
+      console.error('❌ Error starting practice recording:', error);
       alert('Microphone access denied. Please allow microphone access to use voice input.');
     }
   };
 
-  const stopRecording = () => {
-    if (mediaRecorder && isRecording) {
-      mediaRecorder.stop();
-      setIsRecording(false);
+  // Analyze handler - navigates to pronunciation tab
+  const handleAnalyzeResponse = (responseId: string, responseText: string) => {
+    console.log('🔍 === ANALYZE RESPONSE CLICKED ===');
+    console.log('Response ID:', responseId);
+    console.log('Response Text:', responseText);
+
+    const audioData = recordedAudioBlobs.get(responseId);
+    if (!audioData) {
+      console.error('❌ No audio blob found for response:', responseId);
+      alert('Please record audio first before analyzing.');
+      return;
     }
+
+    // Set pending analysis
+    setPendingPronunciationAnalysis({
+      audioBlob: audioData.blob,
+      text: responseText,
+      responseId
+    });
+
+    // Navigate to pronunciation tab - ensure toolbar is visible and expanded
+    setToolbarActiveTab('pronunciation');
+    setShowToolbar(true);
+    setToolbarCollapsed(false);
+
+    // Mark as analyzed
+    setResponseHasBeenAnalyzed(prev => ({
+      ...prev,
+      [responseId]: true
+    }));
+  };
+
+  // Helper function to re-transcribe audio blob using Whisper API
+  const reTranscribeAudio = async (audioBlob: Blob): Promise<string | null> => {
+    console.log('🔄 === RE-TRANSCRIBING AUDIO ===');
+    console.log('Audio blob size:', audioBlob.size, 'bytes');
+    
+    try {
+      // Convert blob to base64
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      // Convert to base64 in chunks
+      let binaryString = '';
+      const chunkSize = 8192;
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.slice(i, i + chunkSize);
+        binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      
+      const base64Audio = btoa(binaryString);
+      console.log('Base64 audio length:', base64Audio.length);
+      
+      // Call Whisper API
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whisper`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audioData: base64Audio,
+          language: recordingLanguage === 'german' ? 'de' : 'en',
+          storeForAnalysis: true
+        }),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Re-transcription failed:', response.status, errorText);
+        return null;
+      }
+      
+      const data = await response.json();
+      
+      if (data.transcription && typeof data.transcription === 'string') {
+        const transcription = data.transcription.trim();
+        console.log('✅ Re-transcription successful:', transcription);
+        return transcription;
+      } else {
+        console.error('❌ Invalid re-transcription response:', data);
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Re-transcription error:', error);
+      return null;
+    }
+  };
+
+  // Message-level Analyse handler - navigates to pronunciation tab with mic recording
+  const handleMessageAnalyse = async (messageId: string) => {
+    console.log('🔍 === MESSAGE ANALYSE CLICKED ===');
+    console.log('Message ID:', messageId);
+    console.log('Current micRecordingBlob:', micRecordingBlob ? `exists (${micRecordingBlob.size} bytes)` : 'null');
+    console.log('Current micRecordingTranscription:', micRecordingTranscription);
+    
+    if (!micRecordingBlob) {
+      console.error('❌ No mic recording blob found');
+      alert('No audio recording available for analysis.');
+      return;
+    }
+
+    // Get transcript from message content or stored transcription
+    const message = chatMessages.find(msg => msg.id === messageId);
+    const transcription = micRecordingTranscription || (message?.content && message.content !== '🎤 Recording...' && message.content !== '🎤 Voice message' ? message.content : null);
+    
+    if (!transcription || transcription.trim().length === 0) {
+      console.error('❌ No transcription available');
+      alert('No transcription available. Please wait for transcription to complete.');
+      return;
+    }
+
+    // Validate transcript has letters
+    const hasLetters = /[a-zA-ZäöüÄÖÜß]/.test(transcription);
+    if (!hasLetters) {
+      console.error('❌ Transcription does not contain letters:', transcription);
+      alert('Invalid transcription - no readable text detected.');
+      return;
+    }
+
+    console.log('✅ Using transcription for pronunciation analysis:', transcription);
+
+    // Set pending analysis with mic recording
+    const responseId = `mic-${messageId}-${Date.now()}`;
+    console.log('📝 Setting pendingPronunciationAnalysis with:');
+    console.log('  - audioBlob:', micRecordingBlob.size, 'bytes');
+    console.log('  - text:', transcription);
+    console.log('  - responseId:', responseId);
+    
+    setPendingPronunciationAnalysis({
+      audioBlob: micRecordingBlob,
+      text: transcription.trim(),
+      responseId: responseId
+    });
+
+    // Navigate to pronunciation tab - ensure toolbar is visible and expanded
+    setToolbarActiveTab('pronunciation');
+    setShowToolbar(true);
+    setToolbarCollapsed(false);
+    
+    console.log('✅ Navigation to pronunciation tab completed');
+  };
+
+  // Mic button Analyze handler - navigates to pronunciation tab with mic recording (kept for backward compatibility)
+  const handleMicAnalyze = async () => {
+    console.log('🔍 === MIC ANALYZE CLICKED ===');
+    console.log('Current micRecordingBlob:', micRecordingBlob ? `exists (${micRecordingBlob.size} bytes)` : 'null');
+    console.log('Current micRecordingTranscription:', micRecordingTranscription);
+    console.log('Current micRecordingTranscription type:', typeof micRecordingTranscription);
+    
+    if (!micRecordingBlob) {
+      console.error('❌ No mic recording blob found');
+      alert('Please record audio first before analyzing.');
+      return;
+    }
+
+    // Check if we have a transcription and if it's valid
+    let transcription = micRecordingTranscription ? micRecordingTranscription.trim() : null;
+    let needsReTranscription = false;
+    
+    // If no transcription exists, or if it's invalid/gibberish, re-transcribe
+    if (!transcription || transcription.length === 0) {
+      console.log('🔄 No transcription available - re-transcribing...');
+      needsReTranscription = true;
+    } else {
+      // Validate the existing transcription
+      const validationResult = validateTranscript(transcription);
+      if (!validationResult.isValid) {
+        console.log('🔄 Existing transcription is gibberish - re-transcribing...');
+        console.log('🔄 Validation reason:', validationResult.reason);
+        needsReTranscription = true;
+      }
+    }
+
+    // Re-transcribe if needed
+    if (needsReTranscription) {
+      console.log('🔄 === RE-TRANSCRIBING AUDIO FOR ANALYSIS ===');
+      console.log('🔄 Re-transcribing audio blob to get valid transcription...');
+      
+      // Show loading state
+      const reTranscribedText = await reTranscribeAudio(micRecordingBlob);
+      
+      if (!reTranscribedText || reTranscribedText.trim().length === 0) {
+        console.error('❌ Re-transcription failed or returned empty');
+        alert('Unable to transcribe the audio. Please try recording again.');
+        return;
+      }
+      
+      // Validate the re-transcribed text
+      const reValidationResult = validateTranscript(reTranscribedText);
+      if (!reValidationResult.isValid) {
+        console.error('❌ Re-transcription still returned gibberish:', reTranscribedText);
+        console.error('❌ Validation reason:', reValidationResult.reason);
+        alert('Unable to get a valid transcription from the audio. Please try recording again with clearer speech.');
+        return;
+      }
+      
+      // Use the re-transcribed text
+      transcription = reTranscribedText;
+      console.log('✅ Using re-transcribed text for analysis:', transcription);
+      
+      // Update the stored transcription
+      setMicRecordingTranscription(transcription);
+    } else {
+      console.log('✅ Using existing valid transcription:', transcription);
+    }
+
+    // Final validation: Ensure transcription has content and letters
+    if (!transcription || transcription.length === 0) {
+      console.error('❌ Final transcription is empty');
+      alert('No transcription available. Please record again.');
+      return;
+    }
+
+    const hasLetters = /[a-zA-ZäöüÄÖÜß]/.test(transcription);
+    if (!hasLetters) {
+      console.error('❌ Transcription does not contain letters:', transcription);
+      alert('Invalid transcription - no readable text detected. Please speak clearly and record again.');
+      return;
+    }
+
+    console.log('✅ Using transcription for pronunciation analysis:', transcription);
+    console.log('✅ Transcription length:', transcription.length);
+
+    // Clear any previous pronunciation analysis results before setting new pending analysis
+    console.log('🧹 Clearing previous pronunciation analysis');
+    
+    // Set pending analysis with mic recording - this overwrites any previous pending analysis
+    const micResponseId = `mic-${Date.now()}`;
+    console.log('📝 Setting pendingPronunciationAnalysis with:');
+    console.log('  - audioBlob:', micRecordingBlob.size, 'bytes');
+    console.log('  - text:', transcription);
+    console.log('  - responseId:', micResponseId);
+    
+    setPendingPronunciationAnalysis({
+      audioBlob: micRecordingBlob,
+      text: transcription,
+      responseId: micResponseId
+    });
+
+    // Navigate to pronunciation tab - ensure toolbar is visible and expanded
+    setToolbarActiveTab('pronunciation');
+    setShowToolbar(true);
+    setToolbarCollapsed(false);
+
+    // Hide the Analyse button after clicking
+    setShowMicAnalyzeButton(false);
+    
+    console.log('✅ Navigation to pronunciation tab completed');
   };
 
   // Modal recording functions
@@ -3870,7 +4594,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
       const chunks: Blob[] = [];
-      let recordingStartTime = Date.now();
+      const recordingStartTime = Date.now();
 
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -4140,15 +4864,22 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     }
   };
 
-  const processAudioMessage = async (audioBlob: Blob) => {
+  const processAudioMessage = async (audioBlob: Blob, preExistingMessageId?: string) => {
     // Store audio blob for practice modal use
     setPracticeAudioBlob(audioBlob);
+    
+    // If messageId was passed directly (from stopRecording), use it
+    // Otherwise check state for pre-existing message
+    if (!preExistingMessageId) {
+      preExistingMessageId = currentMicMessageId;
+    }
     
     // Check if we're in a retry state - be more robust in detection
     const isRetry = Boolean(activeMessageId);
     const existingMessageId = activeMessageId;
 
     console.log('🎤 === PROCESSING AUDIO MESSAGE ===');
+    console.log('Pre-existing message ID (from parameter or state):', preExistingMessageId);
     console.log('Is retry:', isRetry);
     console.log('Existing message ID:', existingMessageId);
     console.log('Waiting for correction:', waitingForCorrection);
@@ -4163,6 +4894,39 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     console.log('errorMessages values:', Object.values(errorMessages));
     
     let messageId = '';
+    
+    // If message was already created in stopRecording, use that messageId
+    if (preExistingMessageId) {
+      console.log('✅ Using pre-existing message ID from mic recording:', preExistingMessageId);
+      messageId = preExistingMessageId;
+      // Wait a moment for React state to update (message was just added in stopRecording)
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Verify message exists using functional state access
+      let messageFound = false;
+      setChatMessages(currentMessages => {
+        const messageExists = currentMessages.find(msg => msg.id === preExistingMessageId);
+        if (messageExists) {
+          messageFound = true;
+          console.log('✅ Message found in chatMessages:', preExistingMessageId);
+        } else {
+          console.error('❌ Message not found in chatMessages:', preExistingMessageId);
+          console.log('Current message IDs:', currentMessages.map(m => m.id));
+        }
+        return currentMessages; // Don't modify, just read
+      });
+      
+      if (messageFound) {
+        // Process audio in background - message already exists, just need to transcribe
+        await transcribeAudio(audioBlob, messageId, false);
+        // Clear after transcription completes
+        setCurrentMicMessageId(null);
+        return;
+      } else {
+        // If message still doesn't exist, fall through to create new message
+        console.warn('⚠️ Message not found after wait, falling through to create new message');
+      }
+    }
     
     if (isRetry && existingMessageId) {
       // This is a retry - update existing message
@@ -4214,27 +4978,38 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         console.log('- existingMessageId:', existingMessageId);
         console.log('- waitingForCorrection:', waitingForCorrection);
         
+        const audioUrl = URL.createObjectURL(audioBlob);
+        console.log('✅ Audio URL created:', audioUrl);
+        console.log('✅ Audio blob size:', audioBlob.size, 'bytes');
+        console.log('✅ Audio blob type:', audioBlob.type);
+        
         const audioMessage: ChatMessage = {
           id: Date.now().toString(), // Always create new ID to avoid duplicates
           role: 'user',
-          content: showLanguageMismatchModal ? '🎤 Voice message' : '🎤 Voice message',
+          content: '🎤 Voice message',
           timestamp: new Date().toISOString(),
-          audioUrl: URL.createObjectURL(audioBlob),
-          isAudio: true,
+          audioUrl: audioUrl, // Set audioUrl immediately for play button
+          isAudio: true, // Mark as audio message
           isTranscribing: true
         };
         
         messageId = audioMessage.id;
+        console.log('✅ Message created with ID:', messageId);
+        console.log('✅ Message audioUrl:', audioMessage.audioUrl);
+        console.log('✅ Message isAudio:', audioMessage.isAudio);
 
         updateMessageStatus(messageId, 'checking');
+        console.log('✅ Message status set to "checking"');
         
         // Add to chat immediately
         setChatMessages(prev => {
           console.log('🆕 === ADDING NEW MESSAGE TO CHAT ===');
           console.log('New message ID:', messageId);
           console.log('Previous messages count:', prev.length);
+          console.log('Audio URL in message:', audioMessage.audioUrl);
           const newMessages = [...prev, audioMessage];
           console.log('New messages count:', newMessages.length);
+          console.log('✅ Message added to chat - play button should be enabled');
           return newMessages;
         });
       }
@@ -4244,6 +5019,62 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     await transcribeAudio(audioBlob, messageId, isRetry);
   };
 
+  // Comprehensive transcript validation function
+  // Tests and confirms transcript is valid before displaying
+  const validateTranscript = (transcript: string): { isValid: boolean; reason?: string } => {
+    const trimmed = transcript.trim();
+    
+    // Check if transcript is empty
+    if (!trimmed || trimmed.length === 0) {
+      return { isValid: false, reason: 'empty' };
+    }
+    
+    // Comprehensive gibberish pattern detection
+    const invalidPatterns = [
+      /^🎤/i,  // Placeholder like "🎤 Voice message"
+      /^Recording/i,  // Placeholder like "Recording retry..."
+      /^Untertitel/i,  // "Untertitel" at start
+      /Untertitel der/i,  // "Untertitel der" anywhere
+      /Untertitel der.*Amara/i,  // "Untertitel der Amara" pattern
+      /Untertitel im Auftrag/i,  // "Untertitel im Auftrag" pattern
+      /Untertitel im Auftrag des ZDF/i,  // "Untertitel im Auftrag des ZDF" pattern
+      /Amara\.org/i,  // "Amara.org" anywhere
+      /Amara\.org-Community/i,  // "Amara.org-Community" pattern
+      /Amara-Community/i,  // "Amara-Community" pattern
+      /im Auftrag/i,  // "im Auftrag" pattern
+      /für funk/i,  // "für funk" pattern
+      /^\d{4}$/,  // Just year numbers like "2017"
+      /Community.*Untertitel/i,  // "Community Untertitel" pattern
+      /der.*Amara/i,  // "der Amara" pattern
+      /ZDF.*funk/i,  // "ZDF für funk" pattern
+    ];
+    
+    const isGibberishPattern = invalidPatterns.some(pattern => pattern.test(trimmed));
+    if (isGibberishPattern) {
+      return { isValid: false, reason: 'gibberish_pattern' };
+    }
+    
+    // Check if transcript has meaningful content (letters)
+    const hasLetters = /[a-zA-ZäöüÄÖÜß]/.test(trimmed);
+    if (!hasLetters) {
+      return { isValid: false, reason: 'no_letters' };
+    }
+    
+    // Check transcript length (too short might be invalid)
+    if (trimmed.length < 2) {
+      return { isValid: false, reason: 'too_short' };
+    }
+    
+    // Check for too many repeated characters (might indicate corrupted transcription)
+    const repeatedChars = /(.)\1{4,}/.test(trimmed);
+    if (repeatedChars) {
+      return { isValid: false, reason: 'repeated_chars' };
+    }
+    
+    // All validation checks passed
+    return { isValid: true };
+  };
+  
   const transcribeAudio = async (audioBlob: Blob, messageId: string, isRetry: boolean = false) => {
     console.log('🎤 === TRANSCRIBE AUDIO START ===');
     console.log('Message ID:', messageId);
@@ -4278,6 +5109,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
       // Try the whisper function first, fallback to chat function if not available
       let response;
+      let isWhisperResponse = false; // Track if response is from Whisper API
       try {
         // Use auto-detection instead of forcing a specific language
         // This allows Whisper to detect the actual language spoken
@@ -4300,6 +5132,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           signal: controller.signal
         });
         
+        isWhisperResponse = true; // Mark that this is from Whisper API
         clearTimeout(timeoutId);
       } catch (whisperError) {
         console.log('Whisper function error:', whisperError);
@@ -4350,6 +5183,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             difficultyLevel: 'Intermediate'
           })
         });
+        
+        isWhisperResponse = false; // This is NOT from Whisper API
       }
 
       if (response.ok) {
@@ -4358,17 +5193,206 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         // Check if this is a whisper response or chat fallback
         if (data.transcription) {
           // Whisper function response
+          // CRITICAL: Use ONLY the transcription from Whisper API, never from any other source
           const transcription = data.transcription;
           
-          // Detect language mismatch
+          // CRITICAL VALIDATION: Ensure this transcription is from Whisper API, not from chat fallback
+          // Only store mic transcription if this is confirmed to be from Whisper API
+          if (!isWhisperResponse) {
+            console.warn('⚠️ Response is from chat fallback, not Whisper API - skipping mic transcription storage');
+            console.warn('⚠️ Transcription from fallback:', transcription);
+          }
+          
+          // Validate that transcription is actually from Whisper API and not a fallback
+          if (typeof transcription !== 'string') {
+            console.error('❌ Invalid transcription type from API:', typeof transcription);
+            setIsTranscribing(false);
+            return;
+          }
+          
+          console.log('🎤 === WHISPER API TRANSCRIPTION RECEIVED ===');
+          console.log('Raw transcription from API:', transcription);
+          console.log('Transcription type:', typeof transcription);
+          console.log('Transcription length:', transcription.length);
+          console.log('Is from Whisper API:', isWhisperResponse);
+          console.log('✅ Transcription received from Whisper API');
+          
+          // CRITICAL: Store transcription IMMEDIATELY for mic recordings if micRecordingBlob exists
+          // This ensures we capture the actual API transcription before any other processing
+          // Store it regardless of language detection - we'll validate later
+          // ONLY store if this is confirmed to be from Whisper API
+          if (micRecordingBlob && isWhisperResponse) {
+            const actualTranscription = transcription.trim();
+            if (actualTranscription && actualTranscription.length > 0) {
+              console.log('🎤 === STORING MIC RECORDING TRANSCRIPTION IMMEDIATELY ===');
+              console.log('✅ Storing actual API transcription immediately:', actualTranscription);
+              console.log('✅ Storing BEFORE language detection or any other processing');
+              console.log('✅ Confirmed source: Whisper API');
+              setMicRecordingTranscription(actualTranscription);
+              
+              // Verify storage
+              setTimeout(() => {
+                console.log('✅ Verification: micRecordingTranscription stored immediately as:', actualTranscription);
+              }, 0);
+            }
+          } else if (micRecordingBlob && !isWhisperResponse) {
+            console.warn('⚠️ NOT storing mic transcription - response is not from Whisper API');
+            console.warn('⚠️ Transcription would have been:', transcription);
+          }
+          
+          // VALIDATE transcript before displaying - test and confirm it's valid
+          const trimmedTranscription = transcription.trim();
+          
+          // Only check if transcription is truly empty (API failure case)
+          if (!trimmedTranscription || trimmedTranscription.length === 0) {
+            console.error('❌ Empty transcription from Whisper API:', transcription);
+            setChatMessages(prev => {
+              const updatedMessages = prev.map(msg => {
+                if (msg.id === messageId) {
+                  return { 
+                    ...msg, 
+                    content: '❌ Transcription failed - no audio detected', 
+                    isTranscribing: false 
+                  };
+                }
+                return msg;
+              });
+              return updatedMessages;
+            });
+            
+            setIsTranscribing(false);
+            updateMessageStatus(messageId, 'error');
+            
+            return;
+          }
+          
+          // TEST AND CONFIRM transcript is valid before displaying
+          const validationResult = validateTranscript(trimmedTranscription);
+          
+          console.log('🔍 === TRANSCRIPT VALIDATION ===');
+          console.log('Transcription:', trimmedTranscription);
+          console.log('Validation result:', validationResult);
+          
+          // Keep message with placeholder when gibberish detected - don't display gibberish transcript
+          if (!validationResult.isValid) {
+            console.error('❌ Invalid transcript detected - keeping message with placeholder:', trimmedTranscription);
+            console.error('❌ Validation reason:', validationResult.reason);
+            console.error('❌ Keeping message visible with placeholder "🎤 Voice message"');
+            
+            // Keep the message visible but with placeholder instead of gibberish
+            setChatMessages(prev => {
+              const updatedMessages = prev.map(msg => {
+                if (msg.id === messageId) {
+                  console.log('✅ KEEPING MESSAGE WITH PLACEHOLDER FOR GIBBERISH TRANSCRIPT');
+                  console.log('Original content:', msg.content);
+                  console.log('Keeping placeholder: 🎤 Voice message');
+                  
+                  return { 
+                    ...msg, 
+                    content: '🎤 Voice message',  // Keep placeholder instead of gibberish
+                    isTranscribing: false,
+                    audioUrl: msg.audioUrl, // Preserve existing audio URL for playback
+                    isAudio: true // Keep isAudio flag so play button displays
+                  };
+                }
+                return msg;
+              });
+              return updatedMessages;
+            });
+            
+            setIsTranscribing(false);
+            // Don't set error status - just keep placeholder message
+            
+            // Clear checking status to remove "Checking your message..." indicator
+            if (messageId) {
+              clearCheckingStatus(messageId);
+              console.log('✅ Cleared checking status for invalid transcript');
+            }
+            
+            // For gibberish transcripts, keep placeholder - Analyse button won't show until valid transcript
+            // User can still use Play button to listen to recording
+            console.log('⚠️ Invalid transcript - keeping placeholder, Analyse button will not appear');
+            
+            return; // Don't proceed with processing invalid transcript
+          }
+          
+          // VALID TRANSCRIPTION CONFIRMED - display the EXACT transcription from Whisper API word-for-word
+          console.log('✅ Valid transcription confirmed - displaying EXACT transcript word-for-word:', trimmedTranscription);
+          console.log('✅ Transcript length:', trimmedTranscription.length);
+          console.log('✅ Transcript is from Whisper API - no modifications applied');
+          
+          setChatMessages(prev => {
+            console.log('🔍 === UPDATING MESSAGE WITH TRANSCRIPT ===');
+            console.log('Looking for messageId:', messageId);
+            console.log('Current messages:', prev.map(m => ({ id: m.id, content: m.content.substring(0, 50) })));
+            const messageExists = prev.find(msg => msg.id === messageId);
+            console.log('Message found:', !!messageExists);
+            if (messageExists) {
+              console.log('Existing message content:', messageExists.content);
+            }
+            
+            const updatedMessages = prev.map(msg => {
+              if (msg.id === messageId) {
+                console.log('✅ UPDATING MESSAGE WITH EXACT TRANSCRIPTION FROM WHISPER API:', msg.id);
+                console.log('Original content:', msg.content);
+                console.log('New content (EXACT transcription from Whisper API):', trimmedTranscription);
+                console.log('✅ No modifications - displaying word-for-word as received from API');
+                
+                // Store transcribed text as original message for suggestion generation (voice input)
+                if (!isRetry) {
+                  console.log('📝 === STORING TRANSCRIBED TEXT AS ORIGINAL MESSAGE FOR VOICE INPUT ===');
+                  console.log('Message ID:', messageId);
+                  console.log('Transcribed text:', trimmedTranscription);
+                  setOriginalMessages(prev => ({
+                    ...prev,
+                    [messageId]: trimmedTranscription
+                  }));
+                }
+                
+                return { 
+                  ...msg, 
+                  content: trimmedTranscription,  // Display EXACT transcription word-for-word from Whisper API
+                  isTranscribing: false,
+                  audioUrl: msg.audioUrl, // Preserve existing audio URL for playback (set when message was created)
+                  isAudio: true // Mark as audio message for proper UI display
+                };
+              }
+              return msg;
+            });
+            console.log('✅ Message updated with exact transcript - transcript displayed in chat');
+            return updatedMessages;
+          });
+          
+          // Clear loading states
+          setIsTranscribing(false);
+          
+          // Clear checking status to remove "Checking your message..." indicator
+          if (messageId) {
+            clearCheckingStatus(messageId);
+            console.log('✅ Cleared checking status after valid transcription');
+          }
+          
+          // Detect language for Analyse button visibility and other processing
           const detectedLanguage = detectLanguage(transcription);
           console.log('🔍 === VOICE LANGUAGE DETECTION DEBUG ===');
           console.log('Transcription:', transcription);
           console.log('Detected language:', detectedLanguage);
           console.log('Selected language:', recordingLanguage);
-          console.log('Language mismatch:', detectedLanguage !== recordingLanguage);
-          console.log('Show language mismatch modal state:', showLanguageMismatchModal);
-          console.log('Has English words check:', /\b(the|and|or|but|in|on|at|to|for|of|with|by|this|that|these|those|what|where|when|why|how|hello|hi|how|are|you)\b/i.test(transcription));
+          
+          // Check if language is not German (for mic recordings in German mode)
+          const isNotGerman = micRecordingBlob && recordingLanguage === 'german' && detectedLanguage !== 'german';
+          
+          // Store transcription for Analyse button on message
+          // Analyse button will be shown on the message itself, not next to mic button
+          if (micRecordingBlob && validationResult.isValid) {
+            console.log('🎤 === STORING TRANSCRIPTION FOR MESSAGE ANALYSE BUTTON ===');
+            console.log('✅ Valid transcription completed:', trimmedTranscription);
+            console.log('✅ micRecordingBlob exists:', micRecordingBlob.size, 'bytes');
+            console.log('✅ Transcript stored - Analyse button will appear on message');
+            setMicRecordingTranscription(trimmedTranscription);
+          }
+          
+          console.log('✅ Transcription displayed from Whisper API');
           
           // Check if we're in practice modal mode
           if (showLanguageMismatchModal && germanSuggestion) {
@@ -4621,54 +5645,13 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           } else {
             console.log('✅ === LANGUAGES MATCH - PROCEEDING WITH NORMAL PROCESSING ===');
             console.log('Detected language:', detectedLanguage, 'Recording language:', recordingLanguage);
+            
+            // Analyse button logic is already handled above in the main flow
+            // No need to duplicate here - transcription is already displayed
           }
           
-          // Update the audio message with transcription - ensure message ID matches
-          setChatMessages(prev => {
-            console.log('🔄 === UPDATING MESSAGE WITH TRANSCRIPTION ===');
-            console.log('Message ID:', messageId);
-            console.log('Is Retry:', isRetry);
-            console.log('Transcription:', transcription);
-            console.log('Previous messages count:', prev.length);
-            console.log('All message IDs:', prev.map(msg => msg.id));
-            
-            // Verify the message exists
-            const targetMessage = prev.find(msg => msg.id === messageId);
-            if (!targetMessage) {
-              console.error('❌ === MESSAGE NOT FOUND FOR UPDATE ===');
-              console.error('Message ID:', messageId);
-              console.error('Available message IDs:', prev.map(msg => msg.id));
-              return prev; // Don't update if message not found
-            }
-            
-            console.log('✅ Message found, updating:', targetMessage.content);
-            
-            const updatedMessages = prev.map(msg => {
-              if (msg.id === messageId) {
-                console.log('✅ UPDATING MESSAGE:', msg.id);
-                console.log('Original content:', msg.content);
-                console.log('New content:', transcription);
-                
-                // Store transcribed text as original message for suggestion generation (voice input)
-                if (!isRetry) {
-                  console.log('📝 === STORING TRANSCRIBED TEXT AS ORIGINAL MESSAGE FOR VOICE INPUT ===');
-                  console.log('Message ID:', messageId);
-                  console.log('Transcribed text:', transcription);
-                  setOriginalMessages(prev => ({
-                    ...prev,
-                    [messageId]: transcription
-                  }));
-                }
-                
-                return { ...msg, content: transcription, isTranscribing: false };
-              }
-              return msg;
-            });
-            
-            console.log('Updated messages count:', updatedMessages.length);
-            console.log('Updated message content:', updatedMessages.find(msg => msg.id === messageId)?.content);
-            return updatedMessages;
-          });
+          // Message content has already been updated above with transcription or error message
+          // No need to update again - skip to retry handling and processing
           
           // If this is a retry, clear previous error states for this message
           if (isRetry) {
@@ -4868,39 +5851,57 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     } catch (error) {
       console.error('Error transcribing audio:', error);
 
-      let errorMessage = '❌ Transcription failed';
+      // Only show error for actual API failures, not for transcription content
+      const errorMessage = '❌ Transcription failed - please try again';
       
-      // Check if it's a CORS or function not found error
-      if ((error as Error).message.includes('Failed to fetch') || (error as Error).message.includes('CORS')) {
-        errorMessage = '⚠️ Whisper function not deployed. Audio recorded but transcription unavailable.';
-      } else if ((error as Error).message.includes('OpenAI API key not configured')) {
-        errorMessage = '⚠️ OpenAI API key not configured. Please check server settings.';
-      } else if ((error as Error).message.includes('No audio data provided')) {
-        errorMessage = '⚠️ No audio data received. Please try recording again.';
-      } else if ((error as Error).message.includes('Invalid audio data format')) {
-        errorMessage = '⚠️ Invalid audio format. Please try recording again.';
-      } else if ((error as Error).message.includes('OpenAI Whisper API error')) {
-        errorMessage = `⚠️ ${(error as Error).message}`;
-      } else if ((error as Error).message.includes('No transcription received')) {
-        errorMessage = '⚠️ No transcription received. Please try speaking more clearly.';
-      }
-      
-      // Update message to show appropriate error
-      setChatMessages(prev => prev.map(msg => 
-        msg.id === messageId 
-          ? { 
+      // Update message with error
+      setChatMessages(prev => {
+        const updatedMessages = prev.map(msg => {
+          if (msg.id === messageId) {
+            console.log('❌ Updating message with error due to transcription API failure');
+            return { 
               ...msg, 
               content: errorMessage, 
               isTranscribing: false 
-            }
-          : msg
-      ));
+            };
+          }
+          return msg;
+        });
+        return updatedMessages;
+      });
+      
+      // Clear loading states
+      setIsTranscribing(false);
       updateMessageStatus(messageId, 'error');
+      
+      // Don't disable Analyse button if we have audio blob - user can still analyze
+      if (micRecordingBlob) {
+        console.log('✅ Keeping Analyse button enabled despite transcription error');
+        setShowMicAnalyzeButton(true);
+      } else {
+        setShowMicAnalyzeButton(false);
+      }
+      
+      // Clear checking status
+      if (messageId) {
+        clearCheckingStatus(messageId);
+      }
     } finally {
-      console.log('🏁 === TRANSCRIBE AUDIO END (NORMAL PROCESSING) ===');
+      console.log('🏁 === TRANSCRIBE AUDIO END ===');
       console.log('Final showLanguageMismatchModal state:', showLanguageMismatchModal);
       console.log('Final chat messages count:', chatMessages.length);
+      console.log('Final isTranscribing state:', isTranscribing);
+      console.log('Final micRecordingBlob exists:', !!micRecordingBlob);
+      console.log('Final showMicAnalyzeButton:', showMicAnalyzeButton);
+      
+      // Ensure isTranscribing is always cleared
       setIsTranscribing(false);
+      
+      // Clear checking status if still checking
+      if (messageId && messageStatus[messageId] === 'checking') {
+        console.log('Clearing stuck checking status for message:', messageId);
+        clearCheckingStatus(messageId);
+      }
     }
   };
 
@@ -5235,24 +6236,16 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     setCurrentView('dashboard');
     
     // Reset session data for new conversation
-    setSessionData({
-      sessionId: `session-${Date.now()}`,
-      startTime: new Date().toISOString(),
-      wordsLearned: [],
-      wordsDeleted: [],
-      vocabularyTests: [],
-      pronunciationAttempts: [],
-      grammarMistakes: [],
-      correctResponses: 0,
-      totalMessages: 0
-    });
+    resetSessionData();
     console.log('📊 Session data reset for new conversation');
   };
 
   // End conversation - shows summary modal
   const endConversation = () => {
     // Generate and show summary before resetting
-    const summary = generateConversationSummary(sessionData);
+    console.log('📊 Generating conversation summary with session data:', sessionDataRef.current);
+    const summary = generateConversationSummary(sessionDataRef.current);
+    console.log('📊 Generated summary:', summary);
     setConversationSummary(summary);
     setShowSummaryModal(true);
     console.log('📊 Conversation summary generated and modal shown');
@@ -5864,7 +6857,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             setPersistentVocab(newVocab);
           }}
           onTestComplete={(results) => {
-            setSessionData(prev => ({
+            updateSessionData(prev => ({
               ...prev,
               vocabularyTests: [...prev.vocabularyTests, results]
             }));
@@ -6314,31 +7307,72 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                           : 'text-text'
                       }`}>
                         {message.isAudio ? (
-                          <div className="flex items-center space-x-3">
-                            <button 
-                              onClick={() => {
-                                if (message.audioUrl) {
-                                  const audio = new Audio(message.audioUrl);
-                                  audio.play();
-                                }
-                              }}
-                              className="flex items-center space-x-2 px-3 py-2 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-colors"
-                            >
-                              <Play className="h-4 w-4" />
-                              <span className="text-sm">Play</span>
-                            </button>
-                            <span>{message.content}</span>
-                            {message.isTranscribing && (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            )}
+                          <div>
+                            <div className="mb-2">
+                              <span>{message.content}</span>
+                              {message.isTranscribing && (
+                                <Loader2 className="h-4 w-4 animate-spin inline-block ml-2" />
+                              )}
+                            </div>
+                            {/* Play and Analyse buttons at bottom */}
+                            <div className="flex items-center justify-between mt-2 pt-2 border-t border-opacity-20 border-white">
+                              {/* Play button on left */}
+                              <button 
+                                onClick={async () => {
+                                  if (message.audioUrl) {
+                                    try {
+                                      console.log('▶️ Playing audio from URL:', message.audioUrl);
+                                      const audio = new Audio(message.audioUrl);
+                                      audio.onerror = (e) => {
+                                        console.error('❌ Audio playback error:', e);
+                                        alert('Error playing audio. The recording may have expired.');
+                                      };
+                                      await audio.play();
+                                      console.log('✅ Audio playback started successfully');
+                                    } catch (error) {
+                                      console.error('❌ Error playing audio:', error);
+                                      alert('Error playing audio. Please try again.');
+                                    }
+                                  } else {
+                                    console.warn('⚠️ No audioUrl available for message:', message.id);
+                                  }
+                                }}
+                                disabled={!message.audioUrl}
+                                className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg transition-colors ${
+                                  !message.audioUrl
+                                    ? 'bg-white bg-opacity-10 text-white opacity-50 cursor-not-allowed'
+                                    : 'bg-white bg-opacity-20 hover:bg-opacity-30 text-white'
+                                }`}
+                                title="Play recording"
+                              >
+                                <Play className="h-4 w-4" />
+                                <span className="text-xs">Play</span>
+                              </button>
+                              {/* Analyse button on right - only show when transcript is ready */}
+                              {!message.isTranscribing && 
+                               message.content !== '🎤 Recording...' && 
+                               message.content !== '🎤 Voice message' && 
+                               message.content.trim().length > 0 &&
+                               /[a-zA-ZäöüÄÖÜß]/.test(message.content) && 
+                               micRecordingBlob && (
+                                <button
+                                  onClick={() => handleMessageAnalyse(message.id)}
+                                  className="flex items-center space-x-1 px-3 py-1.5 bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded-lg transition-colors"
+                                  title="Analyze pronunciation"
+                                >
+                                  <Target className="h-4 w-4" />
+                                  <span className="text-xs">Analyse</span>
+                                </button>
+                              )}
+                            </div>
                           </div>
                         ) : (
                           message.content
                         )}
                       </div>
 
-                      {/* Pronunciation Badge for German Voice Messages */}
-                      {message.role === 'user' && message.isAudio && lastGermanVoiceMessage && lastGermanVoiceMessage.messageId === message.id && (
+                      {/* Pronunciation Badge for German Voice Messages (keep for other use cases) */}
+                      {message.role === 'user' && message.isAudio && lastGermanVoiceMessage && lastGermanVoiceMessage.messageId === message.id && !message.isTranscribing && message.content === '🎤 Voice message' && (
                         <div className="mt-2 flex justify-end">
                           <button
                             onClick={() => {
@@ -6459,45 +7493,26 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       <div className="text-xs font-medium text-gray-600 mb-1">Suggested responses:</div>
                       {suggestedResponses[message.id] ? (
                         suggestedResponses[message.id].map((suggestion, index) => {
+                          const responseId = `${message.id}-${index}`;
                           const suggestionText = typeof suggestion === 'string' ? suggestion : suggestion.german;
-                          const suggestionTranslation = typeof suggestion === 'object' ? suggestion.english : null;
-                          const translationKey = `${message.id}-${index}`;
-                          const isShowingTranslation = showSuggestionTranslation[translationKey];
+                          const suggestionTranslation = typeof suggestion === 'string' 
+                            ? translatedMessages[message.id] || '' 
+                            : suggestion.english;
                           
                           return (
-                            <div key={index} className="bg-primary-50 hover:bg-primary-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors">
-                              <div className="flex items-center justify-between">
-                                <button
-                                  onClick={() => useSuggestedResponse(suggestionText, message.id)}
-                                  className="flex-1 text-left"
-                                >
-                                  <div className="font-medium">{suggestionText}</div>
-                                  {isShowingTranslation && suggestionTranslation && (
-                                    <div className="text-gray-500 text-xs mt-1">{suggestionTranslation}</div>
-                                  )}
-                                </button>
-                                <div className="flex items-center space-x-1">
-                                  <button
-                                    onClick={() => speakText(suggestionText)}
-                                    className="p-1 hover:bg-gray-100 rounded transition-colors"
-                                    title="Listen"
-                                  >
-                                    <svg className="h-3 w-3 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
-                                      <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM15.657 6.343a1 1 0 011.414 0A9.972 9.972 0 0119 12a9.972 9.972 0 01-1.929 5.657 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 12a7.971 7.971 0 00-1.343-4.243 1 1 0 010-1.414z" clipRule="evenodd" />
-                                    </svg>
-                                  </button>
-                                  {suggestionTranslation && (
-                                    <button
-                                      onClick={() => toggleSuggestionTranslation(message.id, index)}
-                                      className="px-2 py-1 text-xs bg-white hover:bg-gray-50 border border-gray-300 rounded transition-colors"
-                                      title={isShowingTranslation ? "Hide translation" : "Show translation"}
-                                    >
-                                      {isShowingTranslation ? "DE" : "EN"}
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
+                            <SuggestedResponseCard
+                              key={responseId}
+                              response={suggestionText}
+                              translation={suggestionTranslation}
+                              responseId={responseId}
+                              onPractice={handlePracticeResponse}
+                              onStop={handleStopPracticeResponse}
+                              isRecording={responseRecordingState[responseId] || false}
+                              isAnalyzing={responseAnalyzingState[responseId] || false}
+                              showAnalyze={responseShowAnalyze[responseId] || false}
+                              hasBeenAnalyzed={responseHasBeenAnalyzed[responseId] || false}
+                              onAnalyze={handleAnalyzeResponse}
+                            />
                           );
                         })
                       ) : (
@@ -6695,14 +7710,15 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       
                       // Track deleted word as learned in session data
                       if (word) {
-                        setSessionData(prev => ({
-                          ...prev,
-                          wordsDeleted: [...prev.wordsDeleted, word]
-                        }));
+        updateSessionData(prev => ({
+          ...prev,
+          wordsDeleted: [...prev.wordsDeleted, word]
+        }));
                         console.log('📊 Session data updated: word added to wordsDeleted');
                       }
                     }}
                     onPronunciationComplete={handlePronunciationComplete}
+                    pendingPronunciationAnalysis={pendingPronunciationAnalysis}
                     onUpdatePersistentVocab={(newVocab) => {
                       console.log('📚 === DASHBOARD ONUPDATE PERSISTENT VOCAB CALLED ===');
                       console.log('New vocab received:', newVocab);
