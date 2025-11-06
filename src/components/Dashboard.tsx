@@ -18,6 +18,7 @@ import {
   Lock,
   Send,
   Play,
+  Pause,
   BookOpen,
   BarChart3,
   MessageCircle,
@@ -183,6 +184,8 @@ export default function Dashboard({ user }: DashboardProps) {
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [messageInput, setMessageInput] = useState('');
+  const [suggestedReplies, setSuggestedReplies] = useState<string[]>([]);
+  const [skipIntentOnce, setSkipIntentOnce] = useState(false);
   const [modalInput, setModalInput] = useState('');
   const [isModalRecording, setIsModalRecording] = useState(false);
   const [modalRecorder, setModalRecorder] = useState<MediaRecorder | null>(null);
@@ -275,7 +278,11 @@ export default function Dashboard({ user }: DashboardProps) {
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const [messageStatus, setMessageStatus] = useState<{[key: string]: MessageStatus}>({});
   const [showVocabBuilder, setShowVocabBuilder] = useState(false);
+  const [showPodcastsModal, setShowPodcastsModal] = useState(false);
+  const [playingPodcastId, setPlayingPodcastId] = useState<string | null>(null);
   const [lastSuggestionUsed, setLastSuggestionUsed] = useState<{[messageId: string]: string}>({});
+  const soundcloudWidgetsRef = useRef<any[]>([]);
+  const playingPodcastIdRef = useRef<string | null>(null);
 
   const updateMessageStatus = (messageId: string, status: MessageStatus | null) => {
     setMessageStatus(prev => {
@@ -684,6 +691,22 @@ export default function Dashboard({ user }: DashboardProps) {
     
     if (!conversationInput.trim()) {
       console.log('❌ === BLOCKING - Empty conversation input ===');
+      return;
+    }
+
+    // Language and gibberish validation at conversation start (no quick replies here)
+    const startText = conversationInput.trim();
+    const langAtStart = detectLanguage(startText);
+    const onlyLettersAtStart = startText.replace(/[^A-Za-zÄÖÜäöüß]/g, '');
+    const vowelCountAtStart = (onlyLettersAtStart.match(/[aeiouAEIOUÄÖÜäöü]/g) || []).length;
+    const gibberishAtStart = onlyLettersAtStart.length > 0 && (vowelCountAtStart === 0 || (onlyLettersAtStart.length > 30 && vowelCountAtStart / onlyLettersAtStart.length < 0.15));
+
+    if (langAtStart !== 'german' && langAtStart !== 'english') {
+      alert('Please enter phrases or topics in German or English only to help us assist you better.');
+      return;
+    }
+    if (gibberishAtStart) {
+      alert("We couldn’t understand your input. Please enter clear sentences in German or English.");
       return;
     }
 
@@ -2565,6 +2588,85 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Ant
       return;
     }
 
+    // Intent detection on first user message in conversation (skip if flagged)
+    if (!skipIntentOnce && chatMessages.filter(m => m.role === 'user').length === 0) {
+      const lang = detectLanguage(trimmedInput);
+      const onlyLetters = trimmedInput.replace(/[^A-Za-zÄÖÜäöüß]/g, '');
+      const vowelCount = (onlyLetters.match(/[aeiouAEIOUÄÖÜäöü]/g) || []).length;
+      const isGibberish = onlyLetters.length > 0 && (vowelCount === 0 || onlyLetters.length > 30 && vowelCount / onlyLetters.length < 0.15);
+
+      // If neither German nor English
+      if (lang !== 'german' && lang !== 'english') {
+        alert('Please enter phrases or topics in German or English only to help us assist you better.');
+        return;
+      }
+
+      // If gibberish
+      if (isGibberish) {
+        alert("We couldn’t understand your input. Please enter clear sentences in German or English.");
+        return;
+      }
+
+      // Keyword-based intent detection
+      const categoryKeywords: {[k: string]: string[]} = {
+        Meeting: ['meeting','appointment','present','agenda'],
+        'Café': ['kaffee','menu','order','bill'],
+        Station: ['ticket','bahnhof','train','platform'],
+        Airport: ['boarding','flight','luggage','gate'],
+        Emergency: ['help','emergency','police','hospital']
+      };
+      const textLower = trimmedInput.toLowerCase();
+      let matchedCategory: string | null = null;
+      for (const [cat, keys] of Object.entries(categoryKeywords)) {
+        if (keys.some(k => textLower.includes(k))) { matchedCategory = cat; break; }
+      }
+
+      const level = (onboardingData?.germanLevel || 'beginner').toLowerCase();
+      const makeGerman = (cat: string) => {
+        if (level.includes('advanced')) return `Super! Du möchtest ${cat} üben. Worum soll es genau gehen? Zum Beispiel: Vorstellungen, Agenda oder Feedback.`;
+        if (level.includes('intermediate')) return `Toll! Du willst ${cat} üben. Was genau möchtest du üben? Z. B. Vorstellungen, Agenda oder Feedback.`;
+        return `Klasse! Du möchtest ${cat} üben. Was genau? Zum Beispiel: Vorstellungen, Agenda oder Feedback.`;
+      };
+      const fallbackGerman = () => {
+        if (level.includes('advanced')) return 'Möchtest du ein Meeting, ein Café‑Gespräch, eine Reisesituation oder Notfall‑Sätze üben?';
+        if (level.includes('intermediate')) return 'Möchtest du Meeting, Café, Reise oder Notfall üben?';
+        return 'Willst du Meeting, Café, Reise oder Notfall üben?';
+      };
+
+      if (matchedCategory) {
+        const assistantMsg: ChatMessage = {
+          id: `intent-${Date.now()}`,
+          role: 'assistant',
+          content: makeGerman(matchedCategory),
+          timestamp: new Date().toISOString()
+        };
+        setChatMessages(prev => [...prev, assistantMsg]);
+
+        // Provide quick replies
+        const subtopicsMap: {[k: string]: string[]} = {
+          Meeting: ['Vorstellungen', 'Agenda besprechen', 'Feedback geben'],
+          'Café': ['Bestellen', 'Nach der Speisekarte fragen', 'Die Rechnung'],
+          Station: ['Ticket kaufen', 'Nach dem Gleis fragen', 'Zugzeiten'],
+          Airport: ['Boarding', 'Gepäck aufgeben', 'Zum Gate finden'],
+          Emergency: ['Hilfe rufen', 'Polizei kontaktieren', 'Zum Krankenhaus']
+        };
+        setSuggestedReplies(subtopicsMap[matchedCategory] || []);
+        return;
+      } else {
+        const assistantMsg: ChatMessage = {
+          id: `intent-${Date.now()}`,
+          role: 'assistant',
+          content: fallbackGerman(),
+          timestamp: new Date().toISOString()
+        };
+        setChatMessages(prev => [...prev, assistantMsg]);
+        setSuggestedReplies(['Meeting', 'Café', 'Reise', 'Notfall']);
+        return;
+      }
+    }
+    // reset one-shot skip flag if it was set
+    if (skipIntentOnce) setSkipIntentOnce(false);
+
     // Check for language mismatch in typed text
     const detectedLanguage = detectLanguage(trimmedInput);
     console.log('🔍 === TEXT LANGUAGE DETECTION ===');
@@ -3023,6 +3125,53 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Ant
     setLoadingMeanings(new Set());
   };
 
+  // Podcast control functions
+  const handlePlayPodcast = (podcastId: string) => {
+    const iframe = document.querySelector(`iframe[data-podcast-id="${podcastId}"]`) as HTMLIFrameElement;
+    if (iframe && typeof (window as any).SC !== 'undefined') {
+      try {
+        const widget = (window as any).SC.Widget(iframe);
+        widget.play();
+        // Update both state and ref immediately so UI updates
+        setPlayingPodcastId(podcastId);
+        playingPodcastIdRef.current = podcastId;
+      } catch (error) {
+        console.error('Error playing podcast:', error);
+      }
+    }
+  };
+
+  const handlePausePodcast = (podcastId: string) => {
+    const iframe = document.querySelector(`iframe[data-podcast-id="${podcastId}"]`) as HTMLIFrameElement;
+    if (iframe && typeof (window as any).SC !== 'undefined') {
+      try {
+        const widget = (window as any).SC.Widget(iframe);
+        widget.pause();
+        // Update both state and ref immediately so UI updates
+        setPlayingPodcastId(null);
+        playingPodcastIdRef.current = null;
+      } catch (error) {
+        console.error('Error pausing podcast:', error);
+      }
+    }
+  };
+
+  const handleStopPodcast = (podcastId: string) => {
+    const iframe = document.querySelector(`iframe[data-podcast-id="${podcastId}"]`) as HTMLIFrameElement;
+    if (iframe && typeof (window as any).SC !== 'undefined') {
+      try {
+        const widget = (window as any).SC.Widget(iframe);
+        widget.pause();
+        widget.seekTo(0);
+        // Update both state and ref
+        setPlayingPodcastId(null);
+        playingPodcastIdRef.current = null;
+      } catch (error) {
+        console.error('Error stopping podcast:', error);
+      }
+    }
+  };
+
   // Clear new vocabulary items after they've been processed
   useEffect(() => {
     if (newVocabItems.length > 0) {
@@ -3041,6 +3190,93 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Ant
       return () => clearTimeout(timer);
     }
   }, [newVocabItems.length]); // Only depend on length, not the entire array
+
+  // Initialize SoundCloud widgets for podcast playback management
+  useEffect(() => {
+    if (!showPodcastsModal) {
+      soundcloudWidgetsRef.current = [];
+      setPlayingPodcastId(null);
+      playingPodcastIdRef.current = null;
+      return;
+    }
+
+    const initWidgets = () => {
+      if (typeof (window as any).SC === 'undefined') {
+        console.log('SoundCloud API not loaded yet, retrying...');
+        setTimeout(initWidgets, 100);
+        return;
+      }
+
+      const iframes = document.querySelectorAll('iframe.soundcloud-player');
+      if (iframes.length === 0) {
+        console.log('No SoundCloud iframes found, retrying...');
+        setTimeout(initWidgets, 100);
+        return;
+      }
+
+      console.log(`Initializing ${iframes.length} SoundCloud widgets`);
+      const widgets: any[] = [];
+
+      iframes.forEach((iframe) => {
+        try {
+          const widget = (window as any).SC.Widget(iframe);
+          const podcastId = (iframe as HTMLIFrameElement).dataset.podcastId;
+          widgets.push(widget);
+
+          widget.bind((window as any).SC.Widget.Events.PLAY, () => {
+            console.log('Podcast started playing, pausing others...', podcastId);
+            // Update both state and ref
+            setPlayingPodcastId(podcastId || null);
+            playingPodcastIdRef.current = podcastId || null;
+            // Pause all other widgets
+            widgets.forEach((w) => {
+              if (w !== widget) {
+                w.pause();
+              }
+            });
+          });
+
+          widget.bind((window as any).SC.Widget.Events.PAUSE, () => {
+            // Use ref to check current playing podcast, avoid closure issues
+            if (playingPodcastIdRef.current === podcastId) {
+              console.log('Podcast paused', podcastId);
+              setPlayingPodcastId(null);
+              playingPodcastIdRef.current = null;
+            }
+          });
+
+          widget.bind((window as any).SC.Widget.Events.FINISH, () => {
+            if (playingPodcastIdRef.current === podcastId) {
+              console.log('Podcast finished', podcastId);
+              setPlayingPodcastId(null);
+              playingPodcastIdRef.current = null;
+            }
+          });
+        } catch (error) {
+          console.error('Error initializing SoundCloud widget:', error);
+        }
+      });
+
+      soundcloudWidgetsRef.current = widgets;
+    };
+
+    const timer = setTimeout(initWidgets, 200);
+    return () => {
+      clearTimeout(timer);
+      soundcloudWidgetsRef.current.forEach((widget) => {
+        try {
+          widget.unbind((window as any).SC.Widget.Events.PLAY);
+          widget.unbind((window as any).SC.Widget.Events.PAUSE);
+          widget.unbind((window as any).SC.Widget.Events.FINISH);
+        } catch (error) {
+          console.error('Error unbinding widget:', error);
+        }
+      });
+      soundcloudWidgetsRef.current = [];
+      setPlayingPodcastId(null);
+      playingPodcastIdRef.current = null;
+    };
+  }, [showPodcastsModal]);
 
   // Close language menu when clicking outside
   useEffect(() => {
@@ -5398,6 +5634,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 <span>Progress</span>
               </button>
               <button
+                onClick={() => setShowPodcastsModal(true)}
                 className={`flex-1 px-3 py-2 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center space-x-1.5 text-text-muted hover:text-primary hover:bg-primary/10 border border-gray-200`}
                 title="Podcasts"
               >
@@ -5420,6 +5657,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 <BarChart3 className="h-5 w-5" />
               </button>
               <button
+                onClick={() => setShowPodcastsModal(true)}
                 className="p-3 rounded-xl transition-all duration-200 text-gray-600 hover:text-primary hover:bg-primary/10 flex items-center justify-center"
                 title="Podcasts"
               >
@@ -5633,6 +5871,246 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             console.log('📊 Session data updated: test results added');
           }}
         />
+      )}
+
+      {/* Podcasts Modal Panel - Covering Center and Right Panels */}
+      {showPodcastsModal && (
+        <div className="fixed inset-0 z-50 flex" style={{ marginLeft: sidebarCollapsed ? '64px' : '380px' }}>
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowPodcastsModal(false)}
+          />
+          {/* Modal Panel */}
+          <div className="relative flex-1 h-full bg-white shadow-2xl flex flex-col">
+            {/* Header */}
+            <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-primary/10 to-accent/10 flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center shadow-md">
+                    <Volume2 className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-text font-display">Podcasts - Insights to German Culture</h2>
+                    <p className="text-sm text-text-muted font-body">Listen and learn German</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowPodcastsModal(false)}
+                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-all duration-200"
+                  title="Close"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Content - Scrollable */}
+            <div className="flex-1 overflow-y-auto p-6 flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #faf9ff 0%, #f5f5f5 100%)' }}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-7xl w-full items-center py-8">
+              {/* Podcast 1: Wonders of Germany */}
+              <div className="relative p-6 rounded-2xl border-2 border-primary bg-gray-50 hover:shadow-xl hover:z-50 transition-all duration-200 flex flex-col items-center justify-center">
+                <div className="hidden">
+                  <iframe 
+                    width="100%" 
+                    height="1" 
+                    scrolling="no" 
+                    frameBorder="no" 
+                    allow="autoplay" 
+                    src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/soundcloud%253Atracks%253A2207016735&color=%23ff5500&auto_play=false&hide_related=true&show_comments=false&show_user=false&show_reposts=false&show_teaser=false&visual=false"
+                    className="soundcloud-player"
+                    data-podcast-id="wonders-germany"
+                  />
+                </div>
+                <div className="btn-glossy px-4 py-2 rounded-lg mb-4">
+                  <h3 className="text-lg font-bold text-white font-display text-center">Wonders of Germany</h3>
+                </div>
+                <p className="text-sm text-black mb-4 font-body leading-relaxed line-clamp-3 text-center">
+                  Explore fun facts about Germany's cultural diversity, engineering prowess (Autobahn, BMW), and culinary traditions. Discover 28 destinations including major cities like Berlin and Munich, famous landmarks like Neuschwanstein Castle, and charming villages like Rothenburg ob der Tauber.
+                </p>
+                <div className="flex items-center justify-center space-x-3 mt-4">
+                  {playingPodcastId === 'wonders-germany' ? (
+                    <>
+                      <button
+                        onClick={() => handlePausePodcast('wonders-germany')}
+                        className="btn-glossy p-3 rounded-lg text-white hover:scale-110 transition-transform duration-200"
+                        title="Pause"
+                      >
+                        <Pause className="w-6 h-6" />
+                      </button>
+                      <button
+                        onClick={() => handleStopPodcast('wonders-germany')}
+                        className="p-3 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 transition-all duration-200 hover:scale-110"
+                        title="Stop"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => handlePlayPodcast('wonders-germany')}
+                      className="btn-glossy p-3 rounded-lg text-white hover:scale-110 transition-transform duration-200"
+                      title="Play"
+                    >
+                      <Play className="w-6 h-6" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Podcast 2: Oktoberfest */}
+              <div className="relative p-6 rounded-2xl border-2 border-primary bg-gray-50 hover:shadow-xl hover:z-50 transition-all duration-200 flex flex-col items-center justify-center">
+                <div className="hidden">
+                  <iframe 
+                    width="100%" 
+                    height="1" 
+                    scrolling="no" 
+                    frameBorder="no" 
+                    allow="autoplay" 
+                    src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/soundcloud%253Atracks%253A2207014523&color=%23ff5500&auto_play=false&hide_related=true&show_comments=false&show_user=false&show_reposts=false&show_teaser=false&visual=false"
+                    className="soundcloud-player"
+                    data-podcast-id="oktoberfest"
+                  />
+                </div>
+                <div className="btn-glossy px-4 py-2 rounded-lg mb-4">
+                  <h3 className="text-lg font-bold text-white font-display text-center">Oktoberfest</h3>
+                </div>
+                <p className="text-sm text-black mb-4 font-body leading-relaxed line-clamp-3 text-center">
+                  Discover Munich's massive folk festival, originating from an 1810 royal wedding. Learn about the festival's scale, millions of visitors, and staggering beer consumption. Get practical advice on seating, attire, and etiquette—including the proper name for the beer mug (a 'Maß' rather than a 'Stein').
+                </p>
+                <div className="flex items-center justify-center space-x-3 mt-4">
+                  {playingPodcastId === 'oktoberfest' ? (
+                    <>
+                      <button
+                        onClick={() => handlePausePodcast('oktoberfest')}
+                        className="btn-glossy p-3 rounded-lg text-white hover:scale-110 transition-transform duration-200"
+                        title="Pause"
+                      >
+                        <Pause className="w-6 h-6" />
+                      </button>
+                      <button
+                        onClick={() => handleStopPodcast('oktoberfest')}
+                        className="p-3 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 transition-all duration-200 hover:scale-110"
+                        title="Stop"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => handlePlayPodcast('oktoberfest')}
+                      className="btn-glossy p-3 rounded-lg text-white hover:scale-110 transition-transform duration-200"
+                      title="Play"
+                    >
+                      <Play className="w-6 h-6" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Podcast 3: German Work Culture */}
+              <div className="relative p-6 rounded-2xl border-2 border-primary bg-gray-50 hover:shadow-xl hover:z-50 transition-all duration-200 flex flex-col items-center justify-center">
+                <div className="hidden">
+                  <iframe 
+                    width="100%" 
+                    height="1" 
+                    scrolling="no" 
+                    frameBorder="no" 
+                    allow="autoplay" 
+                    src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/soundcloud%253Atracks%253A2207014527&color=%23ff5500&auto_play=false&hide_related=true&show_comments=false&show_user=false&show_reposts=false&show_teaser=false&visual=false"
+                    className="soundcloud-player"
+                    data-podcast-id="work-culture"
+                  />
+                </div>
+                <div className="btn-glossy px-4 py-2 rounded-lg mb-4">
+                  <h3 className="text-lg font-bold text-white font-display text-center">German Work Culture</h3>
+                </div>
+                <p className="text-sm text-black mb-4 font-body leading-relaxed line-clamp-3 text-center">
+                  Explore Germany's emphasis on work-life balance through strict working hours, generous holiday and sick leave entitlements, and high salaries compared to other European nations. Understand the professional values that shape German workplaces.
+                </p>
+                <div className="flex items-center justify-center space-x-3 mt-4">
+                  {playingPodcastId === 'work-culture' ? (
+                    <>
+                      <button
+                        onClick={() => handlePausePodcast('work-culture')}
+                        className="btn-glossy p-3 rounded-lg text-white hover:scale-110 transition-transform duration-200"
+                        title="Pause"
+                      >
+                        <Pause className="w-6 h-6" />
+                      </button>
+                      <button
+                        onClick={() => handleStopPodcast('work-culture')}
+                        className="p-3 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 transition-all duration-200 hover:scale-110"
+                        title="Stop"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => handlePlayPodcast('work-culture')}
+                      className="btn-glossy p-3 rounded-lg text-white hover:scale-110 transition-transform duration-200"
+                      title="Play"
+                    >
+                      <Play className="w-6 h-6" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Podcast 4: German Christmas Traditions */}
+              <div className="relative p-6 rounded-2xl border-2 border-primary bg-gray-50 hover:shadow-xl hover:z-50 transition-all duration-200 flex flex-col items-center justify-center">
+                <div className="hidden">
+                  <iframe 
+                    width="100%" 
+                    height="1" 
+                    scrolling="no" 
+                    frameBorder="no" 
+                    allow="autoplay" 
+                    src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/soundcloud%253Atracks%253A2207014519&color=%23ff5500&auto_play=false&hide_related=true&show_comments=false&show_user=false&show_reposts=false&show_teaser=false&visual=false"
+                    className="soundcloud-player"
+                    data-podcast-id="christmas-traditions"
+                  />
+                </div>
+                <div className="btn-glossy px-4 py-2 rounded-lg mb-4">
+                  <h3 className="text-lg font-bold text-white font-display text-center">German Christmas Traditions</h3>
+                </div>
+                <p className="text-sm text-black mb-4 font-body leading-relaxed line-clamp-3 text-center">
+                  Learn about Weihnachten, the German Christmas season that begins with the first of four Advent Sundays. Discover traditions like lighting candles on the Advent Kranz and counting down days with Advent calendars.
+                </p>
+                <div className="flex items-center justify-center space-x-3 mt-4">
+                  {playingPodcastId === 'christmas-traditions' ? (
+                    <>
+                      <button
+                        onClick={() => handlePausePodcast('christmas-traditions')}
+                        className="btn-glossy p-3 rounded-lg text-white hover:scale-110 transition-transform duration-200"
+                        title="Pause"
+                      >
+                        <Pause className="w-6 h-6" />
+                      </button>
+                      <button
+                        onClick={() => handleStopPodcast('christmas-traditions')}
+                        className="p-3 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-700 transition-all duration-200 hover:scale-110"
+                        title="Stop"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => handlePlayPodcast('christmas-traditions')}
+                      className="btn-glossy p-3 rounded-lg text-white hover:scale-110 transition-transform duration-200"
+                      title="Play"
+                    >
+                      <Play className="w-6 h-6" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Main Content - Hidden when vocab builder is open - Elingo Purple Theme */}
@@ -6079,6 +6557,25 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             <div className="border-t border-gray-200 p-4 lg:p-6 shadow-lg" style={{ backgroundColor: 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(10px)' }}>
               <div className="flex items-end space-x-3">
                 <div className="flex-1 relative">
+                  {/* Intent quick replies (only when provided) */}
+                  {suggestedReplies.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      {suggestedReplies.map((reply, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => {
+                            setMessageInput(reply);
+                            setSuggestedReplies([]);
+                            setSkipIntentOnce(true);
+                            sendMessage();
+                          }}
+                          className="btn-glossy px-3 py-1 rounded-full text-xs"
+                        >
+                          {reply}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <input
                     type="text"
                     placeholder="Type your message in German..."
