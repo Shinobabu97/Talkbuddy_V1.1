@@ -3855,18 +3855,38 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         }
         
         const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+        console.log('🎤 === AUDIO BLOB CREATION ===');
         console.log('✅ Audio blob created:', audioBlob.size, 'bytes');
         console.log('✅ Audio blob type:', audioBlob.type);
+        console.log('✅ Audio blob exists:', !!audioBlob);
+        console.log('✅ Audio blob size > 0:', audioBlob.size > 0);
+        console.log('✅ Recording language:', recordingLanguage);
+        
+        // Verify audio blob is valid
+        if (!audioBlob || audioBlob.size === 0) {
+          console.error('❌ CRITICAL: Audio blob is invalid or empty!');
+          console.error('❌ Blob size:', audioBlob?.size || 0);
+          alert('Audio recording failed - no audio data captured. Please try again.');
+          stream.getTracks().forEach(track => track.stop());
+          setIsRecording(false);
+          return;
+        }
+        
+        console.log('✅ Audio blob verified - valid and non-empty');
         
         // Store audio blob for pronunciation analysis
         setMicRecordingBlob(audioBlob);
+        console.log('✅ Audio blob stored in state (micRecordingBlob)');
         // Reset transcription state
         setMicRecordingTranscription(null);
+        console.log('✅ Transcription state reset');
         
         // Create message immediately with placeholder
         const audioUrl = URL.createObjectURL(audioBlob);
+        console.log('✅ Audio URL created for playback:', audioUrl);
         const messageId = Date.now().toString();
         setCurrentMicMessageId(messageId);
+        console.log('✅ Message ID set:', messageId);
         
         const audioMessage: ChatMessage = {
           id: messageId,
@@ -3879,6 +3899,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         };
         
         console.log('✅ Creating message immediately with placeholder:', messageId);
+        console.log('✅ Message audioUrl:', audioUrl);
         updateMessageStatus(messageId, 'checking');
         
         // Add to chat immediately
@@ -3886,14 +3907,23 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           console.log('🆕 === ADDING NEW MESSAGE TO CHAT IMMEDIATELY ===');
           const newMessages = [...prev, audioMessage];
           console.log('✅ Message added to chat with placeholder');
+          console.log('✅ Total messages in chat:', newMessages.length);
           return newMessages;
         });
         
         // Process audio in background (don't await - let it run async)
         // Pass messageId directly to avoid state timing issues
-        processAudioMessage(audioBlob, messageId).catch(error => {
-          console.error('Error processing audio message:', error);
-        });
+        // Add a small delay to ensure message is in state before processing
+        console.log('⏳ Scheduling audio processing in 100ms...');
+        console.log('📤 Will send to Deepgram API (via whisper function) with language:', recordingLanguage === 'german' ? 'de' : 'en');
+        setTimeout(() => {
+          console.log('🚀 Starting audio processing...');
+          console.log('📦 Audio blob size before processing:', audioBlob.size, 'bytes');
+          console.log('📦 Message ID for processing:', messageId);
+          processAudioMessage(audioBlob, messageId).catch(error => {
+            console.error('❌ Error processing audio message:', error);
+          });
+        }, 100);
         
         stream.getTracks().forEach(track => track.stop());
         console.log('✅ Media stream tracks stopped');
@@ -4092,7 +4122,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     }));
   };
 
-  // Helper function to re-transcribe audio blob using Whisper API
+  // Helper function to re-transcribe audio blob using Deepgram API (via whisper function)
   const reTranscribeAudio = async (audioBlob: Blob): Promise<string | null> => {
     console.log('🔄 === RE-TRANSCRIBING AUDIO ===');
     console.log('Audio blob size:', audioBlob.size, 'bytes');
@@ -4113,7 +4143,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       const base64Audio = btoa(binaryString);
       console.log('Base64 audio length:', base64Audio.length);
       
-      // Call Whisper API
+      // Call Deepgram API (via whisper function)
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
       
@@ -4625,35 +4655,53 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     let messageId = '';
     
     // If message was already created in stopRecording, use that messageId
+    // CRITICAL: Never create a new message if preExistingMessageId is set
     if (preExistingMessageId) {
       console.log('✅ Using pre-existing message ID from mic recording:', preExistingMessageId);
       messageId = preExistingMessageId;
-      // Wait a moment for React state to update (message was just added in stopRecording)
-      await new Promise(resolve => setTimeout(resolve, 100));
       
-      // Verify message exists using functional state access
+      // Wait for React state to update (message was just added in stopRecording)
+      // Retry multiple times to ensure we find the message
       let messageFound = false;
-      setChatMessages(currentMessages => {
-        const messageExists = currentMessages.find(msg => msg.id === preExistingMessageId);
-        if (messageExists) {
-          messageFound = true;
-          console.log('✅ Message found in chatMessages:', preExistingMessageId);
-        } else {
-          console.error('❌ Message not found in chatMessages:', preExistingMessageId);
-          console.log('Current message IDs:', currentMessages.map(m => m.id));
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        // Verify message exists using functional state access
+        setChatMessages(currentMessages => {
+          const messageExists = currentMessages.find(msg => msg.id === preExistingMessageId);
+          if (messageExists) {
+            messageFound = true;
+            console.log(`✅ Message found in chatMessages (attempt ${attempt + 1}):`, preExistingMessageId);
+          } else if (attempt === 0) {
+            console.log(`⏳ Message not found yet (attempt ${attempt + 1}), retrying...`);
+            console.log('Current message IDs:', currentMessages.map(m => m.id));
+          }
+          return currentMessages; // Don't modify, just read
+        });
+        
+        if (messageFound) {
+          break;
         }
-        return currentMessages; // Don't modify, just read
-      });
+      }
       
       if (messageFound) {
         // Process audio in background - message already exists, just need to transcribe
+        console.log('✅ Message confirmed, starting transcription...');
         await transcribeAudio(audioBlob, messageId, false);
         // Clear after transcription completes
         setCurrentMicMessageId(null);
         return;
       } else {
-        // If message still doesn't exist, fall through to create new message
-        console.warn('⚠️ Message not found after wait, falling through to create new message');
+        // CRITICAL: If message still doesn't exist, log error but DON'T create new message
+        // This prevents duplicate messages
+        console.error('❌ CRITICAL: Message not found after multiple retries:', preExistingMessageId);
+        console.error('❌ This should not happen - message was created in stopRecording()');
+        console.error('❌ NOT creating duplicate message - transcription will be skipped');
+        // Still try to transcribe with the messageId we have - it might work if message exists
+        console.log('⚠️ Attempting transcription anyway with messageId:', preExistingMessageId);
+        await transcribeAudio(audioBlob, preExistingMessageId, false);
+        setCurrentMicMessageId(null);
+        return; // CRITICAL: Return here to prevent creating duplicate message
       }
     }
     
@@ -4750,38 +4798,71 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
   // Comprehensive transcript validation function
   // Tests and confirms transcript is valid before displaying
-  const validateTranscript = (transcript: string): { isValid: boolean; reason?: string } => {
+  const validateTranscript = (transcript: string): { isValid: boolean; reason?: string; matchedPattern?: string } => {
     const trimmed = transcript.trim();
+    
+    console.log('🔍 validateTranscript called with:', trimmed);
     
     // Check if transcript is empty
     if (!trimmed || trimmed.length === 0) {
+      console.log('🔍 Validation failed: empty transcript');
       return { isValid: false, reason: 'empty' };
     }
     
     // Comprehensive gibberish pattern detection
-    const invalidPatterns = [
-      /^🎤/i,  // Placeholder like "🎤 Voice message"
-      /^Recording/i,  // Placeholder like "Recording retry..."
-      /^Untertitel/i,  // "Untertitel" at start
-      /Untertitel der/i,  // "Untertitel der" anywhere
-      /Untertitel der.*Amara/i,  // "Untertitel der Amara" pattern
-      /Untertitel im Auftrag/i,  // "Untertitel im Auftrag" pattern
-      /Untertitel im Auftrag des ZDF/i,  // "Untertitel im Auftrag des ZDF" pattern
-      /Amara\.org/i,  // "Amara.org" anywhere
-      /Amara\.org-Community/i,  // "Amara.org-Community" pattern
-      /Amara-Community/i,  // "Amara-Community" pattern
-      /im Auftrag/i,  // "im Auftrag" pattern
-      /für funk/i,  // "für funk" pattern
-      /^\d{4}$/,  // Just year numbers like "2017"
-      /Community.*Untertitel/i,  // "Community Untertitel" pattern
-      /der.*Amara/i,  // "der Amara" pattern
-      /ZDF.*funk/i,  // "ZDF für funk" pattern
+    // Made more specific to avoid rejecting valid German text
+    // Only reject if it contains specific subtitle/credits patterns that are clearly metadata
+    const invalidPatterns: Array<{ pattern: RegExp; name: string; requireShort?: boolean }> = [
+      { pattern: /^🎤/i, name: 'placeholder_emoji' },  // Placeholder like "🎤 Voice message"
+      { pattern: /^Recording/i, name: 'placeholder_recording' },  // Placeholder like "Recording retry..."
+      // Very specific patterns for subtitle credits - these are almost always metadata
+      { pattern: /Untertitel.*Amara/i, name: 'amara_subtitle' },  // "Untertitel" with "Amara"
+      { pattern: /Untertitel.*Community/i, name: 'community_subtitle' },  // "Untertitel" with "Community"
+      { pattern: /Amara\.org/i, name: 'amara_org' },  // "Amara.org" anywhere (subtitle credits)
+      { pattern: /Amara\.org-Community/i, name: 'amara_community' },  // "Amara.org-Community" pattern
+      { pattern: /Amara-Community/i, name: 'amara_community_alt' },  // "Amara-Community" pattern
+      // Only reject "Untertitel im Auftrag" if it's a short transcript (likely just credits)
+      // Longer transcripts with actual content should be allowed
+      { pattern: /^Untertitel im Auftrag.*ZDF.*funk.*\d{4}$/i, name: 'zdf_subtitle_credits', requireShort: true },  // Full ZDF credit line
+      { pattern: /Community.*Untertitel/i, name: 'community_subtitle_reverse' },  // "Community Untertitel" pattern
+      { pattern: /^\d{4}$/, name: 'year_only' },  // Just year numbers like "2017"
     ];
     
-    const isGibberishPattern = invalidPatterns.some(pattern => pattern.test(trimmed));
-    if (isGibberishPattern) {
-      return { isValid: false, reason: 'gibberish_pattern' };
+    // Check each pattern and log which one matched
+    for (const { pattern, name, requireShort } of invalidPatterns) {
+      if (pattern.test(trimmed)) {
+        // If pattern requires short transcript, only reject if transcript is short (likely just credits)
+        if (requireShort && trimmed.length > 50) {
+          console.log(`🔍 Pattern "${name}" matched but transcript is long (${trimmed.length} chars) - allowing`);
+          continue; // Skip this pattern, allow the transcript
+        }
+        console.log(`🔍 Validation failed: matched pattern "${name}" - ${pattern}`);
+        return { isValid: false, reason: 'gibberish_pattern', matchedPattern: name };
+      }
     }
+    
+    // Additional check: Reject if transcript is very short and contains only credit-like patterns
+    // This catches cases like "Untertitel im Auftrag des ZDF für funk, 2017" when it's the only content
+    if (trimmed.length < 60) {
+      const creditIndicators = [
+        /Untertitel/i,
+        /im Auftrag/i,
+        /ZDF/i,
+        /funk/i,
+        /^\d{4}$/,
+        /Amara/i,
+        /Community/i
+      ];
+      
+      const matchedIndicators = creditIndicators.filter(pattern => pattern.test(trimmed)).length;
+      // If transcript is short and contains 3+ credit indicators, it's likely just credits
+      if (matchedIndicators >= 3) {
+        console.log(`🔍 Validation failed: short transcript (${trimmed.length} chars) with ${matchedIndicators} credit indicators - likely subtitle metadata`);
+        return { isValid: false, reason: 'gibberish_pattern', matchedPattern: 'multiple_credit_indicators' };
+      }
+    }
+    
+    console.log('🔍 No gibberish patterns matched');
     
     // Check if transcript has meaningful content (letters)
     const hasLetters = /[a-zA-ZäöüÄÖÜß]/.test(trimmed);
@@ -4814,13 +4895,44 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     
     setIsTranscribing(true);
     try {
-      // Log audio info for debugging
-      console.log('Audio blob size:', audioBlob.size, 'bytes');
-      console.log('Audio blob type:', audioBlob.type);
-      console.log('Recording language:', recordingLanguage);
+      // CRITICAL: Verify audio blob exists and is valid before processing
+      console.log('🔍 === VERIFYING AUDIO BLOB BEFORE TRANSCRIPTION ===');
+      if (!audioBlob) {
+        console.error('❌ CRITICAL: Audio blob is null or undefined!');
+        setChatMessages(prev => prev.map(msg => 
+          msg.id === messageId 
+            ? { ...msg, content: '❌ Recording failed - no audio data', isTranscribing: false }
+            : msg
+        ));
+        setIsTranscribing(false);
+        return;
+      }
+      
+      if (audioBlob.size === 0) {
+        console.error('❌ CRITICAL: Audio blob is empty (size = 0)!');
+        setChatMessages(prev => prev.map(msg => 
+          msg.id === messageId 
+            ? { ...msg, content: '❌ Recording failed - empty audio data', isTranscribing: false }
+            : msg
+        ));
+        setIsTranscribing(false);
+        return;
+      }
+      
+      console.log('✅ Audio blob verified - exists and non-empty');
+      console.log('📊 Audio blob size:', audioBlob.size, 'bytes');
+      console.log('📊 Audio blob type:', audioBlob.type);
+      console.log('📊 Recording language state:', recordingLanguage);
+      
+      // Ensure language is set correctly - default to 'de' for German if undefined
+      const languageToSend = recordingLanguage === 'german' ? 'de' : (recordingLanguage === 'english' ? 'en' : 'de');
+      console.log('🌍 Language to send to Deepgram API:', languageToSend);
+      console.log('🌍 Recording language check:', recordingLanguage === 'german' ? 'de' : 'en');
       
       // Convert blob to base64 using a safer method for large files
+      console.log('🔄 Converting audio blob to base64...');
       const arrayBuffer = await audioBlob.arrayBuffer();
+      console.log('✅ ArrayBuffer created, size:', arrayBuffer.byteLength, 'bytes');
       const uint8Array = new Uint8Array(arrayBuffer);
       
       // Use a more robust base64 conversion that handles large arrays
@@ -4833,12 +4945,13 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       }
       
       const base64Audio = btoa(binaryString);
-      
-      console.log('Base64 audio length:', base64Audio.length);
+      console.log('✅ Base64 conversion complete');
+      console.log('📊 Base64 audio length:', base64Audio.length, 'characters');
+      console.log('📊 Base64 audio preview (first 100 chars):', base64Audio.substring(0, 100));
 
       // Try the whisper function first, fallback to chat function if not available
       let response;
-      let isWhisperResponse = false; // Track if response is from Whisper API
+      let isWhisperResponse = false; // Track if response is from Deepgram API (via whisper function)
       try {
         // Use auto-detection instead of forcing a specific language
         // This allows Whisper to detect the actual language spoken
@@ -4847,24 +4960,37 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
         
+        // Prepare request payload
+        const requestPayload = {
+          audioData: base64Audio,
+          language: languageToSend, // Use the verified language parameter
+          storeForAnalysis: true
+        };
+        
+        console.log('📤 === SENDING TO DEEPGRAM API (via whisper function) ===');
+        console.log('📤 API URL:', `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whisper`);
+        console.log('📤 Language parameter:', languageToSend);
+        console.log('📤 Audio data length:', base64Audio.length, 'characters');
+        console.log('📤 Store for analysis:', true);
+        
         response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whisper`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            audioData: base64Audio,
-            language: recordingLanguage === 'german' ? 'de' : 'en',
-            storeForAnalysis: true
-          }),
+          body: JSON.stringify(requestPayload),
           signal: controller.signal
         });
         
-        isWhisperResponse = true; // Mark that this is from Whisper API
+        console.log('📥 === DEEPGRAM API RESPONSE RECEIVED ===');
+        console.log('📥 Response status:', response.status);
+        console.log('📥 Response ok:', response.ok);
+        
+        isWhisperResponse = true; // Mark that this is from Deepgram API
         clearTimeout(timeoutId);
       } catch (whisperError) {
-        console.log('Whisper function error:', whisperError);
+        console.log('Deepgram transcription function error:', whisperError);
         
         // Check if it's a timeout or size issue
         if ((whisperError as Error).name === 'AbortError') {
@@ -4917,46 +5043,69 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       }
 
       if (response.ok) {
+        console.log('✅ Response is OK, parsing JSON...');
         const data = await response.json();
+        console.log('✅ Response data parsed successfully');
+        console.log('📦 Response data keys:', Object.keys(data));
+        console.log('📦 Full response data:', JSON.stringify(data, null, 2));
         
         // Check if this is a whisper response or chat fallback
         if (data.transcription) {
-          // Whisper function response
-          // CRITICAL: Use ONLY the transcription from Whisper API, never from any other source
+          // Deepgram API response (via whisper function)
+          // CRITICAL: Use ONLY the transcription from Deepgram API, never from any other source
           const transcription = data.transcription;
           
-          // CRITICAL VALIDATION: Ensure this transcription is from Whisper API, not from chat fallback
-          // Only store mic transcription if this is confirmed to be from Whisper API
+          console.log('🎤 === DEEPGRAM API TRANSCRIPTION RECEIVED ===');
+          console.log('📝 Raw transcription from API:', transcription);
+          console.log('📝 Transcription type:', typeof transcription);
+          console.log('📝 Transcription length:', transcription.length);
+          console.log('📝 Is from Deepgram API:', isWhisperResponse);
+          console.log('📝 Language in response:', data.language);
+          console.log('✅ Transcription received from Deepgram API');
+          
+          // CRITICAL VALIDATION: Ensure this transcription is from Deepgram API, not from chat fallback
+          // Only store mic transcription if this is confirmed to be from Deepgram API
           if (!isWhisperResponse) {
-            console.warn('⚠️ Response is from chat fallback, not Whisper API - skipping mic transcription storage');
+            console.warn('⚠️ Response is from chat fallback, not Deepgram API - skipping mic transcription storage');
             console.warn('⚠️ Transcription from fallback:', transcription);
           }
           
-          // Validate that transcription is actually from Whisper API and not a fallback
+          // Validate that transcription is actually from Deepgram API and not a fallback
           if (typeof transcription !== 'string') {
             console.error('❌ Invalid transcription type from API:', typeof transcription);
+            console.error('❌ Transcription value:', transcription);
+            setChatMessages(prev => prev.map(msg => 
+              msg.id === messageId 
+                ? { ...msg, content: '❌ Invalid transcription received', isTranscribing: false }
+                : msg
+            ));
             setIsTranscribing(false);
             return;
           }
           
-          console.log('🎤 === WHISPER API TRANSCRIPTION RECEIVED ===');
-          console.log('Raw transcription from API:', transcription);
-          console.log('Transcription type:', typeof transcription);
-          console.log('Transcription length:', transcription.length);
-          console.log('Is from Whisper API:', isWhisperResponse);
-          console.log('✅ Transcription received from Whisper API');
+          // Validate transcription is not empty
+          if (!transcription || transcription.trim().length === 0) {
+            console.error('❌ Empty transcription received from API');
+            setChatMessages(prev => prev.map(msg => 
+              msg.id === messageId 
+                ? { ...msg, content: '❌ No transcription received - no speech detected', isTranscribing: false }
+                : msg
+            ));
+            setIsTranscribing(false);
+            return;
+          }
           
           // CRITICAL: Store transcription IMMEDIATELY for mic recordings if micRecordingBlob exists
           // This ensures we capture the actual API transcription before any other processing
           // Store it regardless of language detection - we'll validate later
-          // ONLY store if this is confirmed to be from Whisper API
+          // ONLY store if this is confirmed to be from Deepgram API
           if (micRecordingBlob && isWhisperResponse) {
             const actualTranscription = transcription.trim();
             if (actualTranscription && actualTranscription.length > 0) {
               console.log('🎤 === STORING MIC RECORDING TRANSCRIPTION IMMEDIATELY ===');
               console.log('✅ Storing actual API transcription immediately:', actualTranscription);
               console.log('✅ Storing BEFORE language detection or any other processing');
-              console.log('✅ Confirmed source: Whisper API');
+              console.log('✅ Confirmed source: Deepgram API');
               setMicRecordingTranscription(actualTranscription);
               
               // Verify storage
@@ -4965,7 +5114,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               }, 0);
             }
           } else if (micRecordingBlob && !isWhisperResponse) {
-            console.warn('⚠️ NOT storing mic transcription - response is not from Whisper API');
+            console.warn('⚠️ NOT storing mic transcription - response is not from Deepgram API');
             console.warn('⚠️ Transcription would have been:', transcription);
           }
           
@@ -4974,7 +5123,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           
           // Only check if transcription is truly empty (API failure case)
           if (!trimmedTranscription || trimmedTranscription.length === 0) {
-            console.error('❌ Empty transcription from Whisper API:', transcription);
+            console.error('❌ Empty transcription from Deepgram API:', transcription);
             setChatMessages(prev => {
               const updatedMessages = prev.map(msg => {
                 if (msg.id === messageId) {
@@ -4996,16 +5145,29 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           }
           
           // TEST AND CONFIRM transcript is valid before displaying
+          console.log('🔍 === TRANSCRIPT VALIDATION START ===');
+          console.log('🔍 Transcription to validate:', trimmedTranscription);
+          console.log('🔍 Transcription length:', trimmedTranscription.length);
+          console.log('🔍 Recording language:', recordingLanguage);
+          
           const validationResult = validateTranscript(trimmedTranscription);
           
-          console.log('🔍 === TRANSCRIPT VALIDATION ===');
-          console.log('Transcription:', trimmedTranscription);
-          console.log('Validation result:', validationResult);
+          console.log('🔍 === TRANSCRIPT VALIDATION RESULT ===');
+          console.log('🔍 Validation result:', JSON.stringify(validationResult, null, 2));
+          console.log('🔍 Is valid:', validationResult.isValid);
+          if (!validationResult.isValid) {
+            console.log('🔍 Validation reason:', validationResult.reason);
+            console.log('🔍 Matched pattern (if any):', validationResult.matchedPattern || 'N/A');
+          }
           
           // Keep message with placeholder when gibberish detected - don't display gibberish transcript
           if (!validationResult.isValid) {
-            console.error('❌ Invalid transcript detected - keeping message with placeholder:', trimmedTranscription);
+            console.error('❌ Invalid transcript detected - keeping message with placeholder');
+            console.error('❌ Invalid transcription:', trimmedTranscription);
             console.error('❌ Validation reason:', validationResult.reason);
+            if (validationResult.matchedPattern) {
+              console.error('❌ Matched pattern:', validationResult.matchedPattern);
+            }
             console.error('❌ Keeping message visible with placeholder "🎤 Voice message"');
             
             // Keep the message visible but with placeholder instead of gibberish
@@ -5045,27 +5207,31 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             return; // Don't proceed with processing invalid transcript
           }
           
-          // VALID TRANSCRIPTION CONFIRMED - display the EXACT transcription from Whisper API word-for-word
+          // VALID TRANSCRIPTION CONFIRMED - display the EXACT transcription from Deepgram API word-for-word
           console.log('✅ Valid transcription confirmed - displaying EXACT transcript word-for-word:', trimmedTranscription);
           console.log('✅ Transcript length:', trimmedTranscription.length);
-          console.log('✅ Transcript is from Whisper API - no modifications applied');
+          console.log('✅ Transcript is from Deepgram API - no modifications applied');
           
-          setChatMessages(prev => {
-            console.log('🔍 === UPDATING MESSAGE WITH TRANSCRIPT ===');
-            console.log('Looking for messageId:', messageId);
-            console.log('Current messages:', prev.map(m => ({ id: m.id, content: m.content.substring(0, 50) })));
-            const messageExists = prev.find(msg => msg.id === messageId);
-            console.log('Message found:', !!messageExists);
-            if (messageExists) {
-              console.log('Existing message content:', messageExists.content);
+          // CRITICAL: Update message with transcript - ensure it's displayed immediately
+          // Use retry mechanism to handle React state timing issues
+          let updateAttempted = false;
+          for (let attempt = 0; attempt < 10; attempt++) {
+            if (attempt > 0) {
+              await new Promise(resolve => setTimeout(resolve, 50));
             }
             
-            const updatedMessages = prev.map(msg => {
-              if (msg.id === messageId) {
-                console.log('✅ UPDATING MESSAGE WITH EXACT TRANSCRIPTION FROM WHISPER API:', msg.id);
-                console.log('Original content:', msg.content);
-                console.log('New content (EXACT transcription from Whisper API):', trimmedTranscription);
+            setChatMessages(prev => {
+              const messageExists = prev.find(msg => msg.id === messageId);
+              
+              if (messageExists) {
+                console.log(`✅ === UPDATING MESSAGE WITH TRANSCRIPT (attempt ${attempt + 1}) ===`);
+                console.log('Message ID:', messageId);
+                console.log('Current messages:', prev.map(m => ({ id: m.id, content: m.content.substring(0, 50) })));
+                console.log('Existing message content:', messageExists.content);
+                console.log('New content (EXACT transcription from Deepgram API):', trimmedTranscription);
                 console.log('✅ No modifications - displaying word-for-word as received from API');
+                
+                updateAttempted = true;
                 
                 // Store transcribed text as original message for suggestion generation (voice input)
                 if (!isRetry) {
@@ -5078,19 +5244,53 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   }));
                 }
                 
-                return { 
-                  ...msg, 
-                  content: trimmedTranscription,  // Display EXACT transcription word-for-word from Whisper API
-                  isTranscribing: false,
-                  audioUrl: msg.audioUrl, // Preserve existing audio URL for playback (set when message was created)
-                  isAudio: true // Mark as audio message for proper UI display
-                };
+                // Update the message with transcript
+                return prev.map(msg => {
+                  if (msg.id === messageId) {
+                    return { 
+                      ...msg, 
+                      content: trimmedTranscription,  // Display EXACT transcription word-for-word from Deepgram API
+                      isTranscribing: false,
+                      audioUrl: msg.audioUrl, // Preserve existing audio URL for playback (set when message was created)
+                      isAudio: true // Mark as audio message for proper UI display
+                    };
+                  }
+                  return msg;
+                });
+              } else if (attempt === 0) {
+                console.warn(`⚠️ Message not found on attempt ${attempt + 1}, will retry...`);
+                console.warn('Current message IDs:', prev.map(m => m.id));
               }
-              return msg;
+              
+              return prev; // Return unchanged if message not found
             });
-            console.log('✅ Message updated with exact transcript - transcript displayed in chat');
-            return updatedMessages;
-          });
+            
+            if (updateAttempted) {
+              console.log('✅ Message updated with exact transcript - transcript displayed in chat');
+              break;
+            }
+          }
+          
+          if (!updateAttempted) {
+            console.error('❌ CRITICAL: Failed to update message with transcript after multiple attempts');
+            console.error('❌ MessageId:', messageId);
+            console.error('❌ Transcript:', trimmedTranscription);
+            // Final attempt - try one more time
+            setChatMessages(current => {
+              const msg = current.find(m => m.id === messageId);
+              if (msg) {
+                console.log('✅ Found message on final attempt, updating...');
+                return current.map(m => 
+                  m.id === messageId 
+                    ? { ...m, content: trimmedTranscription, isTranscribing: false, isAudio: true, audioUrl: m.audioUrl }
+                    : m
+                );
+              }
+              console.error('❌ Message still not found in final attempt');
+              console.error('Available message IDs:', current.map(m => m.id));
+              return current;
+            });
+          }
           
           // Clear loading states
           setIsTranscribing(false);
@@ -5121,7 +5321,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             setMicRecordingTranscription(trimmedTranscription);
           }
           
-          console.log('✅ Transcription displayed from Whisper API');
+          console.log('✅ Transcription displayed from Deepgram API');
           
           // Check if we're in practice modal mode
           if (showLanguageMismatchModal && germanSuggestion) {
@@ -5535,7 +5735,21 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             await translateEnglishToGerman(transcription, messageId);
           }
         } else if (data.response) {
-          // Chat function fallback response
+          // Chat function fallback response - this should NOT happen for mic recordings
+          // For mic recordings, we need transcription, so show error instead
+          if (micRecordingBlob) {
+            console.error('❌ Deepgram API failed - no transcription available for mic recording');
+            setChatMessages(prev => prev.map(msg => 
+              msg.id === messageId 
+                ? { ...msg, content: '❌ Transcription failed - Deepgram API unavailable. Please try again.', isTranscribing: false }
+                : msg
+            ));
+            setIsTranscribing(false);
+            updateMessageStatus(messageId, 'error');
+            return;
+          }
+          
+          // For non-mic recordings (practice modal, etc.), use fallback
           const fallbackMessage = "🎤 Audio recorded (transcription not available)";
           
           // Update the audio message
@@ -5553,6 +5767,19 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             timestamp: new Date().toISOString()
           };
           setChatMessages(prev => [...prev, aiMessage]);
+        } else {
+          // No transcription and no response - this is an error for mic recordings
+          console.error('❌ No transcription or response in API response');
+          if (micRecordingBlob) {
+            setChatMessages(prev => prev.map(msg => 
+              msg.id === messageId 
+                ? { ...msg, content: '❌ Transcription failed - no data received. Please try again.', isTranscribing: false }
+                : msg
+            ));
+            setIsTranscribing(false);
+            updateMessageStatus(messageId, 'error');
+            return;
+          }
         }
       } else {
         const errorText = await response.text();
@@ -5603,13 +5830,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       setIsTranscribing(false);
       updateMessageStatus(messageId, 'error');
       
-      // Don't disable Analyse button if we have audio blob - user can still analyze
-      if (micRecordingBlob) {
-        console.log('✅ Keeping Analyse button enabled despite transcription error');
-        setShowMicAnalyzeButton(true);
-      } else {
-        setShowMicAnalyzeButton(false);
-      }
+      // Note: Analyse button is now shown on the message itself, not via showMicAnalyzeButton state
+      // If transcription fails, the Analyse button won't appear since it requires a valid transcript
       
       // Clear checking status
       if (messageId) {

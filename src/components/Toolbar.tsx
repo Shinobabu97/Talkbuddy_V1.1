@@ -1599,17 +1599,18 @@ export default function Toolbar({
 
   // Sentence recording functions for pronunciation practice
   const startSentenceRecording = async () => {
+    console.log('🎤 ===== START SENTENCE RECORDING CALLED =====');
     console.log('🎤 Starting sentence recording for pronunciation practice...');
     
-    // Immediately set recording state to show Stop button
-    setIsRecordingSentence(true);
-    
     try {
+      console.log('🎤 Requesting microphone access...');
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('✅ Microphone access granted, stream obtained');
       
       // Store in refs for immediate access (avoid closure issues)
       sentenceStreamRef.current = stream;
       setSentenceStream(stream); // Also store in state for UI
+      console.log('✅ Stream stored in ref and state');
       
       const recorder = new MediaRecorder(stream);
       const audioChunks: BlobPart[] = [];
@@ -1622,6 +1623,7 @@ export default function Toolbar({
         console.log('🛑 Sentence recording stopped (onstop handler)');
         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
         setSentenceAudioBlob(audioBlob);
+        console.log('✅ Audio blob created, size:', audioBlob.size);
         
         // Recording state already set to false in stopSentenceRecording
         // Just ensure it's false here as well
@@ -1646,24 +1648,41 @@ export default function Toolbar({
         sentenceRecorderRef.current = null;
         setSentenceStream(null);
         setSentenceRecorder(null);
+        console.log('✅ Refs and state cleared');
       };
       
       recorder.start();
+      console.log('✅ MediaRecorder started');
       
       // Store in refs for immediate access (avoid closure issues)
       sentenceRecorderRef.current = recorder;
       setSentenceRecorder(recorder); // Also store in state for UI
+      console.log('✅ Recorder stored in ref and state');
       
-      console.log('✅ Sentence recording started, recorder and stream stored in refs and state');
+      // NOW set recording state to true AFTER everything is initialized
+      setIsRecordingSentence(true);
+      console.log('✅ isRecordingSentence set to true');
+      console.log('✅ Sentence recording started successfully, recorder and stream stored in refs and state');
+      console.log('🎤 ===== START SENTENCE RECORDING END =====');
       
     } catch (error) {
       console.error('❌ Error starting sentence recording:', error);
-      alert('Could not access microphone. Please check permissions.');
+      console.error('❌ Error details:', {
+        name: (error as Error).name,
+        message: (error as Error).message,
+        stack: (error as Error).stack
+      });
+      
+      // Clean up on error
       setIsRecordingSentence(false);
+      setPracticingWord(null);
       sentenceStreamRef.current = null;
       sentenceRecorderRef.current = null;
       setSentenceStream(null);
       setSentenceRecorder(null);
+      
+      alert('Could not access microphone. Please check permissions and try again.');
+      throw error; // Re-throw so startSentencePractice can handle it
     }
   };
 
@@ -1673,6 +1692,7 @@ export default function Toolbar({
     console.log('🛑 Recorder state:', sentenceRecorderRef.current?.state);
     console.log('🛑 Stream ref:', !!sentenceStreamRef.current);
     console.log('🛑 isRecordingSentence state:', isRecordingSentence);
+    console.log('🛑 practicingWord:', practicingWord);
     
     // IMMEDIATELY set recording state to false for instant UI feedback
     setIsRecordingSentence(false);
@@ -1680,6 +1700,15 @@ export default function Toolbar({
     // Use refs for immediate access (avoid closure issues with state)
     const recorder = sentenceRecorderRef.current;
     const stream = sentenceStreamRef.current;
+    
+    // Defensive check: if refs are missing but we're trying to stop, warn
+    if (!recorder && !stream) {
+      console.warn('⚠️ WARNING: Stop called but no recorder or stream refs found!');
+      console.warn('⚠️ This may indicate recording never started properly.');
+      // Still clear practicingWord to allow retry
+      setPracticingWord(null);
+      return;
+    }
     
     // Immediately stop all stream tracks to stop recording
     if (stream) {
@@ -1693,7 +1722,7 @@ export default function Toolbar({
       sentenceStreamRef.current = null;
       setSentenceStream(null);
     } else {
-      console.log('⚠️ No stream ref found');
+      console.warn('⚠️ No stream ref found - recording may not have started');
     }
     
     // Stop the recorder if it exists
@@ -1729,8 +1758,11 @@ export default function Toolbar({
         }
       }
     } else {
-      console.log('⚠️ No recorder ref found');
+      console.warn('⚠️ No recorder ref found - recording may not have started');
     }
+    
+    // Clear practicingWord
+    setPracticingWord(null);
     
     console.log('✅ Stop button clicked - recording state set to false, stream stopped');
     console.log('🛑 ===== STOP SENTENCE RECORDING END =====');
@@ -2475,10 +2507,12 @@ export default function Toolbar({
 
   // Sentence-level practice function
   const startSentencePractice = async () => {
+    console.log('🎤 ===== START SENTENCE PRACTICE CALLED =====');
     console.log('🎤 Starting sentence practice for:', currentMessage);
     
-    // Immediately set recording state to show Stop button
-    setIsSentenceRecording(true);
+    // Set practicingWord to 'sentence' so stopRecording can identify it
+    setPracticingWord('sentence');
+    console.log('✅ practicingWord set to "sentence"');
     
     // Reset sentence analysis state
     setSentenceAnalysis(null);
@@ -2495,7 +2529,17 @@ export default function Toolbar({
     setIndividualWordAnalysis({});
     
     // Use the sentence-specific recording function
-    await startSentenceRecording();
+    try {
+      await startSentenceRecording();
+      console.log('✅ startSentenceRecording completed successfully');
+    } catch (error) {
+      console.error('❌ Error in startSentenceRecording:', error);
+      // Reset state on error
+      setIsRecordingSentence(false);
+      setPracticingWord(null);
+      alert('Failed to start recording. Please check microphone permissions and try again.');
+    }
+    console.log('🎤 ===== START SENTENCE PRACTICE END =====');
   };
 
   // Sentence-level analysis function - triggered when Analyze button is clicked
@@ -3464,13 +3508,28 @@ export default function Toolbar({
                     }}
                     isRecordingSentence={isSentenceRecording}
                     onStopRecording={() => {
-                      console.log('🛑 onStopRecording called, practicingWord:', practicingWord);
+                      console.log('🛑 onStopRecording called');
+                      console.log('🛑 practicingWord:', practicingWord);
+                      console.log('🛑 isSentenceRecording:', isSentenceRecording);
+                      console.log('🛑 isWordRecording:', isWordRecording);
+                      
+                      // Check if this is sentence recording
                       if (practicingWord === 'sentence' || isSentenceRecording) {
                         console.log('🛑 Stopping sentence recording...');
                         stopSentenceRecording();
-                      } else {
+                      } else if (practicingWord && practicingWord !== 'sentence') {
                         console.log('🛑 Stopping word recording...');
                         stopRecording();
+                      } else {
+                        console.warn('⚠️ onStopRecording called but no active recording detected');
+                        console.warn('⚠️ practicingWord:', practicingWord);
+                        console.warn('⚠️ isSentenceRecording:', isSentenceRecording);
+                        console.warn('⚠️ isWordRecording:', isWordRecording);
+                        // Fallback: try to stop sentence recording if state suggests it
+                        if (isSentenceRecording) {
+                          console.log('🛑 Fallback: Attempting to stop sentence recording...');
+                          stopSentenceRecording();
+                        }
                       }
                     }}
                     onAnalyzeWord={async (word) => {
