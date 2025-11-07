@@ -11,6 +11,10 @@ import {
   Loader2,
   User,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ArrowLeft,
+  ArrowRight,
   Lock,
   Send,
   Play,
@@ -21,25 +25,20 @@ import {
   Bot,
   Trash2,
   X,
+  Menu,
+  Sparkles,
+  Target,
 } from 'lucide-react';
 import { supabase, AuthUser } from '../lib/supabase';
 import OnboardingFlow from './OnboardingFlow';
+import OnboardingHints, { dashboardHints, chatBubbleHints } from './OnboardingHints';
 import ProfilePictureModal from './ProfilePictureModal';
 import Toolbar from './Toolbar';
 import VocabularyBuilderModal from './VocabularyBuilderModal';
 import ConversationSummaryModal from './ConversationSummaryModal';
+import SuggestedResponseCard from './SuggestedResponseCard';
 import { SessionData } from '../types/sessionData';
 import { generateConversationSummary, ConversationSummary } from '../utils/summaryGenerator';
-import { 
-  loadPlayerStats, 
-  savePlayerStats, 
-  awardConversationCompletion, 
-  awardWordsLearned,
-  checkAchievements,
-  addExperience as addExperienceToStats,
-  ACHIEVEMENTS,
-  PlayerStats
-} from '../lib/playerStats';
 
 interface DashboardProps {
   user: AuthUser;
@@ -69,20 +68,24 @@ const getRandomLastSeen = () => {
 
 interface OnboardingData {
   profilePictureUrl?: string;
-  motivations: string[];
+  learningLanguage?: string;
+  nativeLanguage?: string;
+  focusGroup?: 'travelers' | 'business';
+  // Keep old fields for backward compatibility
+  motivations?: string[];
   customMotivation?: string;
-  hobbies: string[];
-  customHobbies: string[];
-  hasWork: boolean;
+  hobbies?: string[];
+  customHobbies?: string[];
+  hasWork?: boolean;
   workDomain?: string;
-  germanLevel: string;
-  speakingFears: string[];
-  customFears: string[];
-  timeline: string;
-  goals: string[];
-  personalityTraits: string[];
+  germanLevel?: string;
+  speakingFears?: string[];
+  customFears?: string[];
+  timeline?: string;
+  goals?: string[];
+  personalityTraits?: string[];
   secretDetails?: string;
-  conversationTopics: string[];
+  conversationTopics?: string[];
 }
 
 interface Conversation {
@@ -120,9 +123,15 @@ export default function Dashboard({ user }: DashboardProps) {
   const [showProfileModal, setShowProfileModal] = React.useState(false);
   const [currentProfilePicture, setCurrentProfilePicture] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Hints system state
+  const [showHints, setShowHints] = useState(false);
+  const [showChatHints, setShowChatHints] = useState(false);
+  const [hintsDismissed, setHintsDismissed] = useState(false);
+  const [hasSentFirstMessage, setHasSentFirstMessage] = useState(false);
 
   // 🎮 GAMIFICATION STATE
-  const [playerStats, setPlayerStats] = React.useState<PlayerStats>({
+  const [playerStats, setPlayerStats] = React.useState({
     level: 1,
     experience: 0,
     experienceToNext: 100,
@@ -131,8 +140,8 @@ export default function Dashboard({ user }: DashboardProps) {
     conversationsCompleted: 0,
     wordsLearned: 0,
     speakingTime: 0, // in minutes
-    achievements: [],
-    badges: [],
+    achievements: [] as string[],
+    badges: [] as string[],
     currentStreak: 0,
     longestStreak: 0,
     perfectConversations: 0,
@@ -142,6 +151,7 @@ export default function Dashboard({ user }: DashboardProps) {
 
   const [showLevelUp, setShowLevelUp] = React.useState(false);
   const [showAchievement, setShowAchievement] = React.useState<string | null>(null);
+  const [achievementData, setAchievementData] = React.useState<{ title: string; description: string } | null>(null);
   const [recentAchievements, setRecentAchievements] = React.useState<string[]>([]);
 
   // 📊 SESSION TRACKING STATE
@@ -171,13 +181,6 @@ export default function Dashboard({ user }: DashboardProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [conversationsLoading, setConversationsLoading] = useState(false);
   const [currentView, setCurrentView] = useState<'dashboard' | 'vocab' | 'progress'>('dashboard');
-  const [progressSidebarExpanded, setProgressSidebarExpanded] = useState(false);
-  const [reportSidebarExpanded, setReportSidebarExpanded] = useState(false);
-  const [practiceAnalysisExpanded, setPracticeAnalysisExpanded] = useState(false);
-  const [achievementsSidebarExpanded, setAchievementsSidebarExpanded] = useState(false);
-  const [analysisTimeframe, setAnalysisTimeframe] = useState<'daily' | 'weekly'>('daily');
-  const [commitmentDays, setCommitmentDays] = useState<number>(0);
-  const [commitmentStartDate, setCommitmentStartDate] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -258,6 +261,8 @@ export default function Dashboard({ user }: DashboardProps) {
   const [showToolbar, setShowToolbar] = useState(false);
   const [currentAIMessage, setCurrentAIMessage] = useState<string>('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [statsExpanded, setStatsExpanded] = useState(true);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [germanPartnerName, setGermanPartnerName] = useState<string>('');
   const [lastSeenTime, setLastSeenTime] = useState<string>('');
   const [toolbarOpenedViaHelp, setToolbarOpenedViaHelp] = useState<boolean>(false);
@@ -273,6 +278,41 @@ export default function Dashboard({ user }: DashboardProps) {
   const [messageStatus, setMessageStatus] = useState<{[key: string]: MessageStatus}>({});
   const [showVocabBuilder, setShowVocabBuilder] = useState(false);
   const [lastSuggestionUsed, setLastSuggestionUsed] = useState<{[messageId: string]: string}>({});
+  
+  // State for pronunciation practice from suggested responses
+  const [recordedAudioBlobs, setRecordedAudioBlobs] = useState<Map<string, { blob: Blob, text: string }>>(new Map());
+  const [responseRecordingState, setResponseRecordingState] = useState<{[responseId: string]: boolean}>({});
+  const [responseAnalyzingState, setResponseAnalyzingState] = useState<{[responseId: string]: boolean}>({});
+  const [responseShowAnalyze, setResponseShowAnalyze] = useState<{[responseId: string]: boolean}>({});
+  const [responseHasBeenAnalyzed, setResponseHasBeenAnalyzed] = useState<{[responseId: string]: boolean}>({});
+  const [practiceRecorders, setPracticeRecorders] = useState<{[responseId: string]: MediaRecorder}>({});
+  const [pendingPronunciationAnalysis, setPendingPronunciationAnalysis] = useState<{audioBlob: Blob, text: string, responseId: string} | null>(null);
+  
+  // State for mic button recording analysis
+  const [micRecordingBlob, setMicRecordingBlob] = useState<Blob | null>(null);
+  const [micRecordingTranscription, setMicRecordingTranscription] = useState<string | null>(null);
+  const [showMicAnalyzeButton, setShowMicAnalyzeButton] = useState(false);
+  const [currentMicMessageId, setCurrentMicMessageId] = useState<string | null>(null);
+
+  // State for Progress Tab - Collapsable Toggles, Commitment, and Streak
+  const [openModal, setOpenModal] = useState<'report' | 'analysis' | 'achievements' | 'calendar' | null>(null); // Track which modal is open
+  const [selectedCommitment, setSelectedCommitment] = useState<number | null>(null);
+  const [commitmentStartDate, setCommitmentStartDate] = useState<Date | null>(null);
+  const [weekStreakDays, setWeekStreakDays] = useState<boolean[]>([false, false, false, false, false, false, false]); // Mon-Sun
+  const [reportView, setReportView] = useState<'daily' | 'weekly'>('daily'); // Daily or Weekly report view
+  const [calendarMonth, setCalendarMonth] = useState<Date>(new Date()); // Track which month to display in calendar
+
+  // Close modal on ESC key
+  React.useEffect(() => {
+    const handleEscKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && openModal) {
+        setOpenModal(null);
+      }
+    };
+    
+    window.addEventListener('keydown', handleEscKey);
+    return () => window.removeEventListener('keydown', handleEscKey);
+  }, [openModal]);
 
   const updateMessageStatus = (messageId: string, status: MessageStatus | null) => {
     setMessageStatus(prev => {
@@ -448,20 +488,6 @@ export default function Dashboard({ user }: DashboardProps) {
     }
   }, [user.id, germanPartnerName]);
 
-  // Auto-save player stats when they change (but not on initial load)
-  const [statsLoaded, setStatsLoaded] = React.useState(false);
-  React.useEffect(() => {
-    if (statsLoaded) {
-      savePlayerStats(playerStats).catch(err => {
-        console.error('Failed to save player stats:', err);
-      });
-    }
-  }, [playerStats, statsLoaded]);
-  
-  React.useEffect(() => {
-    setStatsLoaded(true);
-  }, []);
-
   // Monitor userAttempts and generate suggested answer when max attempts reached
   React.useEffect(() => {
     console.log('🔍 === CHECKING FOR SUGGESTED ANSWER GENERATION ===');
@@ -591,6 +617,10 @@ export default function Dashboard({ user }: DashboardProps) {
       if (onboardingRecord && onboardingRecord.completed_at) {
         const data: OnboardingData = {
           profilePictureUrl: profileData?.profile_picture_url || null,
+          learningLanguage: onboardingRecord.learning_language,
+          nativeLanguage: onboardingRecord.native_language,
+          focusGroup: onboardingRecord.focus_group as 'travelers' | 'business' | undefined,
+          // Keep old fields for backward compatibility
           motivations: onboardingRecord.motivations || [],
           customMotivation: onboardingRecord.custom_motivation,
           hobbies: onboardingRecord.hobbies || [],
@@ -607,32 +637,50 @@ export default function Dashboard({ user }: DashboardProps) {
           conversationTopics: onboardingRecord.conversation_topics || []
         };
         
+        // Set context level based on focus group
+        if (data.focusGroup === 'travelers') {
+          setContextLevel('Casual');
+        } else if (data.focusGroup === 'business') {
+          setContextLevel('Professional');
+        }
+        
         setOnboardingData(data);
         setIsNewUser(false);
         setShowOnboarding(false);
+        
+        // Show hints if not dismissed
+        if (!onboardingRecord.hints_dismissed) {
+          setHintsDismissed(false);
+          setShowHints(true);
+        } else {
+          setHintsDismissed(true);
+        }
       } else {
         const hasCompletedOnboarding = localStorage.getItem(`onboarding_${user.id}`);
         if (hasCompletedOnboarding) {
           setIsNewUser(false);
-          setOnboardingData(JSON.parse(hasCompletedOnboarding));
+          const localData = JSON.parse(hasCompletedOnboarding);
+          // Normalize data from localStorage to ensure arrays are arrays
+          const normalizedData: OnboardingData = {
+            ...localData,
+            goals: Array.isArray(localData.goals) ? localData.goals : [],
+            personalityTraits: Array.isArray(localData.personalityTraits) ? localData.personalityTraits : [],
+            conversationTopics: Array.isArray(localData.conversationTopics) ? localData.conversationTopics : [],
+            germanLevel: localData.germanLevel || 'beginner',
+          };
+          setOnboardingData(normalizedData);
+          
+          // Set context level based on focus group
+          if (normalizedData.focusGroup === 'travelers') {
+            setContextLevel('Casual');
+          } else if (normalizedData.focusGroup === 'business') {
+            setContextLevel('Professional');
+          }
+          
           setShowOnboarding(false);
         } else {
           setShowOnboarding(true);
         }
-      }
-      
-      // Load player stats
-      const stats = await loadPlayerStats();
-      if (stats) {
-        setPlayerStats(stats);
-      }
-      
-      // Load commitment data
-      const commitmentData = localStorage.getItem(`commitment_${user.id}`);
-      if (commitmentData) {
-        const { days, startDate } = JSON.parse(commitmentData);
-        setCommitmentDays(days);
-        setCommitmentStartDate(startDate);
       }
     } catch (error) {
       console.error('Error loading onboarding data:', error);
@@ -759,10 +807,22 @@ export default function Dashboard({ user }: DashboardProps) {
     setSuggestedAnswers({});
 
     try {
+      // Get user session token for authenticated requests
+      const { data: { session } } = await supabase.auth.getSession();
+      const authToken = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+      
+      console.log('📡 === SENDING INITIAL MESSAGE TO API ===');
+      console.log('Conversation ID:', conversationId);
+      console.log('User message:', userMessage);
+      console.log('Context level:', contextLevel);
+      console.log('Difficulty level:', difficultyLevel);
+      console.log('Onboarding data exists:', !!onboardingData);
+      console.log('Has session token:', !!session?.access_token);
+      
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -773,21 +833,33 @@ export default function Dashboard({ user }: DashboardProps) {
           conversationId,
           contextLevel,
           difficultyLevel,
-          userProfile: onboardingData ? {
+          userProfile: onboardingData && onboardingData.germanLevel ? {
             germanLevel: onboardingData.germanLevel,
-            goals: onboardingData.goals,
-            personalityTraits: onboardingData.personalityTraits,
-            conversationTopics: onboardingData.conversationTopics
+            goals: Array.isArray(onboardingData.goals) ? onboardingData.goals : [],
+            personalityTraits: Array.isArray(onboardingData.personalityTraits) ? onboardingData.personalityTraits : [],
+            conversationTopics: Array.isArray(onboardingData.conversationTopics) ? onboardingData.conversationTopics : []
           } : undefined,
           conversationContext: userMessage
         })
       });
+      
+      console.log('📡 === API RESPONSE ===');
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
 
       if (!response.ok) {
-        throw new Error('Failed to get response');
+        const errorText = await response.text();
+        console.error('❌ API Error:', response.status, errorText);
+        throw new Error(`Failed to get response: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
+      
+      if (!data || !data.message) {
+        console.error('❌ Invalid API response - missing message field');
+        console.error('Response data:', data);
+        throw new Error('Invalid API response: missing message field');
+      }
       
       console.log('AI Response:', data.message);
       
@@ -816,10 +888,23 @@ export default function Dashboard({ user }: DashboardProps) {
       // Update current message but don't show toolbar automatically
       setCurrentAIMessage(data.message);
       
-      // Don't auto-generate suggestions - user must click button to show them
+      // Auto-generate 3 contextual suggestions after initial AI response
+      const messageId = '2'; // First AI message ID
+      await generateContextualSuggestionsForInitialResponse(messageId, data.message, userMessage);
 
     } catch (error) {
-      console.error('Error sending initial message:', error);
+      console.error('❌ === ERROR SENDING INITIAL MESSAGE ===');
+      console.error('Error:', error);
+      console.error('Error details:', {
+        conversationId,
+        userMessage,
+        contextLevel,
+        difficultyLevel,
+        hasOnboardingData: !!onboardingData,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined
+      });
+      
       const errorMessage: ChatMessage = {
         id: '2',
         role: 'assistant',
@@ -827,15 +912,437 @@ export default function Dashboard({ user }: DashboardProps) {
         timestamp: new Date().toISOString()
       };
       setChatMessages(prev => [...prev, errorMessage]);
+      
+      // Show user-friendly error alert with more details
+      const userErrorMsg = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Failed to start conversation: ${userErrorMsg}\n\nPlease check:\n1. Your internet connection\n2. Browser console for details\n3. Try refreshing the page`);
     } finally {
       setIsSending(false);
       setIsTyping(false);
     }
   };
 
+  // Unified function to generate suggestions using OpenAI
+  // Automatically detects most recent bot message if not provided
+  const generateSuggestionsUsingOpenAI = async (
+    messageId: string,
+    botMessage?: string,
+    userContext?: string
+  ) => {
+    console.log('🎯 === GENERATING SUGGESTIONS USING OPENAI ===');
+    console.log('Message ID:', messageId);
+    
+    // Auto-detect most recent bot message if not provided
+    let aiMessage: string;
+    if (botMessage) {
+      aiMessage = botMessage;
+      console.log('Using provided bot message:', aiMessage);
+    } else {
+      // Find most recent assistant message from chatMessages
+      const assistantMessages = chatMessages.filter(msg => msg.role === 'assistant');
+      const mostRecentBotMessage = assistantMessages[assistantMessages.length - 1];
+      
+      if (!mostRecentBotMessage) {
+        console.error('❌ No bot message found in chatMessages');
+        // Fallback: use generateContextualFallbacks
+        const contextualFallbacks = generateContextualFallbacks('');
+        setSuggestedResponses(prev => ({
+          ...prev,
+          [messageId]: contextualFallbacks
+        }));
+        return;
+      }
+      
+      aiMessage = mostRecentBotMessage.content;
+      console.log('Auto-detected bot message:', aiMessage);
+    }
+    
+    // Enhanced conversation context extraction: Get last 3-4 messages for better context
+    let conversationContext: string = userContext || '';
+    let conversationHistory: string = '';
+    let previousUserResponse: string = '';
+    
+    // Find the current bot message index
+    const currentBotMessageIndex = chatMessages.findIndex(msg => 
+      msg.id === messageId && msg.role === 'assistant'
+    );
+    
+    // Extract the user's previous response that triggered this bot message
+    if (currentBotMessageIndex > 0) {
+      // Find the user message that immediately precedes this bot message
+      for (let i = currentBotMessageIndex - 1; i >= 0; i--) {
+        if (chatMessages[i].role === 'user') {
+          previousUserResponse = chatMessages[i].content;
+          console.log('📝 Found previous user response:', previousUserResponse);
+          break;
+        }
+      }
+    }
+    
+    // Get last 3-4 messages (including current bot message and previous messages)
+    // This provides better context for generating relevant suggestions
+    if (currentBotMessageIndex >= 0) {
+      const startIndex = Math.max(0, currentBotMessageIndex - 3);
+      const recentMessages = chatMessages.slice(startIndex, currentBotMessageIndex + 1);
+      conversationHistory = recentMessages.map(msg => 
+        `${msg.role === 'user' ? 'User' : 'Bot'}: ${msg.content}`
+      ).join(' -> ');
+      console.log('📜 Conversation history (last 3-4 messages):', conversationHistory);
+    }
+    
+    // Also get initial user context if available (for first message)
+    if (!conversationContext) {
+      const firstUserMessage = chatMessages.find(msg => msg.role === 'user');
+      if (firstUserMessage) {
+        conversationContext = firstUserMessage.content;
+        console.log('Using first user message as context:', conversationContext);
+      }
+    }
+    
+    // Determine if this is 2nd+ bot message (not the first one)
+    const assistantMessages = chatMessages.filter(msg => msg.role === 'assistant');
+    const isSecondOrSubsequentMessage = assistantMessages.length > 1;
+    console.log('📊 Is 2nd+ bot message:', isSecondOrSubsequentMessage, 'Total assistant messages:', assistantMessages.length);
+    
+    // Detect question type - expanded readiness detection
+    const isReadinessQuestion = /sind.*bereit|bist.*bereit|ready|bereit.*beginnen|bereit.*starten|bereit.*mit|mit.*rollenspiel|rollenspiel.*beginnen|rollenspiel.*starten|möchten.*starten|können.*beginnen|kann.*anfangen|starten.*wir/i.test(aiMessage);
+    const isYesNoQuestion = /\?/.test(aiMessage) && (/sind|bist|haben|hast|kannst|können|ist|soll|möchten/i.test(aiMessage));
+    const isInformationalQuestion = /\?/.test(aiMessage) && (/was|wie|wo|wann|warum|welche|welcher|welches/i.test(aiMessage));
+    const containsQuestion = /\?/.test(aiMessage) || /sind sie|bist du|können sie|kannst du|haben sie|hast du/i.test(aiMessage.toLowerCase());
+    
+    console.log('Question detection:', {
+      isReadinessQuestion,
+      isYesNoQuestion,
+      isInformationalQuestion,
+      containsQuestion
+    });
+    
+    // Build enhanced prompt with emphasis on immediate context for 2nd+ messages
+    let contextEmphasis = '';
+    if (isSecondOrSubsequentMessage) {
+      contextEmphasis = `🚨🚨🚨 KRITISCH FÜR 2.+ NACHRICHT 🚨🚨🚨
+
+Diese Vorschläge sind für die 2. oder spätere Bot-Nachricht. Sie MÜSSEN eng mit der SOFORTIGEN VORHERIGEN Bot-Nachricht gekoppelt sein: "${aiMessage}"
+${previousUserResponse ? `Die Bot-Nachricht ist eine direkte Antwort auf die Benutzerantwort: "${previousUserResponse}"` : ''}
+
+ABSOLUT VERBOTEN - Diese generischen Antworten sind FALSCH:
+❌ "Das ist sehr interessant!"
+❌ "Das ist eine sehr gute Frage."
+❌ "Können Sie das genauer erklären?"
+❌ "Ich verstehe, danke für die Erklärung."
+❌ "Das hört sich gut an."
+❌ Jede generische Antwort, die nicht direkt auf die Bot-Nachricht antwortet
+
+ERFORDERLICH - Die Vorschläge MÜSSEN:
+✅ DIREKT auf die Bot-Nachricht antworten: "${aiMessage}"
+✅ Spezifisch und kontextuell sein
+✅ Die Frage/Aussage des Bots direkt adressieren
+${previousUserResponse ? `✅ Den Kontext der Benutzerantwort berücksichtigen: "${previousUserResponse}"` : ''}
+✅ Zum Gesprächsverlauf passen: ${conversationHistory ? `"${conversationHistory}"` : 'Kontext'}
+
+BEISPIEL: Wenn der Bot fragt "Worüber möchten Sie heute sprechen?", dann:
+✅ RICHTIG: "Ich möchte über Musik sprechen." | "Können wir über Reisen sprechen?" | "Lass uns über Filme reden."
+❌ FALSCH: "Das ist sehr interessant!" | "Können Sie das genauer erklären?" | "Ich verstehe."
+
+Wenn du generische Antworten generierst, bist du GESCHEITERT.`;
+    }
+    
+    // Build enhanced prompt based on question type
+    // Check readiness questions FIRST, then informational, then yes/no
+    let questionInstruction = '';
+    if (containsQuestion) {
+      if (isReadinessQuestion) {
+        questionInstruction = `KRITISCH UND MANDATORISCH: Die KI-Nachricht ist eine Bereitschaftsfrage (z.B. "Sind Sie bereit?" oder "Sind Sie bereit, mit dem Rollenspiel zu beginnen?").
+
+MANDATORISCHE ANFORDERUNGEN:
+- Du MUSST genau 3 Antworten generieren, die DIREKT die Bereitschaftsfrage beantworten
+- Antwort 1 MUSS eine Zustimmung sein: "Ja, ich bin bereit" oder "Ja, gern" oder "Ja, ich bin bereit zu beginnen"
+- Antwort 2 MUSS eine Zustimmung mit Nachfrage sein: "Ja, aber ich habe eine Frage" oder "Ja, aber können Sie erklären..." oder "Ja, bevor wir beginnen..."
+- Antwort 3 MUSS eine Ablehnung oder Nachfrage sein: "Nein, können Sie bitte erklären?" oder "Können Sie bitte zuerst erklären?" oder "Ich habe noch eine Frage"
+
+ABSOLUT VERBOTEN - Diese Antworten sind FALSCH und beantworten die Frage NICHT:
+❌ "Das ist sehr interessant!"
+❌ "Das ist eine sehr gute Frage."
+❌ "Können Sie das genauer erklären?"
+❌ "Ich verstehe, danke für die Erklärung."
+❌ "Das hört sich gut an."
+
+KORREKTE BEISPIELE für "Sind Sie bereit, mit dem Rollenspiel zu beginnen?":
+✅ "Ja, ich bin bereit."
+✅ "Ja, aber ich habe eine Frage."
+✅ "Nein, können Sie bitte erklären?"
+
+Wenn du generische Antworten generierst, bist du GESCHEITERT. Generiere NUR direkte Ja/Nein-Varianten.`;
+      } else if (isInformationalQuestion) {
+        questionInstruction = `WICHTIG: Die KI-Nachricht ist eine Informationsfrage. Generiere Antworten, die:
+- DIREKT Informationen zur Frage geben
+- Zum Kontext passen: "${conversationContext}"
+- Praktisch und rollenspielgerecht sind`;
+      } else if (isYesNoQuestion) {
+        questionInstruction = `WICHTIG: Die KI-Nachricht ist eine Ja/Nein-Frage. Generiere Antworten, die DIREKT die Frage beantworten:
+- Mindestens eine "Ja" Antwort
+- Mindestens eine "Nein" oder alternative Antwort
+- Antworten müssen die Frage direkt beantworten, nicht umschweifen`;
+      } else {
+        questionInstruction = `WICHTIG: Die KI-Nachricht enthält eine Frage. Generiere Antworten, die:
+- DIREKT auf die Frage antworten
+- Nicht generisch sind (keine "Das ist interessant" Antworten)
+- Die Frage beantworten, nicht umschweifen`;
+      }
+    } else {
+      questionInstruction = `Die KI-Nachricht ist eine Aussage oder Anweisung. Generiere Antworten, die:
+- Kontextuell zur Aussage passen: "${conversationContext}"
+- Für das Rollenspiel geeignet sind
+- Natürlich auf die Aussage reagieren`;
+    }
+    
+    try {
+      // Call OpenAI API for ALL suggestions (including readiness questions)
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [{
+            role: 'user',
+            content: `Analyziere die KI-Nachricht: "${aiMessage}"
+
+${contextEmphasis}
+
+${previousUserResponse ? `WICHTIG: Der Benutzer hat gerade geantwortet: "${previousUserResponse}"
+Die Bot-Nachricht "${aiMessage}" ist eine direkte Antwort darauf.
+Die Vorschläge müssen sowohl auf die Bot-Nachricht "${aiMessage}" als auch auf den Kontext der vorherigen Benutzerantwort "${previousUserResponse}" reagieren.` : ''}
+
+${conversationHistory ? `Gesprächsverlauf (letzte 3-4 Nachrichten): ${conversationHistory}` : ''}
+
+${conversationContext ? `Anfänglicher Kontext: Der Benutzer möchte dieses Szenario üben: "${conversationContext}"` : ''}
+
+${questionInstruction}
+
+WICHTIG: Die Vorschläge MÜSSEN direkt auf diese SOFORTIGE VORHERIGE Bot-Nachricht antworten: "${aiMessage}"
+${previousUserResponse ? `UND müssen zum Kontext der Benutzerantwort passen: "${previousUserResponse}"` : ''}
+
+Generiere genau 3 kurze deutsche Antworten (maximal 8 Wörter), die:
+1. ${containsQuestion ? 'DIREKT die Frage beantworten' : 'Kontextuell zur Nachricht passen'} - ENGE KOPPLUNG ZUR BOT-NACHRICHT ERFORDERLICH
+2. ${previousUserResponse ? `Zum Kontext der Benutzerantwort passen: "${previousUserResponse}"` : conversationHistory ? `Zum Gesprächsverlauf passen: "${conversationHistory}"` : conversationContext ? `Zum Szenario passen: "${conversationContext}"` : 'Zum Gesprächskontext passen'}
+3. Für ein Rollenspiel geeignet sind
+4. Den Formellitätsgrad berücksichtigen: ${contextLevel === 'Professional' ? 'Formell (Sie)' : 'Informell (Du)'}
+5. ${isSecondOrSubsequentMessage ? 'NICHT generisch sind - sie müssen spezifisch auf die Bot-Nachricht antworten' : 'Zum Kontext passen'}
+
+${isSecondOrSubsequentMessage ? 'VERBOTEN: Generische Antworten wie "Das ist interessant" - diese sind FALSCH für 2.+ Nachrichten' : ''}
+
+Format: TRANSLATION: [English translation of AI message] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Antwort 3] ENGLISH: [Answer 1] | [Answer 2] | [Answer 3]`
+          }],
+          conversationId: selectedConversation || 'helper',
+          contextLevel,
+          difficultyLevel,
+          conversationContext: conversationContext,
+          systemInstruction: `Du bist ein Experte für deutsche Rollenspiele. Deine Aufgabe: Generiere 3 passende deutsche Antworten.
+
+${isSecondOrSubsequentMessage ? `🚨🚨🚨 KRITISCH FÜR 2.+ NACHRICHT 🚨🚨🚨
+
+Diese Vorschläge sind für die 2. oder spätere Bot-Nachricht. Sie MÜSSEN eng mit der SOFORTIGEN VORHERIGEN Bot-Nachricht gekoppelt sein.
+${previousUserResponse ? `Die Bot-Nachricht ist eine Antwort auf: "${previousUserResponse}"` : ''}
+
+ABSOLUT VERBOTEN für 2.+ Nachrichten:
+❌ Generische Antworten wie "Das ist sehr interessant!"
+❌ "Das ist eine sehr gute Frage."
+❌ "Können Sie das genauer erklären?" (wenn nicht direkt relevant)
+❌ "Ich verstehe, danke für die Erklärung."
+❌ Jede generische Antwort, die nicht direkt auf die Bot-Nachricht antwortet
+
+ERFORDERLICH für 2.+ Nachrichten:
+✅ DIREKTE Antworten auf die Bot-Nachricht: "${aiMessage}"
+✅ Spezifisch und kontextuell
+✅ Direkte Adressierung der Frage/Aussage des Bots
+${previousUserResponse ? `✅ Berücksichtigung des Kontexts der Benutzerantwort: "${previousUserResponse}"` : ''}
+✅ Zum Gesprächsverlauf passend: ${conversationHistory ? `"${conversationHistory}"` : 'Kontext'}
+
+BEISPIEL RICHTIG (wenn Bot fragt "Worüber möchten Sie heute sprechen?"):
+✅ "Ich möchte über Musik sprechen." | "Können wir über Reisen sprechen?" | "Lass uns über Filme reden."
+
+BEISPIEL FALSCH (generische Antworten):
+❌ "Das ist sehr interessant!" | "Können Sie das genauer erklären?" | "Ich verstehe."
+
+Wenn du generische Antworten für 2.+ Nachrichten generierst, bist du GESCHEITERT.` : ''}
+
+${isReadinessQuestion ? '🚨🚨🚨 KRITISCH UND MANDATORISCH 🚨🚨🚨\nDie KI-Nachricht ist eine Bereitschaftsfrage (z.B. "Sind Sie bereit?" oder "Sind Sie bereit, mit dem Rollenspiel zu beginnen?").\n\nMANDATORISCHE ANFORDERUNGEN:\n- Du MUSST genau 3 Antworten generieren, die DIREKT die Frage beantworten\n- Antwort 1 MUSS eine Zustimmung sein: "Ja, ich bin bereit" oder ähnlich\n- Antwort 2 MUSS eine Zustimmung mit Nachfrage sein: "Ja, aber ich habe eine Frage" oder ähnlich\n- Antwort 3 MUSS eine Ablehnung/Nachfrage sein: "Nein, können Sie bitte erklären?" oder ähnlich\n\nABSOLUT VERBOTEN - Diese Antworten sind FALSCH:\n❌ "Das ist sehr interessant!"\n❌ "Das ist eine sehr gute Frage."\n❌ "Können Sie das genauer erklären?"\n❌ "Ich verstehe, danke für die Erklärung."\n\nKORREKTE BEISPIELE:\n✅ "Ja, ich bin bereit."\n✅ "Ja, aber ich habe eine Frage."\n✅ "Nein, können Sie bitte erklären?"\n\nWenn du generische Antworten generierst, bist du GESCHEITERT. Generiere NUR direkte Ja/Nein-Varianten.' : containsQuestion ? `KRITISCH: Die KI-Nachricht ist eine Frage. Die Antworten MÜSSEN die Frage direkt beantworten, nicht umschweifen oder generisch sein.${isSecondOrSubsequentMessage ? ` Für 2.+ Nachrichten: KEINE generischen Antworten - sie müssen spezifisch auf diese Frage antworten.${previousUserResponse ? ` Berücksichtige den Kontext: Der Benutzer hat geantwortet "${previousUserResponse}" und die Bot-Nachricht "${aiMessage}" reagiert darauf.` : ''}` : ''}` : `Die KI-Nachricht ist eine Aussage. Generiere passende, kontextuelle Reaktionen.${isSecondOrSubsequentMessage ? ` Für 2.+ Nachrichten: KEINE generischen Antworten - sie müssen spezifisch auf diese Aussage reagieren.${previousUserResponse ? ` Berücksichtige den Kontext: Der Benutzer hat geantwortet "${previousUserResponse}" und die Bot-Nachricht "${aiMessage}" reagiert darauf.` : ''}` : ''}`}
+
+${conversationHistory ? `Gesprächsverlauf: "${conversationHistory}"` : ''}
+${previousUserResponse ? `Vorherige Benutzerantwort: "${previousUserResponse}"` : ''}
+${conversationContext ? `Anfänglicher Kontext: "${conversationContext}"` : ''}
+KI-Nachricht: "${aiMessage}"
+Formellitätsgrad: ${contextLevel}
+
+Regeln:
+- Antworten müssen zur Frage/Aussage passen
+- ${isSecondOrSubsequentMessage ? 'FÜR 2.+ NACHRICHTEN: KEINE generischen Antworten - sie müssen DIREKT auf die Bot-Nachricht antworten' : 'Keine generischen Antworten wie "Das ist interessant" wenn eine Frage gestellt wird'}
+${isReadinessQuestion ? '- Für Bereitschaftsfragen: IMMER Ja/Nein-Varianten mit direkten Antworten\n- Beispiel RICHTIG: "Ja, ich bin bereit" | "Ja, aber ich habe eine Frage" | "Nein, können Sie bitte erklären"\n- Beispiel FALSCH: "Das ist sehr interessant" | "Können Sie das genauer erklären?" | "Ich verstehe, danke"\n- Wenn die Antworten generisch sind, bist du GESCHEITERT' : containsQuestion ? '- Für Fragen: Direkte, hilfreiche Antworten generieren - DIREKT auf die Frage antworten' : '- Für Aussagen: Natürliche, kontextuelle Reaktionen - DIREKT auf die Aussage reagieren'}
+${isSecondOrSubsequentMessage ? '- VERBOTEN für 2.+ Nachrichten: Generische Phrasen wie "Das ist interessant" - diese zeigen, dass du die Aufgabe nicht verstanden hast' : ''}
+
+Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1] | [e2] | [e3]`
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const content = data.message;
+        
+        console.log('📡 API Response for suggestions:', content);
+        
+        // Parse translation and suggestions
+        const translationMatch = content.match(/TRANSLATION:\s*(.+?)(?=SUGGESTIONS:|$)/);
+        const suggestionsMatch = content.match(/SUGGESTIONS:\s*(.+?)(?=ENGLISH:|$)/);
+        const englishMatch = content.match(/ENGLISH:\s*(.+)/);
+        
+        if (translationMatch) {
+          setTranslatedMessages(prev => {
+            // Only set if doesn't exist (preserve user translations)
+            if (prev[messageId]) {
+              console.log('Translation already exists, preserving user translation');
+              return prev;
+            }
+            return {
+              ...prev,
+              [messageId]: translationMatch[1].trim()
+            };
+          });
+        }
+        
+        if (suggestionsMatch && englishMatch) {
+          const germanSuggestions = suggestionsMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+          const englishTranslations = englishMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+          
+          const pairedSuggestions = germanSuggestions.map((german: string, index: number) => ({
+            german: german.trim(),
+            english: englishTranslations[index] ? englishTranslations[index].trim() : ''
+          }));
+          
+          console.log('✅ Generated suggestions:', pairedSuggestions);
+          
+          // Enhanced validation: Check for generic responses for 2nd+ messages or readiness questions
+          const genericPatterns = [
+            /^das ist.*interessant/i,
+            /^das ist.*sehr interessant/i,
+            /^das ist.*gute.*frage/i,
+            /^können.*sie.*das.*genauer.*erklären/i,
+            /^können.*sie.*erklären[^?]*$/i,
+            /^ich verstehe[,.]?$/i,
+            /^ich verstehe, danke/i,
+            /^danke.*erklärung/i,
+            /^das hört.*gut/i,
+            /^das klingt.*gut/i
+          ];
+          
+          // Check if suggestions are generic (not contextually relevant)
+          const hasGenericResponses = pairedSuggestions.some(suggestion => {
+            const germanText = suggestion.german.toLowerCase().trim();
+            return genericPatterns.some(pattern => pattern.test(germanText));
+          });
+          
+          // For readiness questions, check for direct responses
+          if (isReadinessQuestion) {
+            const hasDirectResponses = pairedSuggestions.some(suggestion => {
+              const germanText = suggestion.german.toLowerCase();
+              return /^ja[,!.]|^nein[,!.]|bereit|aber.*frage/i.test(germanText);
+            });
+            
+            if (hasGenericResponses || !hasDirectResponses) {
+              console.warn('⚠️ OpenAI returned generic responses for readiness question, using fallback');
+              const contextualFallbacks = generateContextualFallbacks(aiMessage);
+              setSuggestedResponses(prev => ({
+                ...prev,
+                [messageId]: contextualFallbacks
+              }));
+              return;
+            }
+          }
+          
+          // For 2nd+ messages, reject if all suggestions are generic
+          if (isSecondOrSubsequentMessage && hasGenericResponses) {
+            const genericCount = pairedSuggestions.filter(suggestion => {
+              const germanText = suggestion.german.toLowerCase().trim();
+              return genericPatterns.some(pattern => pattern.test(germanText));
+            }).length;
+            
+            // If 2 or more suggestions are generic, reject and use fallback
+            if (genericCount >= 2) {
+              console.warn('⚠️ OpenAI returned generic responses for 2nd+ message, using fallback');
+              console.warn('⚠️ Generic count:', genericCount, 'out of', pairedSuggestions.length);
+              const contextualFallbacks = generateContextualFallbacks(aiMessage);
+              setSuggestedResponses(prev => ({
+                ...prev,
+                [messageId]: contextualFallbacks
+              }));
+              return;
+            }
+          }
+          
+          setSuggestedResponses(prev => ({
+            ...prev,
+            [messageId]: pairedSuggestions
+          }));
+          
+          // Don't automatically show suggestions - only show when user clicks question mark icon
+        } else {
+          console.log('⚠️ Could not parse suggestions from API response, using fallback');
+          // Fallback to contextual suggestions
+          const contextualFallbacks = generateContextualFallbacks(aiMessage);
+          setSuggestedResponses(prev => ({
+            ...prev,
+            [messageId]: contextualFallbacks
+          }));
+          // Don't automatically show suggestions - only show when user clicks question mark icon
+        }
+      } else {
+        const errorText = await response.text();
+        console.error('❌ API call failed:', response.status, errorText);
+        // Fallback to contextual suggestions
+        const contextualFallbacks = generateContextualFallbacks(aiMessage);
+        setSuggestedResponses(prev => ({
+          ...prev,
+          [messageId]: contextualFallbacks
+        }));
+        // Don't automatically show suggestions - only show when user clicks question mark icon
+      }
+    } catch (error) {
+      console.error('❌ Error generating suggestions:', error);
+      // Fallback to contextual suggestions
+      const contextualFallbacks = generateContextualFallbacks(aiMessage);
+      setSuggestedResponses(prev => ({
+        ...prev,
+        [messageId]: contextualFallbacks
+      }));
+      // Don't automatically show suggestions - only show when user clicks question mark icon
+    }
+  };
+
+  // Generate 3 contextual suggestions for initial AI response
+  const generateContextualSuggestionsForInitialResponse = async (messageId: string, aiMessage: string, userContext: string) => {
+    console.log('🎯 === GENERATING CONTEXTUAL SUGGESTIONS FOR INITIAL RESPONSE ===');
+    console.log('Message ID:', messageId);
+    console.log('AI Message:', aiMessage);
+    console.log('User Context:', userContext);
+    
+    // Use unified function with provided bot message and user context
+    await generateSuggestionsUsingOpenAI(messageId, aiMessage, userContext);
+  };
+
   // Generate contextual fallback suggestions based on AI message content
   const generateContextualFallbacks = (germanText: string) => {
     const text = germanText.toLowerCase();
+    
+    // Check for readiness questions FIRST - this is critical!
+    if (text.includes('bereit') && (text.includes('rollenspiel') || text.includes('beginnen') || text.includes('starten') || text.includes('mit dem'))) {
+      console.log('✅ Fallback: Detected readiness question, returning appropriate responses');
+      return [
+        { german: 'Ja, ich bin bereit.', english: 'Yes, I am ready.' },
+        { german: 'Ja, aber ich habe eine Frage.', english: 'Yes, but I have a question.' },
+        { german: 'Nein, können Sie bitte erklären?', english: 'No, can you please explain?' }
+      ];
+    }
     
     // Specific question patterns and their direct answers
     if (text.includes('welche details') || text.includes('which details') || text.includes('am wichtigsten')) {
@@ -934,213 +1441,9 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('German text:', germanText);
     console.log('🚨 FUNCTION CALLED - Starting suggestion generation...');
     
-    // Fetch conversation context from database
-    // For now, we'll get context from the first user message in chat
-    let conversationContext = '';
-    
-    // Find the first user message to use as context
-    const firstUserMessage = chatMessages.find(msg => msg.role === 'user');
-    if (firstUserMessage) {
-      conversationContext = firstUserMessage.content;
-      console.log('📝 Using first user message as context:', conversationContext);
-    }
-    
-    console.log('🎯 Generating contextual suggestions for:', germanText);
-    
-    // Check if this is a readiness question - provide direct answers
-    const isReadinessQuestion = /sind.*bereit|bist.*bereit|ready|bereit.*beginnen/i.test(germanText);
-    
-    if (isReadinessQuestion) {
-      console.log('✅ Detected readiness question - using hardcoded responses');
-      // Provide direct yes/no/maybe answers to readiness questions
-      const directResponses = contextLevel === 'Professional' 
-        ? [
-            { german: "Ja, ich bin bereit.", english: "Yes, I am ready." },
-            { german: "Absolut, ich freue mich darauf.", english: "Absolutely, I'm looking forward to it." },
-            { german: "Nein, ich möchte noch Kontext geben.", english: "No, I want to provide more context." }
-          ]
-        : [
-            { german: "Ja, ich bin bereit.", english: "Yes, I'm ready." },
-            { german: "Absolut, fangen wir an!", english: "Absolutely, let's start!" },
-            { german: "Nein, ich möchte mehr Kontext geben.", english: "No, I want to provide more context." }
-          ];
-      
-      setSuggestedResponses(prev => ({
-        ...prev,
-        [messageId]: directResponses
-      }));
-      
-      setTranslatedMessages(prev => {
-        if (prev[messageId]) return prev;
-        return {
-          ...prev,
-          [messageId]: germanText
-        };
-      });
-      
-      return;
-    }
-    
-    // For other questions, use AI generation
-    // Frame the AI's message as a user question to generate direct answers
-    const messagesForSuggestion = [{
-      role: 'user' as const,
-      content: germanText
-    }];
-    
-    console.log('📤 Sending messages to API:', messagesForSuggestion.length, 'messages');
-    
-    try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: messagesForSuggestion,
-          conversationId: selectedConversation || 'helper',
-          contextLevel,
-          difficultyLevel,
-          conversationContext: conversationContext,
-          systemInstruction: `Die Frage: "${germanText}"
-
-Aufgabe: 3 kurze Antworten auf DIESE Frage.
-
-Regeln:
-- Direkte Antworten zur Frage
-- Max 8 Wörter
-- Deutsch
-- Wenn Frage "Sind Sie bereit?" → Antworten: "Ja, ich bin bereit." / "Nein, nicht bereit." / "Ja, fangen wir an."
-
-Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Antwort 3] ENGLISH: [Answer 1] | [Answer 2] | [Answer 3]`
-        })
-      });
-
-      console.log('📡 API Response status:', response.status);
-      console.log('📡 API Response ok:', response.ok);
-      
-      if (response.ok) {
-        const data = await response.json();
-        const content = data.message;
-        
-        console.log('📡 API Response received for contextual suggestions:', content.substring(0, 300) + '...');
-        console.log('📡 Full API response:', content);
-        console.log('📡 Response data structure:', data);
-        
-        // Parse translation and suggestions - handle both old and new formats
-        const translationMatch = content.match(/TRANSLATION:\s*(.+?)(?=SUGGESTIONS:|$)/);
-        const suggestionsMatch = content.match(/SUGGESTIONS:\s*(.+?)(?=ENGLISH:|$)/);
-        const englishMatch = content.match(/ENGLISH:\s*(.+)/);
-        
-        console.log('🔍 Parsing debug:', {
-          translationMatch: translationMatch ? translationMatch[1] : null,
-          suggestionsMatch: suggestionsMatch ? suggestionsMatch[1] : null,
-          englishMatch: englishMatch ? englishMatch[1] : null,
-          content: content.substring(0, 200) + '...'
-        });
-        
-        if (translationMatch) {
-          // Only set translation if one doesn't already exist
-          // This prevents overwriting user's manual translation when generating suggestions
-          setTranslatedMessages(prev => {
-            if (prev[messageId]) {
-              console.log('📝 Translation already exists, keeping user translation for message:', messageId);
-              return prev;
-            }
-            return {
-              ...prev,
-              [messageId]: translationMatch[1].trim()
-            };
-          });
-        }
-        
-        // Try new format first (with English translations)
-        if (suggestionsMatch && englishMatch) {
-          const germanSuggestions = suggestionsMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-          const englishTranslations = englishMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-          
-          // Pair German suggestions with their English translations
-          const pairedSuggestions = germanSuggestions.map((german: string, index: number) => ({
-            german: german.trim(),
-            english: englishTranslations[index] ? englishTranslations[index].trim() : ''
-          }));
-          
-          console.log('New format - German suggestions:', germanSuggestions);
-          console.log('New format - English translations:', englishTranslations);
-          console.log('New format - Paired suggestions:', pairedSuggestions);
-          
-          setSuggestedResponses(prev => ({
-            ...prev,
-            [messageId]: pairedSuggestions
-          }));
-        } else if (suggestionsMatch) {
-          // Fallback: old format (German suggestions only)
-          const suggestions = suggestionsMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-          
-          // Clean up any English translations that might be in parentheses or brackets
-          const cleanedSuggestions = suggestions.map((suggestion: string) => {
-            // Remove English text in parentheses like (English translation)
-            let cleaned = suggestion.replace(/\([^)]*[A-Za-z][^)]*\)/g, '');
-            // Remove English text in brackets like [English translation]
-            cleaned = cleaned.replace(/\[[^\]]*[A-Za-z][^\]]*\]/g, '');
-            // Remove any remaining English text patterns
-            cleaned = cleaned.replace(/\([^)]*\)/g, '');
-            cleaned = cleaned.replace(/\[[^\]]*\]/g, '');
-            // Trim whitespace
-            return cleaned.trim();
-          }).filter((s: string) => s.length > 0);
-          
-          console.log('Old format - Original suggestions:', suggestions);
-          console.log('Old format - Cleaned suggestions:', cleanedSuggestions);
-          
-          setSuggestedResponses(prev => ({
-            ...prev,
-            [messageId]: cleanedSuggestions
-          }));
-        } else {
-          console.log('No suggestions match found in:', content);
-          // Set contextual fallback suggestions based on the AI's message
-          const contextualFallbacks = generateContextualFallbacks(germanText);
-          console.log('Setting contextual fallback suggestions:', contextualFallbacks);
-          
-          setSuggestedResponses(prev => ({
-            ...prev,
-            [messageId]: contextualFallbacks
-          }));
-        }
-      } else {
-        console.error('❌ API call failed with status:', response.status);
-        console.error('❌ Response status text:', response.statusText);
-        const errorText = await response.text();
-        console.error('❌ Error response body:', errorText);
-        
-        // Try to get more specific error information
-        try {
-          const errorData = JSON.parse(errorText);
-          console.error('❌ Parsed error data:', errorData);
-        } catch (e) {
-          console.error('❌ Could not parse error response as JSON');
-        }
-      }
-    } catch (error) {
-      console.error('❌ Error generating translation and suggestions:', error);
-      console.error('❌ Error details:', {
-        messageId,
-        germanText,
-        error: (error as Error).message,
-        stack: (error as Error).stack
-      });
-      
-      // Set contextual fallback suggestions based on the AI's message
-      const contextualFallbacks = generateContextualFallbacks(germanText);
-      console.log('Setting contextual error fallback suggestions:', contextualFallbacks);
-      
-      setSuggestedResponses(prev => ({
-        ...prev,
-        [messageId]: contextualFallbacks
-      }));
-    }
+    // Use unified function with provided bot message
+    // It will auto-detect conversation context from chatMessages
+    await generateSuggestionsUsingOpenAI(messageId, germanText);
   };
 
   // Audio cache is now handled by the centralized TTS service
@@ -1181,7 +1484,12 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Ant
   };
 
   const triggerWordLearned = (wordCount: number = 1) => {
-    setPlayerStats(prev => awardWordsLearned(prev, wordCount));
+    setPlayerStats(prev => ({
+      ...prev,
+      wordsLearned: prev.wordsLearned + wordCount
+    }));
+    addExperience(wordCount * 2, 'word_learned');
+    checkAchievements();
   };
 
   const triggerSpeakingTime = (minutes: number) => {
@@ -1196,9 +1504,13 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Ant
   const addAchievement = (achievementId: string, title: string, description: string) => {
     setPlayerStats(prev => {
       if (!prev.achievements.includes(achievementId)) {
+        setAchievementData({ title, description });
         setShowAchievement(achievementId);
         setRecentAchievements(prev => [...prev, achievementId]);
-        setTimeout(() => setShowAchievement(null), 3000);
+        setTimeout(() => {
+          setShowAchievement(null);
+          setAchievementData(null);
+        }, 3000);
         setTimeout(() => setRecentAchievements(prev => prev.filter(id => id !== achievementId)), 5000);
         
         return {
@@ -1789,42 +2101,93 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Ant
     }
     
     try {
+      // Get user session token for authenticated requests
+      const { data: { session } } = await supabase.auth.getSession();
+      const authToken = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+      
+      console.log('📡 === TRIGGERING AI RESPONSE ===');
+      console.log('Conversation ID:', selectedConversation);
+      console.log('User message:', userMessage);
+      console.log('Has session token:', !!session?.access_token);
+      console.log('Onboarding data exists:', !!onboardingData);
+      
+      // Build full conversation history from chatMessages state
+      // This ensures bot responses are contextually relevant to the entire conversation flow
+      const conversationHistoryMessages = chatMessages
+        .filter(msg => {
+          // Include all messages up to but not including the current user message
+          // The current user message will be added separately
+          return msg.id !== messageId;
+        })
+        .map(msg => ({
+          role: msg.role === 'assistant' ? 'assistant' : 'user',
+          content: msg.content
+        }));
+      
+      // Add the current user message to the conversation history
+      const messagesToSend = [
+        ...conversationHistoryMessages,
+        {
+          role: 'user' as const,
+          content: userMessage
+        }
+      ];
+      
+      console.log('📜 === CONVERSATION HISTORY ===');
+      console.log('Total messages in history:', conversationHistoryMessages.length);
+      console.log('Messages being sent:', messagesToSend.length);
+      console.log('Conversation history:', conversationHistoryMessages.map(m => `${m.role}: ${m.content.substring(0, 50)}...`));
+      
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: [{
-            role: 'user',
-            content: userMessage
-          }],
+          messages: messagesToSend,
           conversationId: selectedConversation,
           contextLevel,
           difficultyLevel,
-          userProfile: onboardingData ? {
+          userProfile: onboardingData && onboardingData.germanLevel ? {
             germanLevel: onboardingData.germanLevel,
-            goals: onboardingData.goals,
-            personalityTraits: onboardingData.personalityTraits,
-            conversationTopics: onboardingData.conversationTopics
+            goals: Array.isArray(onboardingData.goals) ? onboardingData.goals : [],
+            personalityTraits: Array.isArray(onboardingData.personalityTraits) ? onboardingData.personalityTraits : [],
+            conversationTopics: Array.isArray(onboardingData.conversationTopics) ? onboardingData.conversationTopics : []
           } : undefined,
           systemInstruction: enhancedSystemInstruction,
           conversationContext: conversationContextToSend
         })
       });
-
-      console.log('📡 === AI API RESPONSE ===');
+      
+      console.log('📡 === API RESPONSE RECEIVED ===');
       console.log('Response status:', response.status);
       console.log('Response ok:', response.ok);
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log('📝 === AI RESPONSE DATA ===');
-        console.log('AI message:', data.message);
-        
-        // Generate message ID first
-        const messageId = (Date.now() + 1).toString();
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ API Error Response:', response.status);
+        console.error('Error details:', errorText);
+        const errorMessage = errorText || `API request failed with status ${response.status}`;
+        setIsSending(false);
+        setIsTyping(false);
+        setErrorMessages(prev => ({ ...prev, [messageId]: errorMessage }));
+        return;
+      }
+      
+      const data = await response.json();
+      
+      if (!data || !data.message) {
+        console.error('❌ Invalid API response - missing message field');
+        console.error('Response data:', data);
+        throw new Error('Invalid API response: missing message field');
+      }
+      
+      console.log('📝 === AI RESPONSE DATA ===');
+      console.log('AI message:', data.message);
+      
+      // Generate message ID first
+      const messageId = (Date.now() + 1).toString();
         console.log('🤖 Generated message ID:', messageId);
         
         const assistantMessage: ChatMessage = {
@@ -1867,14 +2230,15 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Ant
         }
         
         console.log('✅ === AI RESPONSE COMPLETED SUCCESSFULLY ===');
-      } else {
-        console.error('❌ === AI API ERROR ===');
-        console.error('Response status:', response.status);
-        console.error('Response status text:', response.statusText);
-      }
+        setIsSending(false);
+        setIsTyping(false);
     } catch (error) {
       console.error('❌ === AI RESPONSE ERROR ===');
       console.error('Error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setIsSending(false);
+      setIsTyping(false);
+      setErrorMessages(prev => ({ ...prev, [messageId]: errorMessage }));
     } finally {
       console.log('🏁 === AI RESPONSE FINALLY BLOCK ===');
       setIsSending(false);
@@ -2462,6 +2826,12 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Ant
     console.log('Chat messages count:', chatMessages.length);
 
     const trimmedInput = messageInput.trim();
+    
+    // Auto-collapse sidebar when starting conversation with first user message
+    if (chatMessages.length <= 1 && !sidebarCollapsed) {
+      setSidebarCollapsed(true);
+      console.log('Auto-collapsing sidebar - first user message');
+    }
 
     if (!trimmedInput || isSending || !selectedConversation) {
       console.log('🚫 === BLOCKING SEND MESSAGE ===');
@@ -2587,6 +2957,18 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Ant
         console.log('Previous messages count:', prev.length);
         const newMessages = [...prev, userMessage];
         console.log('New messages count:', newMessages.length);
+        
+        // Track first message for chat hints
+        if (!hasSentFirstMessage && prev.length <= 1) {
+          setHasSentFirstMessage(true);
+          if (!hintsDismissed && showHints === false) {
+            // Show chat hints after a short delay
+            setTimeout(() => {
+              setShowChatHints(true);
+            }, 1000);
+          }
+        }
+        
         return newMessages;
       });
 
@@ -3476,7 +3858,12 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
   // Recording functions
   const startRecording = async () => {
     try {
+      console.log('🎤 === STARTING RECORDING ===');
+      // Clear previous mic message ID when starting new recording
+      setCurrentMicMessageId(null);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('✅ Microphone access granted');
+      
       const recorder = new MediaRecorder(stream);
       const chunks: Blob[] = [];
       let recordingStartTime = Date.now();
@@ -3492,6 +3879,221 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         }
       }, 1000);
 
+      // Request data periodically to ensure chunks are collected
+      const dataInterval = setInterval(() => {
+        if (recorder.state === 'recording') {
+          recorder.requestData();
+          console.log('📊 Requested data from recorder, chunks count:', chunks.length);
+        }
+      }, 100); // Request data every 100ms
+
+      recorder.ondataavailable = (event) => {
+        console.log('📦 Data available:', event.data.size, 'bytes');
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+          console.log('✅ Chunk added, total chunks:', chunks.length);
+        } else {
+          console.warn('⚠️ Empty chunk received');
+        }
+      };
+
+      recorder.onerror = (event) => {
+        console.error('❌ MediaRecorder error:', event);
+        clearInterval(durationInterval);
+        clearInterval(dataInterval);
+        setIsRecording(false);
+        alert('Recording error occurred. Please try again.');
+      };
+
+      recorder.onstop = async () => {
+        console.log('🛑 === RECORDING STOPPED ===');
+        clearInterval(durationInterval);
+        clearInterval(dataInterval);
+        setRecordingDuration(0);
+        
+        console.log('📊 Total chunks collected:', chunks.length);
+        console.log('📊 Total data size:', chunks.reduce((sum, chunk) => sum + chunk.size, 0), 'bytes');
+        
+        if (chunks.length === 0) {
+          console.error('❌ No chunks collected during recording!');
+          alert('No audio data was recorded. Please try again.');
+          stream.getTracks().forEach(track => track.stop());
+          setIsRecording(false);
+          return;
+        }
+        
+        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+        console.log('🎤 === AUDIO BLOB CREATION ===');
+        console.log('✅ Audio blob created:', audioBlob.size, 'bytes');
+        console.log('✅ Audio blob type:', audioBlob.type);
+        console.log('✅ Audio blob exists:', !!audioBlob);
+        console.log('✅ Audio blob size > 0:', audioBlob.size > 0);
+        console.log('✅ Recording language:', recordingLanguage);
+        
+        // Verify audio blob is valid
+        if (!audioBlob || audioBlob.size === 0) {
+          console.error('❌ CRITICAL: Audio blob is invalid or empty!');
+          console.error('❌ Blob size:', audioBlob?.size || 0);
+          alert('Audio recording failed - no audio data captured. Please try again.');
+          stream.getTracks().forEach(track => track.stop());
+          setIsRecording(false);
+          return;
+        }
+        
+        console.log('✅ Audio blob verified - valid and non-empty');
+        
+        // Store audio blob for pronunciation analysis
+        setMicRecordingBlob(audioBlob);
+        console.log('✅ Audio blob stored in state (micRecordingBlob)');
+        // Reset transcription state
+        setMicRecordingTranscription(null);
+        console.log('✅ Transcription state reset');
+        
+        // Create message immediately with placeholder
+        const audioUrl = URL.createObjectURL(audioBlob);
+        console.log('✅ Audio URL created for playback:', audioUrl);
+        const messageId = Date.now().toString();
+        setCurrentMicMessageId(messageId);
+        console.log('✅ Message ID set:', messageId);
+        
+        const audioMessage: ChatMessage = {
+          id: messageId,
+          role: 'user',
+          content: '🎤 Recording...',
+          timestamp: new Date().toISOString(),
+          audioUrl: audioUrl,
+          isAudio: true,
+          isTranscribing: true
+        };
+        
+        console.log('✅ Creating message immediately with placeholder:', messageId);
+        console.log('✅ Message audioUrl:', audioUrl);
+        updateMessageStatus(messageId, 'checking');
+        
+        // Add to chat immediately
+        setChatMessages(prev => {
+          console.log('🆕 === ADDING NEW MESSAGE TO CHAT IMMEDIATELY ===');
+          const newMessages = [...prev, audioMessage];
+          console.log('✅ Message added to chat with placeholder');
+          console.log('✅ Total messages in chat:', newMessages.length);
+          return newMessages;
+        });
+        
+        // Process audio in background (don't await - let it run async)
+        // Pass messageId directly to avoid state timing issues
+        // Add a small delay to ensure message is in state before processing
+        console.log('⏳ Scheduling audio processing in 100ms...');
+        console.log('📤 Will send to Deepgram API (via whisper function) with language:', recordingLanguage === 'german' ? 'de' : 'en');
+        setTimeout(() => {
+          console.log('🚀 Starting audio processing...');
+          console.log('📦 Audio blob size before processing:', audioBlob.size, 'bytes');
+          console.log('📦 Message ID for processing:', messageId);
+          processAudioMessage(audioBlob, messageId).catch(error => {
+            console.error('❌ Error processing audio message:', error);
+          });
+        }, 100);
+        
+        stream.getTracks().forEach(track => track.stop());
+        console.log('✅ Media stream tracks stopped');
+      };
+
+      console.log('🎤 Starting MediaRecorder...');
+      recorder.start();
+      console.log('✅ MediaRecorder started, state:', recorder.state);
+      setMediaRecorder(recorder);
+      setIsRecording(true);
+      console.log('✅ Recording state set to true');
+    } catch (error) {
+      console.error('❌ Error starting recording:', error);
+      setIsRecording(false);
+      alert('Microphone access denied. Please allow microphone access to use voice input.');
+    }
+  };
+
+  const stopRecording = () => {
+    console.log('🛑 === STOP RECORDING CALLED ===');
+    console.log('MediaRecorder exists:', !!mediaRecorder);
+    console.log('Is recording:', isRecording);
+    console.log('MediaRecorder state:', mediaRecorder?.state);
+    
+    if (mediaRecorder && isRecording) {
+      console.log('✅ Stopping MediaRecorder...');
+      try {
+        if (mediaRecorder.state === 'recording') {
+          mediaRecorder.stop();
+          console.log('✅ MediaRecorder.stop() called');
+        } else {
+          console.warn('⚠️ MediaRecorder is not in recording state:', mediaRecorder.state);
+        }
+        setIsRecording(false);
+        console.log('✅ Recording state set to false');
+      } catch (error) {
+        console.error('❌ Error stopping recorder:', error);
+        setIsRecording(false);
+      }
+    } else {
+      console.warn('⚠️ Cannot stop recording - mediaRecorder or isRecording is false');
+    }
+  };
+
+  // Stop practice recording handler for suggested responses
+  const handleStopPracticeResponse = (responseId: string, responseText: string) => {
+    console.log('🛑 === STOP PRACTICE RESPONSE CLICKED ===');
+    console.log('Response ID:', responseId);
+    console.log('Response Text:', responseText);
+    
+    const recorder = practiceRecorders[responseId];
+    if (recorder && recorder.state !== 'inactive') {
+      console.log('🛑 Stopping recorder for response:', responseId);
+      recorder.stop();
+      // The recorder.onstop handler will set showAnalyze to true
+    } else {
+      console.log('⚠️ No active recorder found for response:', responseId);
+      // Manually set states if recorder not found
+      setResponseRecordingState(prev => ({
+        ...prev,
+        [responseId]: false
+      }));
+    }
+  };
+
+  // Practice recording handlers for suggested responses
+  const handlePracticeResponse = async (responseId: string, responseText: string) => {
+    console.log('🎤 === PRACTICE RESPONSE CLICKED ===');
+    console.log('Response ID:', responseId);
+    console.log('Response Text:', responseText);
+
+    // Check if already recording - stop recording
+    if (responseRecordingState[responseId]) {
+      const recorder = practiceRecorders[responseId];
+      if (recorder && recorder.state !== 'inactive') {
+        recorder.stop();
+      }
+      return;
+    }
+
+    // Reset hasBeenAnalyzed when starting a new practice (Practice Again)
+    // This allows the Analyse button to be enabled again after recording
+    setResponseHasBeenAnalyzed(prev => ({
+      ...prev,
+      [responseId]: false
+    }));
+
+    // Reset showAnalyze initially, will be set to true after recording stops
+    setResponseShowAnalyze(prev => ({
+      ...prev,
+      [responseId]: false
+    }));
+    
+    // Ensure Analyze button is NOT shown while recording
+    console.log('🔄 Reset showAnalyze for response:', responseId, '- Analyze button will be enabled after Stop');
+
+    // Start recording
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           chunks.push(event.data);
@@ -3499,27 +4101,318 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       };
 
       recorder.onstop = async () => {
-        clearInterval(durationInterval);
-        setRecordingDuration(0);
         const audioBlob = new Blob(chunks, { type: 'audio/webm' });
-        await processAudioMessage(audioBlob);
+        console.log('🎤 === RECORDING STOPPED FOR RESPONSE ===');
+        console.log('Audio blob size:', audioBlob.size, 'bytes');
+        
+        // Store audio blob
+        setRecordedAudioBlobs(prev => {
+          const newMap = new Map(prev);
+          newMap.set(responseId, { blob: audioBlob, text: responseText });
+          return newMap;
+        });
+
+        // Show Analyze button - enable it after recording stops
+        setResponseShowAnalyze(prev => {
+          const newState = {
+            ...prev,
+            [responseId]: true
+          };
+          console.log('✅ Analyze button enabled for response:', responseId);
+          console.log('📊 Updated responseShowAnalyze:', newState);
+          return newState;
+        });
+
+        // Stop recording state
+        setResponseRecordingState(prev => ({
+          ...prev,
+          [responseId]: false
+        }));
+
+        // Clean up recorder
+        setPracticeRecorders(prev => {
+          const newRecorders = { ...prev };
+          delete newRecorders[responseId];
+          return newRecorders;
+        });
+
+        // Stop all tracks
         stream.getTracks().forEach(track => track.stop());
       };
 
       recorder.start();
-      setMediaRecorder(recorder);
-      setIsRecording(true);
+      
+      // Update state
+      setResponseRecordingState(prev => ({
+        ...prev,
+        [responseId]: true
+      }));
+      
+      setPracticeRecorders(prev => ({
+        ...prev,
+        [responseId]: recorder
+      }));
     } catch (error) {
-      console.error('Error starting recording:', error);
+      console.error('❌ Error starting practice recording:', error);
       alert('Microphone access denied. Please allow microphone access to use voice input.');
     }
   };
 
-  const stopRecording = () => {
-    if (mediaRecorder && isRecording) {
-      mediaRecorder.stop();
-      setIsRecording(false);
+  // Analyze handler - navigates to pronunciation tab
+  const handleAnalyzeResponse = (responseId: string, responseText: string) => {
+    console.log('🔍 === ANALYZE RESPONSE CLICKED ===');
+    console.log('Response ID:', responseId);
+    console.log('Response Text:', responseText);
+
+    const audioData = recordedAudioBlobs.get(responseId);
+    if (!audioData) {
+      console.error('❌ No audio blob found for response:', responseId);
+      alert('Please record audio first before analyzing.');
+      return;
     }
+
+    // Set pending analysis
+    setPendingPronunciationAnalysis({
+      audioBlob: audioData.blob,
+      text: responseText,
+      responseId
+    });
+
+    // Navigate to pronunciation tab - ensure toolbar is visible and expanded
+    setToolbarActiveTab('pronunciation');
+    setShowToolbar(true);
+    setToolbarCollapsed(false);
+
+    // Mark as analyzed
+    setResponseHasBeenAnalyzed(prev => ({
+      ...prev,
+      [responseId]: true
+    }));
+  };
+
+  // Helper function to re-transcribe audio blob using Deepgram API (via whisper function)
+  const reTranscribeAudio = async (audioBlob: Blob): Promise<string | null> => {
+    console.log('🔄 === RE-TRANSCRIBING AUDIO ===');
+    console.log('Audio blob size:', audioBlob.size, 'bytes');
+    
+    try {
+      // Convert blob to base64
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      // Convert to base64 in chunks
+      let binaryString = '';
+      const chunkSize = 8192;
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.slice(i, i + chunkSize);
+        binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      
+      const base64Audio = btoa(binaryString);
+      console.log('Base64 audio length:', base64Audio.length);
+      
+      // Call Deepgram API (via whisper function)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whisper`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audioData: base64Audio,
+          language: recordingLanguage === 'german' ? 'de' : 'en',
+          storeForAnalysis: true
+        }),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Re-transcription failed:', response.status, errorText);
+        return null;
+      }
+      
+      const data = await response.json();
+      
+      if (data.transcription && typeof data.transcription === 'string') {
+        const transcription = data.transcription.trim();
+        console.log('✅ Re-transcription successful:', transcription);
+        return transcription;
+      } else {
+        console.error('❌ Invalid re-transcription response:', data);
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Re-transcription error:', error);
+      return null;
+    }
+  };
+
+  // Message-level Analyse handler - navigates to pronunciation tab with mic recording
+  const handleMessageAnalyse = async (messageId: string) => {
+    console.log('🔍 === MESSAGE ANALYSE CLICKED ===');
+    console.log('Message ID:', messageId);
+    console.log('Current micRecordingBlob:', micRecordingBlob ? `exists (${micRecordingBlob.size} bytes)` : 'null');
+    console.log('Current micRecordingTranscription:', micRecordingTranscription);
+    
+    if (!micRecordingBlob) {
+      console.error('❌ No mic recording blob found');
+      alert('No audio recording available for analysis.');
+      return;
+    }
+
+    // Get transcript from message content or stored transcription
+    const message = chatMessages.find(msg => msg.id === messageId);
+    let transcription = micRecordingTranscription || (message?.content && message.content !== '🎤 Recording...' && message.content !== '🎤 Voice message' ? message.content : null);
+    
+    if (!transcription || transcription.trim().length === 0) {
+      console.error('❌ No transcription available');
+      alert('No transcription available. Please wait for transcription to complete.');
+      return;
+    }
+
+    // Validate transcript has letters
+    const hasLetters = /[a-zA-ZäöüÄÖÜß]/.test(transcription);
+    if (!hasLetters) {
+      console.error('❌ Transcription does not contain letters:', transcription);
+      alert('Invalid transcription - no readable text detected.');
+      return;
+    }
+
+    console.log('✅ Using transcription for pronunciation analysis:', transcription);
+
+    // Set pending analysis with mic recording
+    const responseId = `mic-${messageId}-${Date.now()}`;
+    console.log('📝 Setting pendingPronunciationAnalysis with:');
+    console.log('  - audioBlob:', micRecordingBlob.size, 'bytes');
+    console.log('  - text:', transcription);
+    console.log('  - responseId:', responseId);
+    
+    setPendingPronunciationAnalysis({
+      audioBlob: micRecordingBlob,
+      text: transcription.trim(),
+      responseId: responseId
+    });
+
+    // Navigate to pronunciation tab - ensure toolbar is visible and expanded
+    setToolbarActiveTab('pronunciation');
+    setShowToolbar(true);
+    setToolbarCollapsed(false);
+    
+    console.log('✅ Navigation to pronunciation tab completed');
+  };
+
+  // Mic button Analyze handler - navigates to pronunciation tab with mic recording (kept for backward compatibility)
+  const handleMicAnalyze = async () => {
+    console.log('🔍 === MIC ANALYZE CLICKED ===');
+    console.log('Current micRecordingBlob:', micRecordingBlob ? `exists (${micRecordingBlob.size} bytes)` : 'null');
+    console.log('Current micRecordingTranscription:', micRecordingTranscription);
+    console.log('Current micRecordingTranscription type:', typeof micRecordingTranscription);
+    
+    if (!micRecordingBlob) {
+      console.error('❌ No mic recording blob found');
+      alert('Please record audio first before analyzing.');
+      return;
+    }
+
+    // Check if we have a transcription and if it's valid
+    let transcription = micRecordingTranscription ? micRecordingTranscription.trim() : null;
+    let needsReTranscription = false;
+    
+    // If no transcription exists, or if it's invalid/gibberish, re-transcribe
+    if (!transcription || transcription.length === 0) {
+      console.log('🔄 No transcription available - re-transcribing...');
+      needsReTranscription = true;
+    } else {
+      // Validate the existing transcription
+      const validationResult = validateTranscript(transcription);
+      if (!validationResult.isValid) {
+        console.log('🔄 Existing transcription is gibberish - re-transcribing...');
+        console.log('🔄 Validation reason:', validationResult.reason);
+        needsReTranscription = true;
+      }
+    }
+
+    // Re-transcribe if needed
+    if (needsReTranscription) {
+      console.log('🔄 === RE-TRANSCRIBING AUDIO FOR ANALYSIS ===');
+      console.log('🔄 Re-transcribing audio blob to get valid transcription...');
+      
+      // Show loading state
+      const reTranscribedText = await reTranscribeAudio(micRecordingBlob);
+      
+      if (!reTranscribedText || reTranscribedText.trim().length === 0) {
+        console.error('❌ Re-transcription failed or returned empty');
+        alert('Unable to transcribe the audio. Please try recording again.');
+        return;
+      }
+      
+      // Validate the re-transcribed text
+      const reValidationResult = validateTranscript(reTranscribedText);
+      if (!reValidationResult.isValid) {
+        console.error('❌ Re-transcription still returned gibberish:', reTranscribedText);
+        console.error('❌ Validation reason:', reValidationResult.reason);
+        alert('Unable to get a valid transcription from the audio. Please try recording again with clearer speech.');
+        return;
+      }
+      
+      // Use the re-transcribed text
+      transcription = reTranscribedText;
+      console.log('✅ Using re-transcribed text for analysis:', transcription);
+      
+      // Update the stored transcription
+      setMicRecordingTranscription(transcription);
+    } else {
+      console.log('✅ Using existing valid transcription:', transcription);
+    }
+
+    // Final validation: Ensure transcription has content and letters
+    if (!transcription || transcription.length === 0) {
+      console.error('❌ Final transcription is empty');
+      alert('No transcription available. Please record again.');
+      return;
+    }
+
+    const hasLetters = /[a-zA-ZäöüÄÖÜß]/.test(transcription);
+    if (!hasLetters) {
+      console.error('❌ Transcription does not contain letters:', transcription);
+      alert('Invalid transcription - no readable text detected. Please speak clearly and record again.');
+      return;
+    }
+
+    console.log('✅ Using transcription for pronunciation analysis:', transcription);
+    console.log('✅ Transcription length:', transcription.length);
+
+    // Clear any previous pronunciation analysis results before setting new pending analysis
+    console.log('🧹 Clearing previous pronunciation analysis');
+    
+    // Set pending analysis with mic recording - this overwrites any previous pending analysis
+    const micResponseId = `mic-${Date.now()}`;
+    console.log('📝 Setting pendingPronunciationAnalysis with:');
+    console.log('  - audioBlob:', micRecordingBlob.size, 'bytes');
+    console.log('  - text:', transcription);
+    console.log('  - responseId:', micResponseId);
+    
+    setPendingPronunciationAnalysis({
+      audioBlob: micRecordingBlob,
+      text: transcription,
+      responseId: micResponseId
+    });
+
+    // Navigate to pronunciation tab - ensure toolbar is visible and expanded
+    setToolbarActiveTab('pronunciation');
+    setShowToolbar(true);
+    setToolbarCollapsed(false);
+
+    // Hide the Analyse button after clicking
+    setShowMicAnalyzeButton(false);
+    
+    console.log('✅ Navigation to pronunciation tab completed');
   };
 
   // Modal recording functions
@@ -3798,15 +4691,22 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     }
   };
 
-  const processAudioMessage = async (audioBlob: Blob) => {
+  const processAudioMessage = async (audioBlob: Blob, preExistingMessageId?: string) => {
     // Store audio blob for practice modal use
     setPracticeAudioBlob(audioBlob);
+    
+    // If messageId was passed directly (from stopRecording), use it
+    // Otherwise check state for pre-existing message
+    if (!preExistingMessageId) {
+      preExistingMessageId = currentMicMessageId;
+    }
     
     // Check if we're in a retry state - be more robust in detection
     const isRetry = Boolean(activeMessageId);
     const existingMessageId = activeMessageId;
 
     console.log('🎤 === PROCESSING AUDIO MESSAGE ===');
+    console.log('Pre-existing message ID (from parameter or state):', preExistingMessageId);
     console.log('Is retry:', isRetry);
     console.log('Existing message ID:', existingMessageId);
     console.log('Waiting for correction:', waitingForCorrection);
@@ -3821,6 +4721,57 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     console.log('errorMessages values:', Object.values(errorMessages));
     
     let messageId = '';
+    
+    // If message was already created in stopRecording, use that messageId
+    // CRITICAL: Never create a new message if preExistingMessageId is set
+    if (preExistingMessageId) {
+      console.log('✅ Using pre-existing message ID from mic recording:', preExistingMessageId);
+      messageId = preExistingMessageId;
+      
+      // Wait for React state to update (message was just added in stopRecording)
+      // Retry multiple times to ensure we find the message
+      let messageFound = false;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        // Verify message exists using functional state access
+        setChatMessages(currentMessages => {
+          const messageExists = currentMessages.find(msg => msg.id === preExistingMessageId);
+          if (messageExists) {
+            messageFound = true;
+            console.log(`✅ Message found in chatMessages (attempt ${attempt + 1}):`, preExistingMessageId);
+          } else if (attempt === 0) {
+            console.log(`⏳ Message not found yet (attempt ${attempt + 1}), retrying...`);
+            console.log('Current message IDs:', currentMessages.map(m => m.id));
+          }
+          return currentMessages; // Don't modify, just read
+        });
+        
+        if (messageFound) {
+          break;
+        }
+      }
+      
+      if (messageFound) {
+        // Process audio in background - message already exists, just need to transcribe
+        console.log('✅ Message confirmed, starting transcription...');
+        await transcribeAudio(audioBlob, messageId, false);
+        // Clear after transcription completes
+        setCurrentMicMessageId(null);
+        return;
+      } else {
+        // CRITICAL: If message still doesn't exist, log error but DON'T create new message
+        // This prevents duplicate messages
+        console.error('❌ CRITICAL: Message not found after multiple retries:', preExistingMessageId);
+        console.error('❌ This should not happen - message was created in stopRecording()');
+        console.error('❌ NOT creating duplicate message - transcription will be skipped');
+        // Still try to transcribe with the messageId we have - it might work if message exists
+        console.log('⚠️ Attempting transcription anyway with messageId:', preExistingMessageId);
+        await transcribeAudio(audioBlob, preExistingMessageId, false);
+        setCurrentMicMessageId(null);
+        return; // CRITICAL: Return here to prevent creating duplicate message
+      }
+    }
     
     if (isRetry && existingMessageId) {
       // This is a retry - update existing message
@@ -3872,27 +4823,38 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         console.log('- existingMessageId:', existingMessageId);
         console.log('- waitingForCorrection:', waitingForCorrection);
         
+        const audioUrl = URL.createObjectURL(audioBlob);
+        console.log('✅ Audio URL created:', audioUrl);
+        console.log('✅ Audio blob size:', audioBlob.size, 'bytes');
+        console.log('✅ Audio blob type:', audioBlob.type);
+        
         const audioMessage: ChatMessage = {
           id: Date.now().toString(), // Always create new ID to avoid duplicates
           role: 'user',
-          content: showLanguageMismatchModal ? '🎤 Voice message' : '🎤 Voice message',
+          content: '🎤 Voice message',
           timestamp: new Date().toISOString(),
-          audioUrl: URL.createObjectURL(audioBlob),
-          isAudio: true,
+          audioUrl: audioUrl, // Set audioUrl immediately for play button
+          isAudio: true, // Mark as audio message
           isTranscribing: true
         };
         
         messageId = audioMessage.id;
+        console.log('✅ Message created with ID:', messageId);
+        console.log('✅ Message audioUrl:', audioMessage.audioUrl);
+        console.log('✅ Message isAudio:', audioMessage.isAudio);
 
         updateMessageStatus(messageId, 'checking');
+        console.log('✅ Message status set to "checking"');
         
         // Add to chat immediately
         setChatMessages(prev => {
           console.log('🆕 === ADDING NEW MESSAGE TO CHAT ===');
           console.log('New message ID:', messageId);
           console.log('Previous messages count:', prev.length);
+          console.log('Audio URL in message:', audioMessage.audioUrl);
           const newMessages = [...prev, audioMessage];
           console.log('New messages count:', newMessages.length);
+          console.log('✅ Message added to chat - play button should be enabled');
           return newMessages;
         });
       }
@@ -3902,6 +4864,95 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     await transcribeAudio(audioBlob, messageId, isRetry);
   };
 
+  // Comprehensive transcript validation function
+  // Tests and confirms transcript is valid before displaying
+  const validateTranscript = (transcript: string): { isValid: boolean; reason?: string; matchedPattern?: string } => {
+    const trimmed = transcript.trim();
+    
+    console.log('🔍 validateTranscript called with:', trimmed);
+    
+    // Check if transcript is empty
+    if (!trimmed || trimmed.length === 0) {
+      console.log('🔍 Validation failed: empty transcript');
+      return { isValid: false, reason: 'empty' };
+    }
+    
+    // Comprehensive gibberish pattern detection
+    // Made more specific to avoid rejecting valid German text
+    // Only reject if it contains specific subtitle/credits patterns that are clearly metadata
+    const invalidPatterns: Array<{ pattern: RegExp; name: string; requireShort?: boolean }> = [
+      { pattern: /^🎤/i, name: 'placeholder_emoji' },  // Placeholder like "🎤 Voice message"
+      { pattern: /^Recording/i, name: 'placeholder_recording' },  // Placeholder like "Recording retry..."
+      // Very specific patterns for subtitle credits - these are almost always metadata
+      { pattern: /Untertitel.*Amara/i, name: 'amara_subtitle' },  // "Untertitel" with "Amara"
+      { pattern: /Untertitel.*Community/i, name: 'community_subtitle' },  // "Untertitel" with "Community"
+      { pattern: /Amara\.org/i, name: 'amara_org' },  // "Amara.org" anywhere (subtitle credits)
+      { pattern: /Amara\.org-Community/i, name: 'amara_community' },  // "Amara.org-Community" pattern
+      { pattern: /Amara-Community/i, name: 'amara_community_alt' },  // "Amara-Community" pattern
+      // Only reject "Untertitel im Auftrag" if it's a short transcript (likely just credits)
+      // Longer transcripts with actual content should be allowed
+      { pattern: /^Untertitel im Auftrag.*ZDF.*funk.*\d{4}$/i, name: 'zdf_subtitle_credits', requireShort: true },  // Full ZDF credit line
+      { pattern: /Community.*Untertitel/i, name: 'community_subtitle_reverse' },  // "Community Untertitel" pattern
+      { pattern: /^\d{4}$/, name: 'year_only' },  // Just year numbers like "2017"
+    ];
+    
+    // Check each pattern and log which one matched
+    for (const { pattern, name, requireShort } of invalidPatterns) {
+      if (pattern.test(trimmed)) {
+        // If pattern requires short transcript, only reject if transcript is short (likely just credits)
+        if (requireShort && trimmed.length > 50) {
+          console.log(`🔍 Pattern "${name}" matched but transcript is long (${trimmed.length} chars) - allowing`);
+          continue; // Skip this pattern, allow the transcript
+        }
+        console.log(`🔍 Validation failed: matched pattern "${name}" - ${pattern}`);
+        return { isValid: false, reason: 'gibberish_pattern', matchedPattern: name };
+      }
+    }
+    
+    // Additional check: Reject if transcript is very short and contains only credit-like patterns
+    // This catches cases like "Untertitel im Auftrag des ZDF für funk, 2017" when it's the only content
+    if (trimmed.length < 60) {
+      const creditIndicators = [
+        /Untertitel/i,
+        /im Auftrag/i,
+        /ZDF/i,
+        /funk/i,
+        /^\d{4}$/,
+        /Amara/i,
+        /Community/i
+      ];
+      
+      const matchedIndicators = creditIndicators.filter(pattern => pattern.test(trimmed)).length;
+      // If transcript is short and contains 3+ credit indicators, it's likely just credits
+      if (matchedIndicators >= 3) {
+        console.log(`🔍 Validation failed: short transcript (${trimmed.length} chars) with ${matchedIndicators} credit indicators - likely subtitle metadata`);
+        return { isValid: false, reason: 'gibberish_pattern', matchedPattern: 'multiple_credit_indicators' };
+      }
+    }
+    
+    console.log('🔍 No gibberish patterns matched');
+    
+    // Check if transcript has meaningful content (letters)
+    const hasLetters = /[a-zA-ZäöüÄÖÜß]/.test(trimmed);
+    if (!hasLetters) {
+      return { isValid: false, reason: 'no_letters' };
+    }
+    
+    // Check transcript length (too short might be invalid)
+    if (trimmed.length < 2) {
+      return { isValid: false, reason: 'too_short' };
+    }
+    
+    // Check for too many repeated characters (might indicate corrupted transcription)
+    const repeatedChars = /(.)\1{4,}/.test(trimmed);
+    if (repeatedChars) {
+      return { isValid: false, reason: 'repeated_chars' };
+    }
+    
+    // All validation checks passed
+    return { isValid: true };
+  };
+  
   const transcribeAudio = async (audioBlob: Blob, messageId: string, isRetry: boolean = false) => {
     console.log('🎤 === TRANSCRIBE AUDIO START ===');
     console.log('Message ID:', messageId);
@@ -3912,13 +4963,44 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     
     setIsTranscribing(true);
     try {
-      // Log audio info for debugging
-      console.log('Audio blob size:', audioBlob.size, 'bytes');
-      console.log('Audio blob type:', audioBlob.type);
-      console.log('Recording language:', recordingLanguage);
+      // CRITICAL: Verify audio blob exists and is valid before processing
+      console.log('🔍 === VERIFYING AUDIO BLOB BEFORE TRANSCRIPTION ===');
+      if (!audioBlob) {
+        console.error('❌ CRITICAL: Audio blob is null or undefined!');
+        setChatMessages(prev => prev.map(msg => 
+          msg.id === messageId 
+            ? { ...msg, content: '❌ Recording failed - no audio data', isTranscribing: false }
+            : msg
+        ));
+        setIsTranscribing(false);
+        return;
+      }
+      
+      if (audioBlob.size === 0) {
+        console.error('❌ CRITICAL: Audio blob is empty (size = 0)!');
+        setChatMessages(prev => prev.map(msg => 
+          msg.id === messageId 
+            ? { ...msg, content: '❌ Recording failed - empty audio data', isTranscribing: false }
+            : msg
+        ));
+        setIsTranscribing(false);
+        return;
+      }
+      
+      console.log('✅ Audio blob verified - exists and non-empty');
+      console.log('📊 Audio blob size:', audioBlob.size, 'bytes');
+      console.log('📊 Audio blob type:', audioBlob.type);
+      console.log('📊 Recording language state:', recordingLanguage);
+      
+      // Ensure language is set correctly - default to 'de' for German if undefined
+      const languageToSend = recordingLanguage === 'german' ? 'de' : (recordingLanguage === 'english' ? 'en' : 'de');
+      console.log('🌍 Language to send to Deepgram API:', languageToSend);
+      console.log('🌍 Recording language check:', recordingLanguage === 'german' ? 'de' : 'en');
       
       // Convert blob to base64 using a safer method for large files
+      console.log('🔄 Converting audio blob to base64...');
       const arrayBuffer = await audioBlob.arrayBuffer();
+      console.log('✅ ArrayBuffer created, size:', arrayBuffer.byteLength, 'bytes');
       const uint8Array = new Uint8Array(arrayBuffer);
       
       // Use a more robust base64 conversion that handles large arrays
@@ -3931,11 +5013,13 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       }
       
       const base64Audio = btoa(binaryString);
-      
-      console.log('Base64 audio length:', base64Audio.length);
+      console.log('✅ Base64 conversion complete');
+      console.log('📊 Base64 audio length:', base64Audio.length, 'characters');
+      console.log('📊 Base64 audio preview (first 100 chars):', base64Audio.substring(0, 100));
 
       // Try the whisper function first, fallback to chat function if not available
       let response;
+      let isWhisperResponse = false; // Track if response is from Deepgram API (via whisper function)
       try {
         // Use auto-detection instead of forcing a specific language
         // This allows Whisper to detect the actual language spoken
@@ -3944,23 +5028,37 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
         
+        // Prepare request payload
+        const requestPayload = {
+          audioData: base64Audio,
+          language: languageToSend, // Use the verified language parameter
+          storeForAnalysis: true
+        };
+        
+        console.log('📤 === SENDING TO DEEPGRAM API (via whisper function) ===');
+        console.log('📤 API URL:', `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whisper`);
+        console.log('📤 Language parameter:', languageToSend);
+        console.log('📤 Audio data length:', base64Audio.length, 'characters');
+        console.log('📤 Store for analysis:', true);
+        
         response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whisper`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            audioData: base64Audio,
-            language: recordingLanguage === 'german' ? 'de' : 'en',
-            storeForAnalysis: true
-          }),
+          body: JSON.stringify(requestPayload),
           signal: controller.signal
         });
         
+        console.log('📥 === DEEPGRAM API RESPONSE RECEIVED ===');
+        console.log('📥 Response status:', response.status);
+        console.log('📥 Response ok:', response.ok);
+        
+        isWhisperResponse = true; // Mark that this is from Deepgram API
         clearTimeout(timeoutId);
       } catch (whisperError) {
-        console.log('Whisper function error:', whisperError);
+        console.log('Deepgram transcription function error:', whisperError);
         
         // Check if it's a timeout or size issue
         if ((whisperError as Error).name === 'AbortError') {
@@ -4008,25 +5106,290 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             difficultyLevel: 'Intermediate'
           })
         });
+        
+        isWhisperResponse = false; // This is NOT from Whisper API
       }
 
       if (response.ok) {
+        console.log('✅ Response is OK, parsing JSON...');
         const data = await response.json();
+        console.log('✅ Response data parsed successfully');
+        console.log('📦 Response data keys:', Object.keys(data));
+        console.log('📦 Full response data:', JSON.stringify(data, null, 2));
         
         // Check if this is a whisper response or chat fallback
         if (data.transcription) {
-          // Whisper function response
+          // Deepgram API response (via whisper function)
+          // CRITICAL: Use ONLY the transcription from Deepgram API, never from any other source
           const transcription = data.transcription;
           
-          // Detect language mismatch
+          console.log('🎤 === DEEPGRAM API TRANSCRIPTION RECEIVED ===');
+          console.log('📝 Raw transcription from API:', transcription);
+          console.log('📝 Transcription type:', typeof transcription);
+          console.log('📝 Transcription length:', transcription.length);
+          console.log('📝 Is from Deepgram API:', isWhisperResponse);
+          console.log('📝 Language in response:', data.language);
+          console.log('✅ Transcription received from Deepgram API');
+          
+          // CRITICAL VALIDATION: Ensure this transcription is from Deepgram API, not from chat fallback
+          // Only store mic transcription if this is confirmed to be from Deepgram API
+          if (!isWhisperResponse) {
+            console.warn('⚠️ Response is from chat fallback, not Deepgram API - skipping mic transcription storage');
+            console.warn('⚠️ Transcription from fallback:', transcription);
+          }
+          
+          // Validate that transcription is actually from Deepgram API and not a fallback
+          if (typeof transcription !== 'string') {
+            console.error('❌ Invalid transcription type from API:', typeof transcription);
+            console.error('❌ Transcription value:', transcription);
+            setChatMessages(prev => prev.map(msg => 
+              msg.id === messageId 
+                ? { ...msg, content: '❌ Invalid transcription received', isTranscribing: false }
+                : msg
+            ));
+            setIsTranscribing(false);
+            return;
+          }
+          
+          // Validate transcription is not empty
+          if (!transcription || transcription.trim().length === 0) {
+            console.error('❌ Empty transcription received from API');
+            setChatMessages(prev => prev.map(msg => 
+              msg.id === messageId 
+                ? { ...msg, content: '❌ No transcription received - no speech detected', isTranscribing: false }
+                : msg
+            ));
+            setIsTranscribing(false);
+            return;
+          }
+          
+          // CRITICAL: Store transcription IMMEDIATELY for mic recordings if micRecordingBlob exists
+          // This ensures we capture the actual API transcription before any other processing
+          // Store it regardless of language detection - we'll validate later
+          // ONLY store if this is confirmed to be from Deepgram API
+          if (micRecordingBlob && isWhisperResponse) {
+            const actualTranscription = transcription.trim();
+            if (actualTranscription && actualTranscription.length > 0) {
+              console.log('🎤 === STORING MIC RECORDING TRANSCRIPTION IMMEDIATELY ===');
+              console.log('✅ Storing actual API transcription immediately:', actualTranscription);
+              console.log('✅ Storing BEFORE language detection or any other processing');
+              console.log('✅ Confirmed source: Deepgram API');
+              setMicRecordingTranscription(actualTranscription);
+              
+              // Verify storage
+              setTimeout(() => {
+                console.log('✅ Verification: micRecordingTranscription stored immediately as:', actualTranscription);
+              }, 0);
+            }
+          } else if (micRecordingBlob && !isWhisperResponse) {
+            console.warn('⚠️ NOT storing mic transcription - response is not from Deepgram API');
+            console.warn('⚠️ Transcription would have been:', transcription);
+          }
+          
+          // VALIDATE transcript before displaying - test and confirm it's valid
+          const trimmedTranscription = transcription.trim();
+          
+          // Only check if transcription is truly empty (API failure case)
+          if (!trimmedTranscription || trimmedTranscription.length === 0) {
+            console.error('❌ Empty transcription from Deepgram API:', transcription);
+            setChatMessages(prev => {
+              const updatedMessages = prev.map(msg => {
+                if (msg.id === messageId) {
+                  return { 
+                    ...msg, 
+                    content: '❌ Transcription failed - no audio detected', 
+                    isTranscribing: false 
+                  };
+                }
+                return msg;
+              });
+              return updatedMessages;
+            });
+            
+            setIsTranscribing(false);
+            updateMessageStatus(messageId, 'error');
+            
+            return;
+          }
+          
+          // TEST AND CONFIRM transcript is valid before displaying
+          console.log('🔍 === TRANSCRIPT VALIDATION START ===');
+          console.log('🔍 Transcription to validate:', trimmedTranscription);
+          console.log('🔍 Transcription length:', trimmedTranscription.length);
+          console.log('🔍 Recording language:', recordingLanguage);
+          
+          const validationResult = validateTranscript(trimmedTranscription);
+          
+          console.log('🔍 === TRANSCRIPT VALIDATION RESULT ===');
+          console.log('🔍 Validation result:', JSON.stringify(validationResult, null, 2));
+          console.log('🔍 Is valid:', validationResult.isValid);
+          if (!validationResult.isValid) {
+            console.log('🔍 Validation reason:', validationResult.reason);
+            console.log('🔍 Matched pattern (if any):', validationResult.matchedPattern || 'N/A');
+          }
+          
+          // Keep message with placeholder when gibberish detected - don't display gibberish transcript
+          if (!validationResult.isValid) {
+            console.error('❌ Invalid transcript detected - keeping message with placeholder');
+            console.error('❌ Invalid transcription:', trimmedTranscription);
+            console.error('❌ Validation reason:', validationResult.reason);
+            if (validationResult.matchedPattern) {
+              console.error('❌ Matched pattern:', validationResult.matchedPattern);
+            }
+            console.error('❌ Keeping message visible with placeholder "🎤 Voice message"');
+            
+            // Keep the message visible but with placeholder instead of gibberish
+            setChatMessages(prev => {
+              const updatedMessages = prev.map(msg => {
+                if (msg.id === messageId) {
+                  console.log('✅ KEEPING MESSAGE WITH PLACEHOLDER FOR GIBBERISH TRANSCRIPT');
+                  console.log('Original content:', msg.content);
+                  console.log('Keeping placeholder: 🎤 Voice message');
+                  
+                  return { 
+                    ...msg, 
+                    content: '🎤 Voice message',  // Keep placeholder instead of gibberish
+                    isTranscribing: false,
+                    audioUrl: msg.audioUrl, // Preserve existing audio URL for playback
+                    isAudio: true // Keep isAudio flag so play button displays
+                  };
+                }
+                return msg;
+              });
+              return updatedMessages;
+            });
+            
+            setIsTranscribing(false);
+            // Don't set error status - just keep placeholder message
+            
+            // Clear checking status to remove "Checking your message..." indicator
+            if (messageId) {
+              clearCheckingStatus(messageId);
+              console.log('✅ Cleared checking status for invalid transcript');
+            }
+            
+            // For gibberish transcripts, keep placeholder - Analyse button won't show until valid transcript
+            // User can still use Play button to listen to recording
+            console.log('⚠️ Invalid transcript - keeping placeholder, Analyse button will not appear');
+            
+            return; // Don't proceed with processing invalid transcript
+          }
+          
+          // VALID TRANSCRIPTION CONFIRMED - display the EXACT transcription from Deepgram API word-for-word
+          console.log('✅ Valid transcription confirmed - displaying EXACT transcript word-for-word:', trimmedTranscription);
+          console.log('✅ Transcript length:', trimmedTranscription.length);
+          console.log('✅ Transcript is from Deepgram API - no modifications applied');
+          
+          // CRITICAL: Update message with transcript - ensure it's displayed immediately
+          // Use retry mechanism to handle React state timing issues
+          let updateAttempted = false;
+          for (let attempt = 0; attempt < 10; attempt++) {
+            if (attempt > 0) {
+              await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            
+            setChatMessages(prev => {
+              const messageExists = prev.find(msg => msg.id === messageId);
+              
+              if (messageExists) {
+                console.log(`✅ === UPDATING MESSAGE WITH TRANSCRIPT (attempt ${attempt + 1}) ===`);
+                console.log('Message ID:', messageId);
+                console.log('Current messages:', prev.map(m => ({ id: m.id, content: m.content.substring(0, 50) })));
+                console.log('Existing message content:', messageExists.content);
+                console.log('New content (EXACT transcription from Deepgram API):', trimmedTranscription);
+                console.log('✅ No modifications - displaying word-for-word as received from API');
+                
+                updateAttempted = true;
+                
+                // Store transcribed text as original message for suggestion generation (voice input)
+                if (!isRetry) {
+                  console.log('📝 === STORING TRANSCRIBED TEXT AS ORIGINAL MESSAGE FOR VOICE INPUT ===');
+                  console.log('Message ID:', messageId);
+                  console.log('Transcribed text:', trimmedTranscription);
+                  setOriginalMessages(prev => ({
+                    ...prev,
+                    [messageId]: trimmedTranscription
+                  }));
+                }
+                
+                // Update the message with transcript
+                return prev.map(msg => {
+                  if (msg.id === messageId) {
+                    return { 
+                      ...msg, 
+                      content: trimmedTranscription,  // Display EXACT transcription word-for-word from Deepgram API
+                      isTranscribing: false,
+                      audioUrl: msg.audioUrl, // Preserve existing audio URL for playback (set when message was created)
+                      isAudio: true // Mark as audio message for proper UI display
+                    };
+                  }
+                  return msg;
+                });
+              } else if (attempt === 0) {
+                console.warn(`⚠️ Message not found on attempt ${attempt + 1}, will retry...`);
+                console.warn('Current message IDs:', prev.map(m => m.id));
+              }
+              
+              return prev; // Return unchanged if message not found
+            });
+            
+            if (updateAttempted) {
+              console.log('✅ Message updated with exact transcript - transcript displayed in chat');
+              break;
+            }
+          }
+          
+          if (!updateAttempted) {
+            console.error('❌ CRITICAL: Failed to update message with transcript after multiple attempts');
+            console.error('❌ MessageId:', messageId);
+            console.error('❌ Transcript:', trimmedTranscription);
+            // Final attempt - try one more time
+            setChatMessages(current => {
+              const msg = current.find(m => m.id === messageId);
+              if (msg) {
+                console.log('✅ Found message on final attempt, updating...');
+                return current.map(m => 
+                  m.id === messageId 
+                    ? { ...m, content: trimmedTranscription, isTranscribing: false, isAudio: true, audioUrl: m.audioUrl }
+                    : m
+                );
+              }
+              console.error('❌ Message still not found in final attempt');
+              console.error('Available message IDs:', current.map(m => m.id));
+              return current;
+            });
+          }
+          
+          // Clear loading states
+          setIsTranscribing(false);
+          
+          // Clear checking status to remove "Checking your message..." indicator
+          if (messageId) {
+            clearCheckingStatus(messageId);
+            console.log('✅ Cleared checking status after valid transcription');
+          }
+          
+          // Detect language for Analyse button visibility and other processing
           const detectedLanguage = detectLanguage(transcription);
           console.log('🔍 === VOICE LANGUAGE DETECTION DEBUG ===');
           console.log('Transcription:', transcription);
           console.log('Detected language:', detectedLanguage);
           console.log('Selected language:', recordingLanguage);
-          console.log('Language mismatch:', detectedLanguage !== recordingLanguage);
-          console.log('Show language mismatch modal state:', showLanguageMismatchModal);
-          console.log('Has English words check:', /\b(the|and|or|but|in|on|at|to|for|of|with|by|this|that|these|those|what|where|when|why|how|hello|hi|how|are|you)\b/i.test(transcription));
+          
+          // Check if language is not German (for mic recordings in German mode)
+          const isNotGerman = micRecordingBlob && recordingLanguage === 'german' && detectedLanguage !== 'german';
+          
+          // Store transcription for Analyse button on message
+          // Analyse button will be shown on the message itself, not next to mic button
+          if (micRecordingBlob && validationResult.isValid) {
+            console.log('🎤 === STORING TRANSCRIPTION FOR MESSAGE ANALYSE BUTTON ===');
+            console.log('✅ Valid transcription completed:', trimmedTranscription);
+            console.log('✅ micRecordingBlob exists:', micRecordingBlob.size, 'bytes');
+            console.log('✅ Transcript stored - Analyse button will appear on message');
+            setMicRecordingTranscription(trimmedTranscription);
+          }
+          
+          console.log('✅ Transcription displayed from Deepgram API');
           
           // Check if we're in practice modal mode
           if (showLanguageMismatchModal && germanSuggestion) {
@@ -4279,54 +5642,13 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           } else {
             console.log('✅ === LANGUAGES MATCH - PROCEEDING WITH NORMAL PROCESSING ===');
             console.log('Detected language:', detectedLanguage, 'Recording language:', recordingLanguage);
+            
+            // Analyse button logic is already handled above in the main flow
+            // No need to duplicate here - transcription is already displayed
           }
           
-          // Update the audio message with transcription - ensure message ID matches
-          setChatMessages(prev => {
-            console.log('🔄 === UPDATING MESSAGE WITH TRANSCRIPTION ===');
-            console.log('Message ID:', messageId);
-            console.log('Is Retry:', isRetry);
-            console.log('Transcription:', transcription);
-            console.log('Previous messages count:', prev.length);
-            console.log('All message IDs:', prev.map(msg => msg.id));
-            
-            // Verify the message exists
-            const targetMessage = prev.find(msg => msg.id === messageId);
-            if (!targetMessage) {
-              console.error('❌ === MESSAGE NOT FOUND FOR UPDATE ===');
-              console.error('Message ID:', messageId);
-              console.error('Available message IDs:', prev.map(msg => msg.id));
-              return prev; // Don't update if message not found
-            }
-            
-            console.log('✅ Message found, updating:', targetMessage.content);
-            
-            const updatedMessages = prev.map(msg => {
-              if (msg.id === messageId) {
-                console.log('✅ UPDATING MESSAGE:', msg.id);
-                console.log('Original content:', msg.content);
-                console.log('New content:', transcription);
-                
-                // Store transcribed text as original message for suggestion generation (voice input)
-                if (!isRetry) {
-                  console.log('📝 === STORING TRANSCRIBED TEXT AS ORIGINAL MESSAGE FOR VOICE INPUT ===');
-                  console.log('Message ID:', messageId);
-                  console.log('Transcribed text:', transcription);
-                  setOriginalMessages(prev => ({
-                    ...prev,
-                    [messageId]: transcription
-                  }));
-                }
-                
-                return { ...msg, content: transcription, isTranscribing: false };
-              }
-              return msg;
-            });
-            
-            console.log('Updated messages count:', updatedMessages.length);
-            console.log('Updated message content:', updatedMessages.find(msg => msg.id === messageId)?.content);
-            return updatedMessages;
-          });
+          // Message content has already been updated above with transcription or error message
+          // No need to update again - skip to retry handling and processing
           
           // If this is a retry, clear previous error states for this message
           if (isRetry) {
@@ -4481,7 +5803,21 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             await translateEnglishToGerman(transcription, messageId);
           }
         } else if (data.response) {
-          // Chat function fallback response
+          // Chat function fallback response - this should NOT happen for mic recordings
+          // For mic recordings, we need transcription, so show error instead
+          if (micRecordingBlob) {
+            console.error('❌ Deepgram API failed - no transcription available for mic recording');
+            setChatMessages(prev => prev.map(msg => 
+              msg.id === messageId 
+                ? { ...msg, content: '❌ Transcription failed - Deepgram API unavailable. Please try again.', isTranscribing: false }
+                : msg
+            ));
+            setIsTranscribing(false);
+            updateMessageStatus(messageId, 'error');
+            return;
+          }
+          
+          // For non-mic recordings (practice modal, etc.), use fallback
           const fallbackMessage = "🎤 Audio recorded (transcription not available)";
           
           // Update the audio message
@@ -4499,6 +5835,19 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             timestamp: new Date().toISOString()
           };
           setChatMessages(prev => [...prev, aiMessage]);
+        } else {
+          // No transcription and no response - this is an error for mic recordings
+          console.error('❌ No transcription or response in API response');
+          if (micRecordingBlob) {
+            setChatMessages(prev => prev.map(msg => 
+              msg.id === messageId 
+                ? { ...msg, content: '❌ Transcription failed - no data received. Please try again.', isTranscribing: false }
+                : msg
+            ));
+            setIsTranscribing(false);
+            updateMessageStatus(messageId, 'error');
+            return;
+          }
         }
       } else {
         const errorText = await response.text();
@@ -4526,39 +5875,52 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     } catch (error) {
       console.error('Error transcribing audio:', error);
 
-      let errorMessage = '❌ Transcription failed';
+      // Only show error for actual API failures, not for transcription content
+      let errorMessage = '❌ Transcription failed - please try again';
       
-      // Check if it's a CORS or function not found error
-      if ((error as Error).message.includes('Failed to fetch') || (error as Error).message.includes('CORS')) {
-        errorMessage = '⚠️ Whisper function not deployed. Audio recorded but transcription unavailable.';
-      } else if ((error as Error).message.includes('OpenAI API key not configured')) {
-        errorMessage = '⚠️ OpenAI API key not configured. Please check server settings.';
-      } else if ((error as Error).message.includes('No audio data provided')) {
-        errorMessage = '⚠️ No audio data received. Please try recording again.';
-      } else if ((error as Error).message.includes('Invalid audio data format')) {
-        errorMessage = '⚠️ Invalid audio format. Please try recording again.';
-      } else if ((error as Error).message.includes('OpenAI Whisper API error')) {
-        errorMessage = `⚠️ ${(error as Error).message}`;
-      } else if ((error as Error).message.includes('No transcription received')) {
-        errorMessage = '⚠️ No transcription received. Please try speaking more clearly.';
-      }
-      
-      // Update message to show appropriate error
-      setChatMessages(prev => prev.map(msg => 
-        msg.id === messageId 
-          ? { 
+      // Update message with error
+      setChatMessages(prev => {
+        const updatedMessages = prev.map(msg => {
+          if (msg.id === messageId) {
+            console.log('❌ Updating message with error due to transcription API failure');
+            return { 
               ...msg, 
               content: errorMessage, 
               isTranscribing: false 
-            }
-          : msg
-      ));
+            };
+          }
+          return msg;
+        });
+        return updatedMessages;
+      });
+      
+      // Clear loading states
+      setIsTranscribing(false);
       updateMessageStatus(messageId, 'error');
+      
+      // Note: Analyse button is now shown on the message itself, not via showMicAnalyzeButton state
+      // If transcription fails, the Analyse button won't appear since it requires a valid transcript
+      
+      // Clear checking status
+      if (messageId) {
+        clearCheckingStatus(messageId);
+      }
     } finally {
-      console.log('🏁 === TRANSCRIBE AUDIO END (NORMAL PROCESSING) ===');
+      console.log('🏁 === TRANSCRIBE AUDIO END ===');
       console.log('Final showLanguageMismatchModal state:', showLanguageMismatchModal);
       console.log('Final chat messages count:', chatMessages.length);
+      console.log('Final isTranscribing state:', isTranscribing);
+      console.log('Final micRecordingBlob exists:', !!micRecordingBlob);
+      console.log('Final showMicAnalyzeButton:', showMicAnalyzeButton);
+      
+      // Ensure isTranscribing is always cleared
       setIsTranscribing(false);
+      
+      // Clear checking status if still checking
+      if (messageId && messageStatus[messageId] === 'checking') {
+        console.log('Clearing stuck checking status for message:', messageId);
+        clearCheckingStatus(messageId);
+      }
     }
   };
 
@@ -4816,7 +6178,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     // Show toolbar but start collapsed
     setShowToolbar(true);
     setToolbarCollapsed(true);
-    setSidebarCollapsed(false);
+    // Don't collapse sidebar when starting new conversation - let user control it
+    // setSidebarCollapsed(false);
   };
 
   // Helper function to reset all conversation states (used by both end and new conversation)
@@ -4914,23 +6277,12 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     setShowSummaryModal(true);
     console.log('📊 Conversation summary generated and modal shown');
     
-    // Award points for completing conversation and check achievements
-    const wasPerfect = sessionData.grammarMistakes.length === 0 && 
-                       sessionData.pronunciationAttempts.filter(a => !a.isSuccess).length === 0;
-    
-    setPlayerStats(prev => {
-      const updatedStats = awardConversationCompletion(prev, wasPerfect);
-      
-      // Check for newly unlocked achievements
-      const newlyUnlocked = checkAchievements(updatedStats);
-      if (newlyUnlocked.length > 0) {
-        setRecentAchievements(newlyUnlocked);
-        setShowAchievement(newlyUnlocked[0]);
-      }
-      
-      return updatedStats;
-    });
-    console.log('🎯 Conversations completed and points awarded');
+    // Increment conversations completed
+    setPlayerStats(prev => ({
+      ...prev,
+      conversationsCompleted: prev.conversationsCompleted + 1
+    }));
+    console.log('🎯 Conversations completed incremented');
     
     // Reset all states
     resetAllConversationStates();
@@ -4949,15 +6301,43 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
   };
 
   const handleOnboardingComplete = (data: OnboardingData) => {
-    setOnboardingData(data);
+    // Ensure all array fields are properly initialized (same as existing users)
+    const normalizedData: OnboardingData = {
+      ...data,
+      goals: Array.isArray(data.goals) ? data.goals : [],
+      personalityTraits: Array.isArray(data.personalityTraits) ? data.personalityTraits : [],
+      conversationTopics: Array.isArray(data.conversationTopics) ? data.conversationTopics : [],
+      germanLevel: data.germanLevel || 'beginner', // Default to beginner if not set
+      // Keep backward compatibility fields
+      motivations: Array.isArray(data.motivations) ? data.motivations : [],
+      hobbies: Array.isArray(data.hobbies) ? data.hobbies : [],
+      speakingFears: Array.isArray(data.speakingFears) ? data.speakingFears : [],
+    };
+    
+    setOnboardingData(normalizedData);
     setShowOnboarding(false);
     setIsNewUser(false);
-    setCurrentProfilePicture(data.profilePictureUrl || null);
-    localStorage.setItem(`onboarding_${user.id}`, JSON.stringify(data));
+    setCurrentProfilePicture(normalizedData.profilePictureUrl || null);
+    localStorage.setItem(`onboarding_${user.id}`, JSON.stringify(normalizedData));
+    
+    // Set context level based on focus group
+    if (normalizedData.focusGroup === 'travelers') {
+      setContextLevel('Casual');
+    } else if (normalizedData.focusGroup === 'business') {
+      setContextLevel('Professional');
+    }
     
     // 🎮 Give XP for completing onboarding
     addExperience(50, 'onboarding_complete');
     addAchievement('onboarding_complete', '🚀 Getting Started', 'Completed your profile setup!');
+    
+    // Show hints after onboarding achievement modal closes (if not already dismissed)
+    // Achievement modal auto-closes after 3000ms, so wait 4000ms to ensure it's fully closed and animations finished
+    setTimeout(() => {
+      if (!hintsDismissed) {
+        setShowHints(true);
+      }
+    }, 4000);
   };
 
   const handleProfilePictureUpdate = (newUrl: string | null) => {
@@ -4974,6 +6354,47 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
   const handleRestartOnboarding = () => {
     setShowOnboarding(true);
+  };
+
+  // Hints handlers
+  const handleDismissHints = async () => {
+    setShowHints(false);
+    setHintsDismissed(true);
+    
+    // Save to database
+    try {
+      await supabase
+        .from('user_onboarding')
+        .update({ hints_dismissed: true })
+        .eq('user_id', user.id);
+    } catch (error) {
+      console.error('Error saving hints dismissal:', error);
+    }
+  };
+
+  const handleSkipAllHints = async () => {
+    setShowHints(false);
+    setShowChatHints(false);
+    setHintsDismissed(true);
+    
+    // Save to database
+    try {
+      await supabase
+        .from('user_onboarding')
+        .update({ hints_dismissed: true })
+        .eq('user_id', user.id);
+    } catch (error) {
+      console.error('Error saving hints dismissal:', error);
+    }
+  };
+
+  const handleShowHints = () => {
+    setShowHints(true);
+    setShowChatHints(false);
+  };
+
+  const handleDismissChatHints = () => {
+    setShowChatHints(false);
   };
 
   const deleteConversation = async (conversationId: string) => {
@@ -5008,7 +6429,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="h-8 w-8 text-blue-500 mx-auto mb-4 animate-spin" />
+          <Loader2 className="h-8 w-8 text-text500 mx-auto mb-4 animate-spin" />
           <p className="text-gray-600 text-sm">Loading your dashboard...</p>
         </div>
       </div>
@@ -5056,260 +6477,294 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
   };
 
   return (
-    <div className="h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex overflow-hidden">
-      {/* Sidebar */}
-      <div className={`${sidebarCollapsed ? 'w-16' : 'w-80'} bg-gradient-to-b from-white to-slate-50 border-r border-slate-200 flex flex-col transition-all duration-300 ease-in-out shadow-lg overflow-hidden`}>
+    <div className="h-screen bg-background flex overflow-hidden">
+      {/* Mobile Sidebar Overlay */}
+      {(mobileSidebarOpen && !sidebarCollapsed) && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar - Elingo Purple Theme - Wider for Conversations */}
+      <div className={`
+        ${sidebarCollapsed ? 'w-16' : 'w-[380px]'} 
+        ${mobileSidebarOpen ? 'fixed left-0 z-50 lg:relative lg:z-auto' : 'hidden lg:flex'}
+        border-r border-gray-200 flex flex-col transition-all duration-300 ease-in-out overflow-hidden shadow-sm
+        h-screen
+      `} style={{ backgroundColor: '#faf9ff' }}>
         {/* Sidebar Header */}
-        <div className="p-4 border-b border-slate-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+        <div className="p-4 border-b border-gray-200 relative" style={{ backgroundColor: '#faf9ff' }}>
           <div className="flex items-center justify-between mb-4">
             {!sidebarCollapsed && (
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-                  <Volume2 className="h-5 w-5 text-white" />
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-primary rounded-2xl flex items-center justify-center shadow-lg">
+                  <Volume2 className="h-6 w-6 text-white" />
                 </div>
-                <span className="text-lg font-display text-gradient-primary">TalkBuddy</span>
+                <span className="text-xl font-bold text-text font-display tracking-tight">TalkBuddy</span>
               </div>
             )}
             <div className="flex items-center space-x-2">
               {sidebarCollapsed && (
-                <Volume2 className="h-6 w-6 text-blue-500" />
+                <div className="w-10 h-10 bg-primary rounded-2xl flex items-center justify-center shadow-lg">
+                  <Volume2 className="h-6 w-6 text-white" />
+                </div>
               )}
-              <button
-                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-                title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              >
-                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${sidebarCollapsed ? 'rotate-90' : '-rotate-90'}`} />
-              </button>
               {!sidebarCollapsed && (
                 <>
                   <button
                     onClick={() => setShowProfileModal(true)}
-                    className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 hover:border-blue-300 transition-colors"
+                    className="w-9 h-9 rounded-full overflow-hidden border-2 border-gray-200 hover:border-primary transition-all duration-200 shadow-sm hover:shadow-md"
                   >
                     {currentProfilePicture ? (
                       <img src={currentProfilePicture} alt="Profile" className="w-full h-full object-cover" />
                     ) : (
-                      <div className="w-full h-full bg-gray-100 flex items-center justify-center">
-                        <User className="h-4 w-4 text-gray-400" />
+                      <div className="w-full h-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
+                        <User className="h-4 w-4 text-primary" />
                       </div>
                     )}
                   </button>
                   <button
+                    onClick={handleShowHints}
+                    className="p-2 text-gray-400 hover:text-primary hover:bg-primary/10 rounded-xl transition-all duration-200"
+                    title="Show Hints"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                  </button>
+                  <button
                     onClick={handleRestartOnboarding}
-                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                    className="p-2 text-gray-400 hover:text-primary hover:bg-primary/10 rounded-xl transition-all duration-200"
+                    title="Settings"
                   >
                     <Settings className="h-4 w-4" />
                   </button>
                   <button
-                    onClick={handleLogout}
-                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                    onClick={() => setSidebarCollapsed(true)}
+                    className="p-2 text-gray-400 hover:text-primary hover:bg-primary/10 rounded-xl transition-all duration-200"
+                    title="Collapse sidebar"
                   >
-                    <LogOut className="h-4 w-4" />
+                    <ArrowLeft className="h-4 w-4" />
                   </button>
                 </>
               )}
             </div>
           </div>
 
-          {/* New Conversation Button */}
+          {/* New Conversation Button - Elingo Purple */}
           {!sidebarCollapsed && (
             <button 
               onClick={resetConversationState}
-              className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-4 py-2.5 flex items-center justify-center space-x-2 font-semibold mb-3 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
+              className="w-full btn-glossy flex items-center justify-center space-x-2 mb-4"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-5 w-5" />
               <span>New Conversation</span>
             </button>
           )}
           {sidebarCollapsed && (
             <button 
-              onClick={resetConversationState}
-              className="w-full apple-button p-2 flex items-center justify-center mb-3"
+              onClick={() => {
+                resetConversationState();
+                // Don't change sidebar state - preserve user preference
+              }}
+              className="w-full btn-glossy p-3 flex items-center justify-center mb-4 rounded-full"
               title="New Conversation"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-6 w-6 text-white font-bold flex-shrink-0" strokeWidth={3} />
             </button>
           )}
 
-          {/* 🎮 GAMIFICATION COMPONENTS */}
+          {/* 🎮 GAMIFICATION COMPONENTS - Collapsible for More Space */}
           {!sidebarCollapsed && (
-            <div className="mb-4">
-              {/* Player Stats Card */}
-              <div className="bg-gradient-to-br from-purple-500 via-pink-500 to-rose-500 rounded-xl p-4 text-white mb-3 shadow-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
-                      <span className="text-sm font-bold">🎮</span>
+            <div className="mb-3">
+              {/* Collapsible Header */}
+              <button
+                onClick={() => setStatsExpanded(!statsExpanded)}
+                className="w-full flex items-center justify-between p-2 hover:bg-primary/5 rounded-xl transition-all duration-200 mb-2"
+              >
+                <div className="flex items-center space-x-2">
+                  <div className="w-8 h-8 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center shadow-md">
+                    <span className="text-base">🎮</span>
+                  </div>
+                  <span className="text-xs font-bold text-text font-display">Level {playerStats.level}</span>
+                  <span className="text-xs text-primary font-semibold">{playerStats.totalPoints} XP</span>
+                  <span className="text-xs text-accent font-bold">🔥 {playerStats.currentStreak}</span>
+                </div>
+                <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${statsExpanded ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Collapsible Content */}
+              {statsExpanded && (
+                <div className="space-y-2 mb-3">
+                  {/* Compact Stats - Horizontal */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-white rounded-lg p-2.5 text-center border border-gray-200 shadow-sm">
+                      <div className="text-lg font-bold text-primary font-display">{playerStats.conversationsCompleted}</div>
+                      <div className="text-[10px] text-text-muted font-body">Conversations</div>
                     </div>
-                    <div>
-                      <div className="text-sm font-medium">Level {playerStats.level}</div>
-                      <div className="text-xs opacity-90">{playerStats.totalPoints} XP</div>
+                    <div className="bg-white rounded-lg p-2.5 text-center border border-gray-200 shadow-sm">
+                      <div className="text-lg font-bold text-primary font-display">{playerStats.wordsLearned}</div>
+                      <div className="text-[10px] text-text-muted font-body">Words Learned</div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-xs opacity-90">Streak</div>
-                    <div className="text-sm font-bold">{playerStats.currentStreak} 🔥</div>
+
+                  {/* Compact Experience Bar */}
+                  <div className="bg-white rounded-lg p-2.5 border border-gray-200 shadow-sm">
+                    <div className="w-full bg-gray-200 rounded-full h-1.5 mb-1 overflow-hidden">
+                      <div 
+                        className="bg-gradient-to-r from-primary to-accent rounded-full h-1.5 transition-all duration-500"
+                        style={{ width: `${(playerStats.experience % 100)}%` }}
+                      ></div>
+                    </div>
+                    <div className="text-[10px] text-text-muted font-body">
+                      {100 - (playerStats.experience % 100)} XP to next level
+                    </div>
                   </div>
-                </div>
-                
-                {/* Experience Bar */}
-                <div className="w-full bg-white/20 rounded-full h-2 mb-2">
-                  <div 
-                    className="bg-white rounded-full h-2 transition-all duration-500"
-                    style={{ width: `${(playerStats.experience % 100)}%` }}
-                  ></div>
-                </div>
-                <div className="text-xs opacity-90">
-                  {100 - (playerStats.experience % 100)} XP to next level
-                </div>
-              </div>
 
-              {/* Quick Stats */}
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-3 text-center border border-blue-200">
-                  <div className="text-lg font-display text-blue-700">{playerStats.conversationsCompleted}</div>
-                  <div className="text-xs text-blue-600 font-caption">Conversations</div>
-                </div>
-                <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-3 text-center border border-green-200">
-                  <div className="text-lg font-display text-green-700">{playerStats.wordsLearned}</div>
-                  <div className="text-xs text-green-600 font-caption">Words Learned</div>
-                </div>
-              </div>
-
-              {/* Recent Achievements */}
-              {recentAchievements.length > 0 && (
-                <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-lg p-3 mb-3 border border-yellow-200">
-                  <div className="text-xs font-semibold text-amber-700 mb-2">🏆 Recent Achievements</div>
-                  <div className="space-y-1">
-                    {recentAchievements.map((achievement, index) => (
-                      <div key={index} className="text-xs text-amber-600 animate-pulse font-medium">
-                        ✨ Achievement unlocked!
+                  {/* Compact Achievements */}
+                  {recentAchievements.length > 0 && (
+                    <div className="bg-white rounded-lg p-2.5 border border-gray-200 shadow-sm">
+                      <div className="text-[10px] font-bold text-text mb-1 font-display">🏆 Achievements</div>
+                      <div className="space-y-0.5">
+                        {recentAchievements.slice(0, 2).map((achievement, index) => (
+                          <div key={index} className="text-[10px] text-primary font-semibold font-body flex items-center space-x-1">
+                            <span className="text-accent">✨</span>
+                            <span className="truncate">Achievement!</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           )}
 
-          {/* Navigation Links */}
+          {/* Navigation Links - Elingo Purple Theme - Compact */}
           {!sidebarCollapsed && (
-            <div className="flex space-x-1">
+            <div className="flex space-x-1.5">
               <button
                 onClick={() => setCurrentView('progress')}
-                className={`flex-1 px-3 py-2 text-sm font-semibold rounded-lg transition-all duration-200 ${
+                className={`flex-1 px-3 py-2 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center space-x-1.5 ${
                   currentView === 'progress'
-                    ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md' 
-                    : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100'
+                    ? 'bg-primary text-white shadow-lg shadow-primary/30' 
+                    : 'text-text-muted hover:text-primary hover:bg-primary/10 border border-gray-200'
                 }`}
               >
-                <BarChart3 className="h-4 w-4 inline mr-1" />
-                Progress
+                <BarChart3 className="h-3.5 w-3.5" />
+                <span>Progress</span>
               </button>
               <button
                 onClick={() => setShowVocabBuilder(true)}
-                className="flex-1 px-3 py-2 text-sm font-semibold rounded-lg transition-all duration-200 text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100"
+                className={`flex-1 px-3 py-2 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center space-x-1.5 text-text-muted hover:text-primary hover:bg-primary/10 border border-gray-200`}
               >
-                <BookOpen className="h-4 w-4 inline mr-1" />
-                Vocab List
+                <BookOpen className="h-3.5 w-3.5" />
+                <span>Vocab</span>
               </button>
             </div>
           )}
           {sidebarCollapsed && (
-            <div className="flex flex-col space-y-1">
+            <div className="flex flex-col items-center space-y-2">
               <button
                 onClick={() => setCurrentView('progress')}
-                className={`p-2 text-sm font-medium rounded-lg transition-colors ${
+                className={`p-3 rounded-xl transition-all duration-200 flex items-center justify-center ${
                   currentView === 'progress'
-                    ? 'bg-blue-50 text-blue-600' 
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    ? 'bg-primary text-white shadow-lg shadow-primary/30' 
+                    : 'text-gray-600 hover:text-primary hover:bg-primary/10'
                 }`}
                 title="Progress"
               >
-                <BarChart3 className="h-4 w-4" />
+                <BarChart3 className="h-5 w-5" />
               </button>
               <button
                 onClick={() => setShowVocabBuilder(true)}
-                className="p-2 text-sm font-medium rounded-lg transition-colors text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                className="p-3 rounded-xl transition-all duration-200 text-gray-600 hover:text-primary hover:bg-primary/10 flex items-center justify-center"
                 title="Vocab List"
               >
-                <BookOpen className="h-4 w-4" />
+                <BookOpen className="h-5 w-5" />
               </button>
+              <div className="mt-8">
+                <button
+                  onClick={() => setSidebarCollapsed(false)}
+                  className="p-3 rounded-xl transition-all duration-200 text-gray-600 hover:text-primary hover:bg-primary/10 flex items-center justify-center"
+                  title="Expand Sidebar"
+                >
+                  <ArrowRight className="h-5 w-5" />
+                </button>
+              </div>
             </div>
           )}
         </div>
 
-        {/* Search */}
+        {/* Search and Conversations Section - For Hint Targeting */}
         {!sidebarCollapsed && (
-          <div className="p-4 border-b border-gray-100">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search conversations..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 apple-input text-sm"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Recent Conversations */}
-        {!sidebarCollapsed && (
-          <div className="flex-1 overflow-hidden flex flex-col bg-gradient-to-b from-slate-50/50 to-white min-h-0">
-          <div className="p-4 pb-2 bg-gradient-to-r from-slate-50 to-white">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-slate-800 font-heading">Recent Conversations</h3>
+          <div data-hint-target="conversation-sidebar" className="flex-1 overflow-hidden flex flex-col min-h-0">
+            {/* Search - Elingo Purple Theme - Compact */}
+            <div className="px-4 py-3 border-b border-gray-200" style={{ backgroundColor: '#faf9ff' }}>
               <div className="relative">
-                <button
-                  onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
-                  className="flex items-center space-x-1 text-xs text-gray-600 hover:text-gray-900 font-medium px-2 py-1 rounded-md hover:bg-gray-50 transition-colors"
-                >
-                  <span>{selectedCategory || 'All Categories'}</span>
-                  <ChevronDown className="h-3 w-3" />
-                </button>
-                {showCategoryDropdown && (
-                  <div className="absolute top-full right-0 mt-1 w-40 apple-card rounded-lg shadow-lg z-10 py-1">
-                    <button
-                      onClick={() => {
-                        setSelectedCategory(null);
-                        setShowCategoryDropdown(false);
-                      }}
-                      className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 transition-colors ${
-                        selectedCategory === null ? 'text-blue-600 font-medium' : 'text-gray-700'
-                      }`}
-                    >
-                      All Categories
-                    </button>
-                    {conversationCategories.map((category) => (
-                      <button
-                        key={category}
-                        onClick={() => {
-                          setSelectedCategory(selectedCategory === category ? null : category);
-                          setShowCategoryDropdown(false);
-                        }}
-                        className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 transition-colors ${
-                          selectedCategory === category ? 'text-blue-600 font-medium' : 'text-gray-700'
-                        }`}
-                      >
-                        {category}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search conversations..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all duration-200 font-body"
+                />
               </div>
             </div>
-          </div>
-          <div className="flex-1 overflow-y-auto px-4 pb-4 min-h-0">
-            {conversationsLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 text-gray-400 animate-spin" />
+
+            {/* Recent Conversations - Elingo Purple Theme - Maximized Space */}
+            <div className="flex-1 overflow-hidden flex flex-col min-h-0" style={{ backgroundColor: '#faf9ff' }}>
+              <div className="px-4 py-2.5 border-b border-gray-100" style={{ backgroundColor: '#faf9ff' }}>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-xs font-bold text-text font-display uppercase tracking-wide">Conversations</h3>
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
+                      className="flex items-center space-x-1 text-[10px] text-gray-600 hover:text-primary font-semibold px-2 py-1 rounded-lg hover:bg-primary/10 border border-gray-200 transition-all duration-200"
+                    >
+                      <span className="truncate max-w-[80px]">{selectedCategory || 'All'}</span>
+                      <ChevronDown className="h-3 w-3 flex-shrink-0" />
+                    </button>
+                    {showCategoryDropdown && (
+                      <div className="absolute top-full right-0 mt-2 w-44 bg-white rounded-xl shadow-lg border border-gray-200 z-10 py-2">
+                        <button
+                          onClick={() => {
+                            setSelectedCategory(null);
+                            setShowCategoryDropdown(false);
+                          }}
+                          className={`w-full text-left px-4 py-2 text-xs hover:bg-primary/10 transition-colors rounded-lg mx-1 ${
+                            selectedCategory === null ? 'text-primary font-bold bg-primary/10' : 'text-gray-700'
+                          }`}
+                        >
+                          All Categories
+                        </button>
+                        {conversationCategories.map((category) => (
+                          <button
+                            key={category}
+                            onClick={() => {
+                              setSelectedCategory(selectedCategory === category ? null : category);
+                              setShowCategoryDropdown(false);
+                            }}
+                            className={`w-full text-left px-4 py-2 text-xs hover:bg-primary/10 transition-colors rounded-lg mx-1 ${
+                              selectedCategory === category ? 'text-primary font-bold bg-primary/10' : 'text-gray-700'
+                            }`}
+                          >
+                            {category}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-            ) : filteredConversations.length > 0 ? (
-              <div className="space-y-1">
-                {filteredConversations.map((conversation) => (
+              <div className="flex-1 overflow-y-auto px-3 pb-3 min-h-0 scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-gray-100">
+                {conversationsLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-5 w-5 text-primary animate-spin" />
+                  </div>
+                ) : filteredConversations.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {filteredConversations.map((conversation) => (
                   <div
                     key={conversation.id}
                     className="relative group"
@@ -5317,20 +6772,27 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     onMouseLeave={() => setHoveredConversation(null)}
                   >
                     <button
-                      onClick={() => startNewConversation(conversation.id)}
-                      className={`w-full text-left p-3 rounded-lg transition-all duration-200 ${
+                      onClick={() => {
+                        startNewConversation(conversation.id);
+                        setMobileSidebarOpen(false); // Close mobile sidebar when selecting
+                      }}
+                      className={`w-full text-left p-2.5 rounded-xl transition-all duration-200 ${
                         selectedConversation === conversation.id
-                          ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 shadow-sm'
-                          : 'hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 border border-transparent hover:shadow-sm'
+                          ? 'bg-primary/10 border-2 border-primary shadow-sm'
+                          : 'hover:bg-primary/5 border border-transparent hover:border-primary/20'
                       }`}
                     >
-                      <div className="flex items-start justify-between mb-1">
-                        <h4 className="text-sm font-semibold truncate text-slate-800 font-heading">
+                      <div className="flex items-start justify-between mb-0.5">
+                        <h4 className={`text-xs font-bold truncate font-display flex-1 ${
+                          selectedConversation === conversation.id ? 'text-primary' : 'text-text'
+                        }`}>
                           {conversation.title}
                         </h4>
                       </div>
-                      <p className="text-xs text-slate-600 truncate mb-1 font-body">{conversation.preview}</p>
-                      <p className="text-xs text-slate-500 font-caption">{formatTime(conversation.updated_at)}</p>
+                      <p className={`text-[10px] truncate mb-0.5 font-body leading-tight ${
+                        selectedConversation === conversation.id ? 'text-primary/70' : 'text-text-muted'
+                      }`}>{conversation.preview}</p>
+                      <p className="text-[10px] text-text-muted font-body">{formatTime(conversation.updated_at)}</p>
                     </button>
                     
                     {/* Delete button - appears on hover */}
@@ -5340,53 +6802,60 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                           e.stopPropagation();
                           deleteConversation(conversation.id);
                         }}
-                        className="absolute top-2 right-2 p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-md opacity-90 hover:opacity-100 transition-all duration-200 shadow-sm"
+                        className="absolute top-2 right-2 p-2 bg-red-500 hover:bg-red-600 text-white rounded-xl opacity-90 hover:opacity-100 transition-all duration-200 shadow-lg"
                         title="Delete conversation"
                       >
-                        <Trash2 className="h-3 w-3" />
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     )}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <div className="w-16 h-16 bg-gradient-to-br from-slate-100 to-slate-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <MessageCircle className="h-8 w-8 text-slate-400" />
+                    ))}
+                  </div>
+                ) : (
+              <div className="text-center py-12">
+                <div className="w-20 h-20 bg-gradient-to-br from-primary/20 to-accent/20 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
+                  <MessageCircle className="h-10 w-10 text-primary" />
                 </div>
-                <h3 className="text-lg font-bold text-slate-800 mb-2 font-heading">No Conversations Yet</h3>
-                <p className="text-sm text-slate-600 font-body">
+                <h3 className="text-lg font-bold text-text mb-2 font-display">No Conversations Yet</h3>
+                <p className="text-sm text-text-muted font-body">
                   {selectedCategory 
                     ? `No ${selectedCategory.toLowerCase()} conversations yet`
                     : 'Start your first conversation to begin learning!'
                   }
                 </p>
               </div>
-            )}
-          </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
-        {/* Settings */}
+        {/* Settings - Elingo Purple Theme */}
         {!sidebarCollapsed && (
-          <div className="p-4 border-t border-slate-200 bg-gradient-to-r from-slate-50 to-white">
-            <h3 className="text-sm font-semibold text-slate-800 mb-3 font-heading">Settings</h3>
-            <button
-              onClick={() => setShowProfileModal(true)}
-              className="flex items-center space-x-3 w-full text-left p-2 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 rounded-md transition-all duration-200"
-            >
-              {currentProfilePicture ? (
-                <img src={currentProfilePicture} alt="Profile" className="w-8 h-8 rounded-full object-cover" />
-              ) : (
-                <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-                  <User className="h-4 w-4 text-gray-400" />
+          <div className="p-4 border-t border-gray-200 bg-white">
+            <h3 className="text-sm font-bold text-text mb-3 font-display">Settings</h3>
+            <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-3 flex-1 text-left p-3">
+                {currentProfilePicture ? (
+                  <img src={currentProfilePicture} alt="Profile" className="w-10 h-10 rounded-full object-cover border-2 border-gray-200" />
+                ) : (
+                  <div className="w-10 h-10 bg-gradient-to-br from-primary/20 to-accent/20 rounded-full flex items-center justify-center border-2 border-gray-200">
+                    <User className="h-5 w-5 text-primary" />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-text font-display">{firstName}</p>
+                  <p className="text-xs text-text-muted font-body">Profile Settings</p>
                 </div>
-              )}
-              <div>
-                <p className="text-sm font-semibold text-slate-800 font-heading">{firstName}</p>
-                <p className="text-xs text-slate-600 font-caption">Profile Settings</p>
               </div>
-            </button>
+              <button
+                onClick={handleLogout}
+                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all duration-200"
+                title="Logout"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -5423,34 +6892,54 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         />
       )}
 
-      {/* Main Content - Hidden when vocab builder is open */}
+      {/* Main Content - Hidden when vocab builder is open - Elingo Purple Theme */}
       {!showVocabBuilder && (
-        <div className="flex-1 flex flex-col bg-gradient-to-br from-white to-slate-50 overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'linear-gradient(135deg, #faf9ff 0%, #f5f5f5 100%)' }}>
           {selectedConversation ? (
           // Conversation View
           <div className="flex-1 flex h-full overflow-hidden">
             {/* Main Chat Area */}
             <div className="flex-1 flex flex-col h-full overflow-hidden">
 
-            {/* German Partner Display */}
-            <div className="bg-gradient-to-r from-white to-slate-50 border-b border-slate-200 px-4 py-3 shadow-sm">
+            {/* German Partner Display - Elingo Purple Theme */}
+            <div className="border-b border-gray-200 px-4 py-4 lg:pl-4 pl-16 shadow-sm relative" style={{ backgroundColor: 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(10px)' }}>
+              {/* Mobile Menu Button */}
+              <button
+                onClick={() => setMobileSidebarOpen(true)}
+                className="lg:hidden fixed top-4 left-4 z-30 p-2.5 bg-primary text-white rounded-xl shadow-lg hover:bg-primary/90 transition-all duration-200"
+                title="Open sidebar"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+              
+              {/* Desktop Sidebar Toggle - Show when collapsed - Vertically Centered to Avoid Overlap */}
+              {sidebarCollapsed && (
+                <button
+                  onClick={() => setSidebarCollapsed(false)}
+                  className="hidden lg:flex fixed left-2 z-30 p-2.5 bg-primary text-white rounded-xl shadow-lg hover:bg-primary/90 transition-all duration-200"
+                  style={{ top: '50%', transform: 'translateY(-50%)', marginTop: 0 }}
+                  title="Expand sidebar"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              )}
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   <div className="relative">
-                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                    <div className="w-12 h-12 bg-gradient-to-br from-primary to-accent rounded-2xl flex items-center justify-center text-white font-bold text-lg shadow-lg">
                       {germanPartnerName.charAt(0)}
                     </div>
-                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
+                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full shadow-sm"></div>
                   </div>
                   <div>
-                    <div className="flex items-center space-x-2">
-                      <h3 className="font-semibold text-gray-900">{germanPartnerName}</h3>
-                      {/* Context Indicator Badge */}
+                    <div className="flex items-center space-x-2 flex-wrap gap-1">
+                      <h3 className="font-bold text-text font-display text-lg">{germanPartnerName}</h3>
+                      {/* Context Indicator Badge - Elingo Purple */}
                       {selectedConversation && (
-                        <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                        <div className={`inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-bold ${
                           contextLevel === 'Professional' 
-                            ? 'bg-blue-100 text-blue-800' 
-                            : 'bg-green-100 text-green-800'
+                            ? 'bg-primary/20 text-primary border border-primary/30' 
+                            : 'bg-accent/20 text-accent border border-accent/30'
                         }`}>
                           <span className="mr-1">
                             {contextLevel === 'Professional' ? '💼' : '😊'}
@@ -5461,14 +6950,14 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                           )}
                         </div>
                       )}
-                      {/* Difficulty Level Badge - NEW ADDITION */}
+                      {/* Difficulty Level Badge - Elingo Purple */}
                       {selectedConversation && (
-                        <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                        <div className={`inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-bold ${
                           difficultyLevel === 'Beginner' 
-                            ? 'bg-yellow-100 text-yellow-800' 
+                            ? 'bg-accent/20 text-accent border border-accent/30' 
                             : difficultyLevel === 'Intermediate'
-                            ? 'bg-orange-100 text-orange-800'
-                            : 'bg-red-100 text-red-800'
+                            ? 'bg-primary/20 text-primary border border-primary/30'
+                            : 'bg-primary/30 text-primary border border-primary/40'
                         }`}>
                           <span className="mr-1">
                             {difficultyLevel === 'Beginner' ? '🌱' : difficultyLevel === 'Intermediate' ? '📚' : '🎯'}
@@ -5480,33 +6969,33 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                         </div>
                       )}
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <div className="flex items-center space-x-1">
-                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        <span className="text-xs text-green-600 font-medium">Online</span>
+                    <div className="flex items-center space-x-2 mt-1">
+                      <div className="flex items-center space-x-1.5">
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                        <span className="text-xs text-primary font-semibold">Online</span>
                       </div>
-                      <span className="text-xs text-gray-500">•</span>
-                      <span className="text-xs text-gray-500">Last seen {lastSeenTime}</span>
+                      <span className="text-xs text-text-muted">•</span>
+                      <span className="text-xs text-text-muted font-body">Last seen {lastSeenTime}</span>
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center space-x-3">
-                  <div className="text-right">
-                    <p className="text-xs text-gray-500">German Language Partner</p>
-                    <p className="text-xs text-gray-400">Native Speaker</p>
+                  <div className="text-right hidden sm:block">
+                    <p className="text-xs text-text-muted font-body">German Language Partner</p>
+                    <p className="text-xs text-primary font-semibold">Native Speaker</p>
                   </div>
                   <button 
                     onClick={endConversation}
-                    className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+                    className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl text-sm font-bold transition-all duration-200 shadow-sm hover:shadow-md"
                   >
-                    End Conversation
+                    End
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* Conversation Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0 bg-gradient-to-b from-slate-50/50 to-white scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100">
+            {/* Conversation Messages - Elingo Purple Theme */}
+            <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-4 min-h-0 scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-gray-100" style={{ backgroundColor: '#faf9ff' }}>
               {chatMessages.map((message) => {
                 // Debug logging for grammar help button
                 if (message.role === 'user') {
@@ -5522,9 +7011,9 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       <div className="flex items-center mr-2 z-10">
                         <button
                           onClick={() => handleErrorCorrection(message.id)}
-                          className={`group relative p-2 rounded-full shadow-lg transition-all duration-200 hover:scale-110 cursor-pointer ${
+                          className={`group relative p-2.5 rounded-xl shadow-lg transition-all duration-200 hover:scale-105 cursor-pointer ${
                             activeHelpButton === message.id 
-                              ? 'bg-blue-500 hover:bg-blue-600' 
+                              ? 'bg-primary hover:bg-primary/90' 
                               : 'bg-red-500 hover:bg-red-600'
                           } text-white`}
                           title="Click to understand the mistake and get grammar help"
@@ -5533,101 +7022,143 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                             <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                           </svg>
                           {/* Tooltip */}
-                          <div className="absolute right-full mr-2 top-1/2 transform -translate-y-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap">
+                          <div className="absolute right-full mr-2 top-1/2 transform -translate-y-1/2 bg-primary text-white text-xs px-3 py-1.5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap shadow-lg">
                             Click to understand the mistake
                           </div>
                         </button>
                       </div>
                     )}
                     
-                    <div className={`max-w-sm lg:max-w-lg px-4 py-3 rounded-2xl ${
+                    <div className={`max-w-sm lg:max-w-lg px-4 py-3 rounded-2xl shadow-sm ${
                       message.role === 'user'
-                        ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-tr-md shadow-md'
-                        : 'bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-tl-md shadow-sm'
+                        ? 'bg-primary text-white rounded-tr-md'
+                        : 'bg-white border border-gray-200 rounded-tl-md'
                     }`}>
                       {message.role === 'assistant' && (
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center space-x-2">
-                            <Bot className="h-4 w-4 text-blue-500" />
-                            <span className="text-xs font-medium text-blue-600">{germanPartnerName}</span>
+                            <div className="w-6 h-6 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center">
+                              <Bot className="h-3.5 w-3.5 text-white" />
+                            </div>
+                            <span className="text-xs font-bold text-primary font-display">{germanPartnerName}</span>
                           </div>
-                          <div className="flex items-center space-x-1">
+                          <div className="flex items-center space-x-1.5">
                             <button
                               onClick={async () => await speakText(message.content)}
-                              className="p-1 hover:bg-gray-100 rounded transition-colors"
+                              className="p-1.5 hover:bg-primary/10 rounded-lg transition-all duration-200"
                               title="Listen"
+                              data-hint-target="listen-button"
                             >
-                              <svg className="h-3 w-3 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+                              <svg className="h-4 w-4 text-primary" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.617.816L4.846 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.846l3.537-3.816a1 1 0 011.617.816zM16 8a2 2 0 11-4 0 2 2 0 014 0zM14 8a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
                               </svg>
                             </button>
                             <button
                               onClick={() => toggleTranslation(message.id)}
-                              className={`p-1 hover:bg-gray-100 rounded transition-colors text-xs ${
-                                showTranslation[message.id] ? 'text-blue-600 bg-blue-50' : 'text-gray-500'
+                              className={`p-1.5 rounded-lg transition-all duration-200 text-xs font-bold ${
+                                showTranslation[message.id] ? 'text-white bg-primary' : 'text-primary hover:bg-primary/10'
                               }`}
                               title="Translate"
+                              data-hint-target="translation-toggle"
                             >
                               EN
                             </button>
                             <button
                               onClick={() => toggleSuggestions(message.id)}
-                              className="p-1 hover:bg-gray-100 rounded transition-colors"
+                              className="p-1.5 hover:bg-primary/10 rounded-lg transition-all duration-200"
                               title="Suggest responses"
+                              data-hint-target="suggested-answers"
                             >
-                              <svg className="h-3 w-3 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+                              <svg className="h-4 w-4 text-primary" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
                               </svg>
                             </button>
                             <button
                               onClick={() => handleHelpClick(message.content, message.id)}
-                              className={`p-1 rounded transition-colors ${
+                              className={`p-1.5 rounded-lg transition-all duration-200 ${
                                 activeHelpButton === message.id 
-                                  ? 'bg-blue-100' 
-                                  : 'hover:bg-gray-100'
+                                  ? 'bg-primary text-white' 
+                                  : 'hover:bg-primary/10 text-primary'
                               }`}
                               title="Get Grammar Help"
                             >
-                              <BookOpen className={`h-3 w-3 ${
-                                activeHelpButton === message.id 
-                                  ? 'text-blue-500' 
-                                  : 'text-gray-500'
-                              }`} />
+                              <BookOpen className="h-4 w-4" />
                             </button>
                           </div>
                         </div>
                       )}
-                      <div className={`text-sm ${
+                      <div className={`text-sm font-body leading-relaxed ${
                         message.role === 'user' 
                           ? 'text-white' 
-                          : 'apple-text-primary'
+                          : 'text-text'
                       }`}>
                         {message.isAudio ? (
-                          <div className="flex items-center space-x-3">
-                            <button 
-                              onClick={() => {
-                                if (message.audioUrl) {
-                                  const audio = new Audio(message.audioUrl);
-                                  audio.play();
-                                }
-                              }}
-                              className="flex items-center space-x-2 px-3 py-2 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-colors"
-                            >
-                              <Play className="h-4 w-4" />
-                              <span className="text-sm">Play</span>
-                            </button>
-                            <span>{message.content}</span>
-                            {message.isTranscribing && (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            )}
+                          <div>
+                            <div className="mb-2">
+                              <span>{message.content}</span>
+                              {message.isTranscribing && (
+                                <Loader2 className="h-4 w-4 animate-spin inline-block ml-2" />
+                              )}
+                            </div>
+                            {/* Play and Analyse buttons at bottom */}
+                            <div className="flex items-center justify-between mt-2 pt-2 border-t border-opacity-20 border-white">
+                              {/* Play button on left */}
+                              <button 
+                                onClick={async () => {
+                                  if (message.audioUrl) {
+                                    try {
+                                      console.log('▶️ Playing audio from URL:', message.audioUrl);
+                                      const audio = new Audio(message.audioUrl);
+                                      audio.onerror = (e) => {
+                                        console.error('❌ Audio playback error:', e);
+                                        alert('Error playing audio. The recording may have expired.');
+                                      };
+                                      await audio.play();
+                                      console.log('✅ Audio playback started successfully');
+                                    } catch (error) {
+                                      console.error('❌ Error playing audio:', error);
+                                      alert('Error playing audio. Please try again.');
+                                    }
+                                  } else {
+                                    console.warn('⚠️ No audioUrl available for message:', message.id);
+                                  }
+                                }}
+                                disabled={!message.audioUrl}
+                                className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg transition-colors ${
+                                  !message.audioUrl
+                                    ? 'bg-white bg-opacity-10 text-white opacity-50 cursor-not-allowed'
+                                    : 'bg-white bg-opacity-20 hover:bg-opacity-30 text-white'
+                                }`}
+                                title="Play recording"
+                              >
+                                <Play className="h-4 w-4" />
+                                <span className="text-xs">Play</span>
+                              </button>
+                              {/* Analyse button on right - only show when transcript is ready */}
+                              {!message.isTranscribing && 
+                               message.content !== '🎤 Recording...' && 
+                               message.content !== '🎤 Voice message' && 
+                               message.content.trim().length > 0 &&
+                               /[a-zA-ZäöüÄÖÜß]/.test(message.content) && 
+                               micRecordingBlob && (
+                                <button
+                                  onClick={() => handleMessageAnalyse(message.id)}
+                                  className="flex items-center space-x-1 px-3 py-1.5 bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded-lg transition-colors"
+                                  title="Analyze pronunciation"
+                                >
+                                  <Target className="h-4 w-4" />
+                                  <span className="text-xs">Analyse</span>
+                                </button>
+                              )}
+                            </div>
                           </div>
                         ) : (
                           message.content
                         )}
                       </div>
 
-                      {/* Pronunciation Badge for German Voice Messages */}
-                      {message.role === 'user' && message.isAudio && lastGermanVoiceMessage && lastGermanVoiceMessage.messageId === message.id && (
+                      {/* Pronunciation Badge for German Voice Messages (keep for other use cases) */}
+                      {message.role === 'user' && message.isAudio && lastGermanVoiceMessage && lastGermanVoiceMessage.messageId === message.id && !message.isTranscribing && message.content === '🎤 Voice message' && (
                         <div className="mt-2 flex justify-end">
                           <button
                             onClick={() => {
@@ -5635,7 +7166,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                               setToolbarCollapsed(false);
                               setShowToolbar(true);
                             }}
-                            className="flex items-center space-x-1 px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-full text-xs font-medium transition-colors"
+                            className="flex items-center space-x-1 px-2 py-1 bg-primary-100 hover:bg-primary-200 text-text700 rounded-full text-xs font-medium transition-colors"
                             title="Analyze pronunciation"
                           >
                             <Volume2 className="h-3 w-3" />
@@ -5699,7 +7230,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                         <div className="text-xs font-medium text-gray-600 mb-1">Suggested answer:</div>
                         <button
                           onClick={() => handleSuggestedAnswerClick(message.id, suggestedAnswers[message.id])}
-                          className="block w-full text-left bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors"
+                          className="block w-full text-left bg-primary-50 hover:bg-primary-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors"
                         >
                           <div className="font-medium">{suggestedAnswers[message.id]}</div>
                         </button>
@@ -5710,7 +7241,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   {/* Motivation animation for wrong answers - Hide when max attempts reached */}
                   {message.role === 'user' && comprehensiveAnalysis[message.id] && comprehensiveAnalysis[message.id].hasErrors && userAttempts[message.id] < 2 && (
                     <div className="flex justify-end mt-2">
-                      <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-lg p-3 max-w-sm">
+                      <div className="bg-background-light border border-gray-200 rounded-lg p-3 max-w-sm">
                         <div className="flex items-center space-x-2">
                           <div className="animate-bounce">
                             <svg className="h-5 w-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
@@ -5735,7 +7266,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       </div>
                       <button
                         onClick={() => extractVocabularyFromText(message.content)}
-                        className="mt-2 text-xs text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                        className="mt-2 text-xs text-text600 hover:text-text800 hover:underline transition-colors"
                       >
                         📚 Add words to vocab
                       </button>
@@ -5748,45 +7279,26 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       <div className="text-xs font-medium text-gray-600 mb-1">Suggested responses:</div>
                       {suggestedResponses[message.id] ? (
                         suggestedResponses[message.id].map((suggestion, index) => {
+                          const responseId = `${message.id}-${index}`;
                           const suggestionText = typeof suggestion === 'string' ? suggestion : suggestion.german;
-                          const suggestionTranslation = typeof suggestion === 'object' ? suggestion.english : null;
-                          const translationKey = `${message.id}-${index}`;
-                          const isShowingTranslation = showSuggestionTranslation[translationKey];
+                          const suggestionTranslation = typeof suggestion === 'string' 
+                            ? translatedMessages[message.id] || '' 
+                            : suggestion.english;
                           
                           return (
-                            <div key={index} className="bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors">
-                              <div className="flex items-center justify-between">
-                                <button
-                                  onClick={() => useSuggestedResponse(suggestionText, message.id)}
-                                  className="flex-1 text-left"
-                                >
-                                  <div className="font-medium">{suggestionText}</div>
-                                  {isShowingTranslation && suggestionTranslation && (
-                                    <div className="text-gray-500 text-xs mt-1">{suggestionTranslation}</div>
-                                  )}
-                                </button>
-                                <div className="flex items-center space-x-1">
-                                  <button
-                                    onClick={() => speakText(suggestionText)}
-                                    className="p-1 hover:bg-gray-100 rounded transition-colors"
-                                    title="Listen"
-                                  >
-                                    <svg className="h-3 w-3 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
-                                      <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM15.657 6.343a1 1 0 011.414 0A9.972 9.972 0 0119 12a9.972 9.972 0 01-1.929 5.657 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 12a7.971 7.971 0 00-1.343-4.243 1 1 0 010-1.414z" clipRule="evenodd" />
-                                    </svg>
-                                  </button>
-                                  {suggestionTranslation && (
-                                    <button
-                                      onClick={() => toggleSuggestionTranslation(message.id, index)}
-                                      className="px-2 py-1 text-xs bg-white hover:bg-gray-50 border border-gray-300 rounded transition-colors"
-                                      title={isShowingTranslation ? "Hide translation" : "Show translation"}
-                                    >
-                                      {isShowingTranslation ? "DE" : "EN"}
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
+                            <SuggestedResponseCard
+                              key={responseId}
+                              response={suggestionText}
+                              translation={suggestionTranslation}
+                              responseId={responseId}
+                              onPractice={handlePracticeResponse}
+                              onStop={handleStopPracticeResponse}
+                              isRecording={responseRecordingState[responseId] || false}
+                              isAnalyzing={responseAnalyzingState[responseId] || false}
+                              showAnalyze={responseShowAnalyze[responseId] || false}
+                              hasBeenAnalyzed={responseHasBeenAnalyzed[responseId] || false}
+                              onAnalyze={handleAnalyzeResponse}
+                            />
                           );
                         })
                       ) : (
@@ -5819,17 +7331,19 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               
               {isTyping && (
                 <div className="flex justify-start">
-                  <div className="apple-card rounded-2xl rounded-tl-md px-4 py-3 max-w-sm lg:max-w-lg">
+                  <div className="border border-gray-200 rounded-2xl rounded-tl-md px-4 py-3 max-w-sm lg:max-w-lg shadow-sm" style={{ backgroundColor: '#ffffff' }}>
                     <div className="flex items-center space-x-2 mb-2">
-                      <Bot className="h-4 w-4 text-blue-500" />
-                      <span className="text-xs font-medium text-blue-600">{germanPartnerName}</span>
+                      <div className="w-5 h-5 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center">
+                        <Bot className="h-3 w-3 text-white" />
+                      </div>
+                      <span className="text-xs font-bold text-primary font-display">{germanPartnerName}</span>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <span className="text-sm text-gray-600">{germanPartnerName} ist typing</span>
+                      <span className="text-sm text-text-muted font-body">{germanPartnerName} ist typing</span>
                       <div className="flex space-x-1">
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                        <div className="w-2 h-2 bg-primary rounded-full animate-bounce"></div>
+                        <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                        <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                       </div>
                     </div>
                   </div>
@@ -5840,56 +7354,65 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Message Input */}
-            <div className="bg-gradient-to-r from-white to-slate-50 border-t border-slate-200 p-4 shadow-lg">
-              <div className="flex items-center space-x-3">
+            {/* Message Input - Elingo Purple Theme */}
+            <div className="border-t border-gray-200 p-4 lg:p-6 shadow-lg" style={{ backgroundColor: 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(10px)' }}>
+              <div className="flex items-end space-x-3">
                 <div className="flex-1 relative">
                   <input
                     type="text"
-                    placeholder="Type your message..."
+                    placeholder="Type your message in German..."
                     value={messageInput}
                     onChange={(e) => setMessageInput(e.target.value)}
                     onKeyPress={handleKeyPress}
                     disabled={isSending}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-full text-sm bg-white shadow-sm focus:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    className="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-200 font-body placeholder:text-gray-400"
                   />
-                </div>
-                <button 
-                  onClick={sendMessage}
-                  disabled={!messageInput.trim() || isSending}
-                  className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white p-3 rounded-full disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg transition-all duration-200"
-                >
-                  {isSending ? (
-                    <Loader2 className="h-4 w-4 text-white animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4 text-white" />
-                  )}
-                </button>
-                <div className="flex items-center space-x-2">
                   {isRecording && (
-                    <div className="text-sm text-gray-600">
-                      {recordingDuration}s
-                      {recordingDuration >= 25 && (
-                        <span className="text-orange-500 ml-1">⚠️</span>
-                      )}
+                    <div className="absolute right-4 top-1/2 transform -translate-y-1/2 flex items-center space-x-2">
+                      <div className="flex items-center space-x-1.5 bg-red-50 px-2.5 py-1 rounded-xl border border-red-200">
+                        <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                        <span className="text-xs font-bold text-red-600">{recordingDuration}s</span>
+                        {recordingDuration >= 25 && (
+                          <span className="text-orange-500">⚠️</span>
+                        )}
+                      </div>
                     </div>
                   )}
-                  {/* Record Button - German by default */}
+                </div>
+                
+                {/* Action Buttons - Elingo Purple Theme */}
+                <div className="flex items-center space-x-2">
+                  {/* Send Button */}
+                  <button 
+                    onClick={sendMessage}
+                    disabled={!messageInput.trim() || isSending}
+                    className="btn-glossy p-4 rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl"
+                    title="Send message"
+                  >
+                    {isSending ? (
+                      <Loader2 className="h-5 w-5 text-white animate-spin" />
+                    ) : (
+                      <Send className="h-5 w-5 text-white" />
+                    )}
+                  </button>
+                  
+                  {/* Record Button - Elingo Purple Theme */}
                   <button 
                     onClick={isRecording ? stopRecording : startRecording}
                     disabled={isTranscribing}
-                    className={`p-3 rounded-full transition-colors ${
+                    className={`p-4 rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl ${
                       isRecording 
                         ? 'bg-red-500 hover:bg-red-600 text-white' 
-                        : 'bg-green-500 hover:bg-green-600 text-white'
+                        : 'bg-accent hover:bg-accent/90 text-white'
                     } ${isTranscribing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    title={isRecording ? "Stop recording" : "Start recording"}
                   >
                     {isTranscribing ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2 className="h-5 w-5 animate-spin" />
                     ) : isRecording ? (
-                      <MicOff className="h-4 w-4" />
+                      <MicOff className="h-5 w-5" />
                     ) : (
-                      <Mic className="h-4 w-4" />
+                      <Mic className="h-5 w-5" />
                     )}
                   </button>
                 </div>
@@ -5897,43 +7420,37 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             </div>
             </div>
             
-            {/* Right Sidebar - Collapsible Toolbar */}
-            <div className={`${toolbarCollapsed ? 'w-12' : 'w-[600px] lg:w-[700px]'} bg-white border-l border-gray-200 flex flex-col h-full transition-all duration-300 ease-in-out`}>
-              {/* Toolbar Header */}
-              <div className="p-4 border-b border-gray-100 flex-shrink-0">
-                <div className="flex items-center justify-between">
-                  {!toolbarCollapsed && (
-                    <div className="flex items-center space-x-2">
-                      <BookOpen className="h-5 w-5 text-blue-500" />
-                      <span className="text-sm font-semibold text-gray-900">Learning Tools</span>
+            {/* Right Sidebar - Collapsible Toolbar - White & Subtle */}
+            <div className={`${toolbarCollapsed ? 'w-12' : 'w-[600px] lg:w-[700px]'} border-l border-gray-200 flex flex-col h-full transition-all duration-300 ease-in-out shadow-sm bg-white`}>
+              {/* Toolbar Header - Elingo Purple Theme */}
+              {!toolbarCollapsed && (
+                <div className="p-4 border-b border-primary/20 flex-shrink-0 bg-white">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center shadow-md">
+                        <BookOpen className="h-5 w-5 text-white" />
+                      </div>
+                      <div>
+                        <span className="text-sm font-bold text-text font-display block">Learning Tools</span>
+                        <span className="text-xs text-text-muted font-body">Vocabulary • Grammar • Pronunciation</span>
+                      </div>
                     </div>
-                  )}
-                  <div className="flex items-center space-x-2">
-                    {toolbarCollapsed && (
-                      <BookOpen className="h-5 w-5 text-blue-500" />
-                    )}
                     <button
                       onClick={() => {
                         setToolbarCollapsed(!toolbarCollapsed);
-                        // Auto-analyze grammar when expanding toolbar
-                        if (toolbarCollapsed && currentAIMessage) {
-                          console.log('Auto-analyzing grammar for:', currentAIMessage);
-                          // The comprehensive analysis should already be available
-                          // Just make sure the toolbar shows the analysis
-                        }
                       }}
-                      className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-                      title={toolbarCollapsed ? "Expand toolbar" : "Collapse toolbar"}
+                      className="p-2 text-primary/60 hover:text-primary hover:bg-primary/10 rounded-xl transition-all duration-200"
+                      title="Collapse toolbar"
                     >
-                      <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${toolbarCollapsed ? 'rotate-90' : '-rotate-90'}`} />
+                      <ChevronDown className="h-4 w-4 transition-transform duration-200 -rotate-90" />
                     </button>
                   </div>
                 </div>
-              </div>
+              )}
               
               {/* Toolbar Content */}
               {!toolbarCollapsed ? (
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 overflow-y-auto bg-white">
                   <Toolbar
                     isVisible={true}
                     currentMessage={currentAIMessage}
@@ -5968,6 +7485,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       }
                     }}
                     onPronunciationComplete={handlePronunciationComplete}
+                    pendingPronunciationAnalysis={pendingPronunciationAnalysis}
                     onUpdatePersistentVocab={(newVocab) => {
                       console.log('📚 === DASHBOARD ONUPDATE PERSISTENT VOCAB CALLED ===');
                       console.log('New vocab received:', newVocab);
@@ -5987,8 +7505,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   />
                 </div>
               ) : (
-                /* Collapsed State - Show expand button */
-                <div className="flex-1 flex flex-col items-center justify-center space-y-4 p-2">
+                /* Collapsed State - Interactive Arrow Only */
+                <div className="flex-1 flex items-center justify-center bg-white">
                   <button
                     onClick={() => {
                       setToolbarCollapsed(false);
@@ -5999,591 +7517,2261 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                         // Just make sure the toolbar shows the analysis
                       }
                     }}
-                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-                    title="Expand toolbar"
+                    className="p-2 text-primary/60 hover:text-primary hover:bg-primary/10 rounded-xl transition-all duration-200 group"
+                    title="Click to expand Learning Tools"
                   >
-                    <ChevronDown className="h-6 w-6 rotate-90" />
+                    <ChevronDown className="h-5 w-5 rotate-90 group-hover:scale-110 transition-transform duration-200" />
                   </button>
-                  <div className="text-xs text-gray-500 text-center">
-                    Click to expand<br />Learning Tools
-                  </div>
                 </div>
               )}
             </div>
           </div>
         ) : currentView === 'progress' ? (
           // 🎮 GAMIFIED PROGRESS VIEW
-          <div className="flex-1 p-8">
-            <div className="max-w-7xl mx-auto">
+          <div className="flex-1 p-8 overflow-y-auto">
+            <div className="max-w-4xl mx-auto">
               <div className="mb-8">
                 <h1 className="text-3xl font-display text-gradient-primary mb-2">
                   Your German Progress
                 </h1>
-                <p className="text-xl text-slate-600 font-body">
+                <p className="text-xl text-text600 font-body mb-6">
                   Level up your German skills with achievements and rewards!
                 </p>
-              </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Main Content */}
-                <div className="lg:col-span-2 space-y-8">
-                  {/* 🔥 WEEKLY STREAK VISUALIZATION */}
-                  <div className="apple-card rounded-xl p-8 mb-8">
-                    <div className="text-center mb-6">
-                      <h2 className="text-2xl font-semibold apple-text-primary mb-2 flex items-center justify-center gap-2">
-                        <span className="text-3xl">🔥</span>
-                        Weekly Streak
-                      </h2>
-                      <p className="text-sm text-slate-600">
-                        Practice every day to keep your streak alive!
-                      </p>
-                    </div>
-                    
-                    {/* Day Bubbles */}
-                    <div className="flex justify-center items-center gap-4 mb-4">
-                      {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, index) => {
-                        // Highlight days based on current streak with dynamic colors
-                        const dayStreakActive = (index + 1) <= (playerStats.currentStreak % 7) || playerStats.currentStreak >= 7;
-                        
-                        // Different colors for different streak milestones
-                        let bubbleColor = '';
-                        let shadowColor = '';
-                        let pulseAnimation = '';
-                        
-                        if (dayStreakActive) {
-                          const streakDay = (index + 1);
-                          if (streakDay === 7 || playerStats.currentStreak >= 7) {
-                            // Day 7 - Gold/Amber
-                            bubbleColor = 'bg-gradient-to-br from-amber-400 via-yellow-400 to-orange-500';
-                            shadowColor = 'shadow-amber-300';
-                            pulseAnimation = 'animate-pulse';
-                          } else if (streakDay >= 5) {
-                            // Days 5-6 - Purple/Indigo
-                            bubbleColor = 'bg-gradient-to-br from-purple-400 via-indigo-400 to-blue-500';
-                            shadowColor = 'shadow-purple-300';
-                          } else if (streakDay >= 3) {
-                            // Days 3-4 - Green/Teal
-                            bubbleColor = 'bg-gradient-to-br from-green-400 via-teal-400 to-cyan-500';
-                            shadowColor = 'shadow-green-300';
-                          } else {
-                            // Days 1-2 - Orange/Red
-                            bubbleColor = 'bg-gradient-to-br from-orange-400 to-red-500';
-                            shadowColor = 'shadow-orange-300';
-                          }
-                        }
-                        
-                        return (
-                          <div key={day} className="flex flex-col items-center group">
-                            <div
-                              className={`w-16 h-16 rounded-full flex items-center justify-center transition-all duration-500 ease-out ${
-                                dayStreakActive
-                                  ? `${bubbleColor} shadow-xl ${shadowColor} scale-110 hover:scale-125 ${pulseAnimation} border-2 border-white`
-                                  : 'bg-gradient-to-br from-gray-200 to-gray-300 border-2 border-gray-400 hover:bg-gradient-to-br hover:from-gray-300 hover:to-gray-400'
-                              }`}
-                              style={{
-                                animationDelay: dayStreakActive ? `${index * 100}ms` : '0ms'
-                              }}
-                            >
-                              {dayStreakActive ? (
-                                <span className="text-2xl text-white drop-shadow-lg">✓</span>
-                              ) : (
-                                <span className="text-gray-500 text-xl group-hover:text-gray-600">○</span>
-                              )}
-                            </div>
-                            <div className={`text-xs font-bold mt-2 transition-colors ${
-                              dayStreakActive 
-                                ? 'text-transparent bg-clip-text bg-gradient-to-r from-orange-600 to-red-600' 
-                                : 'text-gray-400'
-                            }`}>
-                              {day}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    
-                    {/* Streak Info */}
-                    <div className="bg-gradient-to-r from-orange-50 to-red-50 rounded-lg p-4 border border-orange-200">
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <div className="text-xs text-orange-600 font-caption mb-1">Current Streak</div>
-                          <div className="text-2xl font-bold text-orange-700">{playerStats.currentStreak} days</div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-xs text-orange-600 font-caption mb-1">Best Streak</div>
-                          <div className="text-2xl font-bold text-orange-700">{playerStats.longestStreak} days</div>
-                        </div>
+                {/* COLLAPSABLE TOGGLES */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+                  {/* Your Report Toggle */}
+                  <div
+                    key="report-toggle"
+                    className="relative overflow-hidden rounded-xl p-6 text-left transition-all duration-300 hover:shadow-lg group cursor-pointer"
+                    style={{
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+                    }}
+                  >
+                    <div 
+                      className="relative z-10 cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenModal('report');
+                      }}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-lg font-semibold text-white font-display">Your Report</h3>
+                        <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
                       </div>
+                      <p className="text-sm text-white/80 font-body">Click to view full report</p>
                     </div>
-                  </div>
-
-                  {/* Your Commitment */}
-                  <div className="apple-card rounded-xl p-8">
-                    <h2 className="text-2xl font-semibold apple-text-primary mb-4 flex items-center justify-center gap-2">
-                      <span className="text-2xl">🎯</span>
-                      Your Commitment
-                    </h2>
-                    
-                    {commitmentDays === 0 ? (
-                      // Commitment Selection
-                      <div>
-                        <p className="text-sm text-slate-600 text-center mb-6">
-                          Choose your commitment period to track your journey
-                        </p>
-                        
-                        {/* Commitment Days Bubbles */}
-                        <div className="flex justify-center items-center gap-4 flex-wrap mb-6">
-                          {[30, 45, 60, 75, 90].map((days, index) => {
-                            const colors = [
-                              'from-blue-400 to-indigo-500 shadow-blue-200 hover:shadow-blue-300',
-                              'from-purple-400 to-pink-500 shadow-purple-200 hover:shadow-purple-300',
-                              'from-emerald-400 to-teal-500 shadow-emerald-200 hover:shadow-emerald-300',
-                              'from-orange-400 to-red-500 shadow-orange-200 hover:shadow-orange-300',
-                              'from-amber-400 to-yellow-500 shadow-amber-200 hover:shadow-amber-300'
-                            ];
-                            return (
-                              <button
-                                key={days}
-                                onClick={() => {
-                                  setCommitmentDays(days);
-                                  setCommitmentStartDate(new Date().toISOString());
-                                  // Save to localStorage
-                                  localStorage.setItem(`commitment_${user.id}`, JSON.stringify({
-                                    days,
-                                    startDate: new Date().toISOString()
-                                  }));
-                                }}
-                                className={`w-20 h-20 rounded-full flex flex-col items-center justify-center transition-all duration-300 hover:scale-110 bg-gradient-to-br ${colors[index]} text-white font-bold shadow-lg hover:shadow-xl border-2 border-white group animate-pulse`}
-                                style={{ animationDelay: `${index * 100}ms`, animationDuration: '2s' }}
-                              >
-                                <div className="text-2xl font-bold group-hover:scale-110 transition-transform">{days}</div>
-                                <div className="text-xs font-semibold">days</div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ) : (
-                      // Commitment Progress Graph
-                      <div>
-                        <div className="text-center mb-6">
-                          <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600 mb-2">
-                            {commitmentDays} Days
-                          </div>
-                          <p className="text-xs text-slate-600">
-                            Started {commitmentStartDate ? formatTime(commitmentStartDate) : 'recently'}
-                          </p>
-                        </div>
-                        
-                        {/* Dynamic Progress Graph */}
-                        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border-2 border-blue-200">
-                          <div className="flex justify-between items-end gap-1" style={{ height: '200px' }}>
-                            {Array.from({ length: commitmentDays }, (_, index) => {
-                              const currentDay = index + 1;
-                              // Calculate progress for each day based on user's actual streak
-                              const dayProgress = currentDay <= playerStats.currentStreak ? 
-                                (Math.random() * 40 + 60) : // Random progress between 60-100% for completed days
-                                Math.max(0, Math.random() * 20); // Random progress between 0-20% for future days
-                              const barHeight = (dayProgress / 100) * 180;
-                              
-                              return (
+                    <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 transition-all duration-300 pointer-events-none"></div>
+                    {false ? (
+                      <div className="mt-4 pt-4 border-t border-white/20">
+                        {/* Level & XP Metrics */}
+                        <div className="space-y-3 mb-4" onClick={(e) => e.stopPropagation()}>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-xs text-white/70">Level</span>
+                                <span className="text-lg">🎮</span>
+                              </div>
+                              <p className="text-2xl font-bold text-white">{playerStats.level}</p>
+                              <p className="text-xs text-white/60 mt-1">{playerStats.experienceToNext} XP to next</p>
+                            </div>
+                            <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-xs text-white/70">Total XP</span>
+                                <span className="text-lg">⭐</span>
+                              </div>
+                              <p className="text-2xl font-bold text-white">{playerStats.totalPoints}</p>
+                              <div className="w-full bg-white/20 rounded-full h-1.5 mt-2">
                                 <div 
-                                  key={index} 
-                                  className="flex-1 flex flex-col items-center group"
-                                  style={{
-                                    animationDelay: `${index * 20}ms`
-                                  }}
-                                >
-                                  <div
-                                    className={`w-full rounded-t-lg transition-all duration-500 ease-out hover:opacity-80 ${
-                                      currentDay <= playerStats.currentStreak
-                                        ? 'bg-gradient-to-t from-green-500 to-emerald-400 shadow-md'
-                                        : 'bg-gradient-to-t from-gray-300 to-gray-200'
-                                    }`}
-                                    style={{ height: `${barHeight}px` }}
-                                    title={`Day ${currentDay}: ${Math.round(dayProgress)}%`}
-                                  />
-                                  {index % 7 === 0 || index === commitmentDays - 1 ? (
-                                    <div className="text-xs text-slate-600 mt-1 font-medium">
-                                      {currentDay}
-                                    </div>
-                                  ) : (
-                                    <div className="text-xs text-transparent mt-1">{currentDay}</div>
-                                  )}
-                                </div>
-                              );
-                            })}
+                                  className="bg-white h-1.5 rounded-full transition-all duration-500"
+                                  style={{ width: `${(playerStats.experience % 100)}%` }}
+                                ></div>
+                              </div>
+                            </div>
                           </div>
                           
-                          {/* Progress Stats */}
-                          <div className="mt-6 grid grid-cols-3 gap-4">
-                            <div className="text-center bg-white rounded-lg p-3 border border-blue-200">
-                              <div className="text-lg font-bold text-blue-600">
-                                {Math.round((playerStats.currentStreak / commitmentDays) * 100)}%
-                              </div>
-                              <div className="text-xs text-blue-600 font-caption">Complete</div>
+                          {/* Conversations Card */}
+                          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-xs text-white/70">Conversations</span>
+                              <MessageCircle className="h-4 w-4 text-white" />
                             </div>
-                            <div className="text-center bg-white rounded-lg p-3 border border-green-200">
-                              <div className="text-lg font-bold text-green-600">{playerStats.currentStreak}</div>
-                              <div className="text-xs text-green-600 font-caption">Days Done</div>
-                            </div>
-                            <div className="text-center bg-white rounded-lg p-3 border border-orange-200">
-                              <div className="text-lg font-bold text-orange-600">
-                                {commitmentDays - playerStats.currentStreak}
-                              </div>
-                              <div className="text-xs text-orange-600 font-caption">Days Left</div>
-                            </div>
+                            <p className="text-2xl font-bold text-white">{playerStats.conversationsCompleted}</p>
+                            <p className="text-xs text-white/60 mt-1">{playerStats.wordsLearned} words learned</p>
                           </div>
                         </div>
-                        
-                        {/* Reset Button */}
-                        <button
-                          onClick={() => {
-                            setCommitmentDays(0);
-                            setCommitmentStartDate(null);
-                            localStorage.removeItem(`commitment_${user.id}`);
-                          }}
-                          className="mt-4 w-full px-4 py-2 text-sm font-semibold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition-colors border border-red-200"
-                        >
-                          Change Commitment
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
 
-                {/* Right Sidebar */}
-                <div className="space-y-6">
-                  {/* Collapsible Your Report Tab */}
-                  <div>
-                    <button
-                      onClick={() => setReportSidebarExpanded(!reportSidebarExpanded)}
-                      className={`w-full flex items-center justify-between px-3 py-2 text-sm font-semibold rounded-lg transition-all duration-200 border-2 ${
-                        reportSidebarExpanded
-                          ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white border-blue-600 shadow-lg shadow-blue-200'
-                          : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 border-slate-200'
-                      }`}
-                    >
-                      <span className="flex items-center gap-2">
-                        <BarChart3 className="h-4 w-4" />
-                        Your Report
-                      </span>
-                      <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${reportSidebarExpanded ? 'rotate-180' : ''}`} />
-                    </button>
-                    
-                    {reportSidebarExpanded && (
-                      <div className="mt-2 bg-white border border-gray-200 rounded-lg shadow-sm">
-                        <div className="p-4">
-                          <div className="space-y-4">
-                            {/* Progress Summary */}
-                            <div>
-                              <h3 className="text-sm font-semibold text-slate-800 mb-3">Progress Summary</h3>
-                              <div className="grid grid-cols-2 gap-3">
-                                <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
-                                  <div className="text-lg font-display text-blue-700">{playerStats.level}</div>
-                                  <div className="text-xs text-blue-600 font-caption">Current Level</div>
-                                </div>
-                                <div className="bg-green-50 rounded-lg p-3 border border-green-200">
-                                  <div className="text-lg font-display text-green-700">{playerStats.totalPoints}</div>
-                                  <div className="text-xs text-green-600 font-caption">Total XP</div>
-                                </div>
-                                <div className="bg-purple-50 rounded-lg p-3 border border-purple-200">
-                                  <div className="text-lg font-display text-purple-700">{playerStats.conversationsCompleted}</div>
-                                  <div className="text-xs text-purple-600 font-caption">Conversations</div>
-                                </div>
-                                <div className="bg-orange-50 rounded-lg p-3 border border-orange-200">
-                                  <div className="text-lg font-display text-orange-700">{playerStats.wordsLearned}</div>
-                                  <div className="text-xs text-orange-600 font-caption">Words Learned</div>
+                        {/* Report Type Selector */}
+                        <div className="flex gap-2 mb-4" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setReportView('daily');
+                            }}
+                            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all cursor-pointer ${
+                              reportView === 'daily'
+                                ? 'bg-white text-purple-600'
+                                : 'bg-white/10 text-white hover:bg-white/20'
+                            }`}
+                          >
+                            Daily Report
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setReportView('weekly');
+                            }}
+                            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all cursor-pointer ${
+                              reportView === 'weekly'
+                                ? 'bg-white text-purple-600'
+                                : 'bg-white/10 text-white hover:bg-white/20'
+                            }`}
+                          >
+                            Weekly Report
+                          </button>
+                        </div>
+
+                        {/* Report Content */}
+                        <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 max-h-96 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                          {reportView === 'daily' ? (
+                            <div className="space-y-4">
+                              {/* Daily Report Content */}
+                              <div>
+                                <h4 className="text-sm font-semibold text-white mb-2 flex items-center">
+                                  <span className="mr-2">💬</span>
+                                  Today's Conversations
+                                </h4>
+                                <div className="bg-white/10 rounded-lg p-3">
+                                  <p className="text-white/90 text-sm">
+                                    <span className="font-bold text-lg">{conversations.filter(conv => {
+                                      const today = new Date();
+                                      const convDate = new Date(conv.created_at);
+                                      return convDate.toDateString() === today.toDateString();
+                                    }).length}</span> conversations completed today
+                                  </p>
+                                  <p className="text-white/60 text-xs mt-1">Modes: General, Casual, Business</p>
                                 </div>
                               </div>
-                            </div>
 
-                            {/* Streak Info */}
-                            <div>
-                              <h3 className="text-sm font-semibold text-slate-800 mb-2">Streak Status</h3>
-                              <div className="bg-gradient-to-r from-orange-50 to-red-50 rounded-lg p-3 border border-orange-200">
-                                <div className="flex items-center justify-between">
-                                  <div>
-                                    <div className="text-lg font-display text-orange-700">{playerStats.currentStreak}</div>
-                                    <div className="text-xs text-orange-600 font-caption">Current Streak</div>
+                              <div>
+                                <h4 className="text-sm font-semibold text-white mb-2 flex items-center">
+                                  <span className="mr-2">⚠️</span>
+                                  Mistakes Analysis
+                                </h4>
+                                <div className="bg-white/10 rounded-lg p-3 space-y-2">
+                                  <div className="text-xs text-white/80">
+                                    <span className="font-medium">Grammar:</span> Articles (der/die/das) - 3 errors
                                   </div>
-                                  <div className="text-right">
-                                    <div className="text-lg font-display text-orange-700">{playerStats.longestStreak}</div>
-                                    <div className="text-xs text-orange-600 font-caption">Best Streak</div>
+                                  <div className="text-xs text-white/80">
+                                    <span className="font-medium">Pronunciation:</span> "ch" sounds - needs practice
                                   </div>
                                 </div>
                               </div>
-                            </div>
 
-                            {/* Achievements Count */}
-                            <div>
-                              <h3 className="text-sm font-semibold text-slate-800 mb-2">Achievements</h3>
-                              <div className="bg-gradient-to-r from-yellow-50 to-amber-50 rounded-lg p-3 border border-yellow-200">
-                                <div className="text-lg font-display text-amber-700">{playerStats.achievements.length}</div>
-                                <div className="text-xs text-amber-600 font-caption">Achievements Unlocked</div>
+                              <div>
+                                <h4 className="text-sm font-semibold text-white mb-2 flex items-center">
+                                  <span className="mr-2">🗣️</span>
+                                  Pronunciation Analytics
+                                </h4>
+                                <div className="bg-white/10 rounded-lg p-3">
+                                  <div className="flex justify-between items-center mb-2">
+                                    <span className="text-xs text-white/70">Average Score</span>
+                                    <span className="text-sm font-bold text-white">85%</span>
+                                  </div>
+                                  <div className="w-full bg-white/20 rounded-full h-2">
+                                    <div className="bg-green-400 h-2 rounded-full" style={{ width: '85%' }}></div>
+                                  </div>
+                                  <p className="text-xs text-white/60 mt-2">12 words practiced today</p>
+                                </div>
+                              </div>
+
+                              <div>
+                                <h4 className="text-sm font-semibold text-white mb-2 flex items-center">
+                                  <span className="mr-2">📚</span>
+                                  Vocabulary Analytics
+                                </h4>
+                                <div className="bg-white/10 rounded-lg p-3">
+                                  <p className="text-white/90 text-sm mb-1">
+                                    <span className="font-bold text-lg">{playerStats.wordsLearned}</span> total words learned
+                                  </p>
+                                  <p className="text-white/60 text-xs">+8 new words today</p>
+                                </div>
+                              </div>
+
+                              <div className="bg-orange-400/20 border border-orange-400/30 rounded-lg p-3">
+                                <h4 className="text-sm font-semibold text-white mb-2 flex items-center">
+                                  <span className="mr-2">🎯</span>
+                                  Scope of Improvement
+                                </h4>
+                                <ul className="space-y-1.5 text-xs text-white/90">
+                                  <li className="flex items-start">
+                                    <span className="mr-2">•</span>
+                                    <span>Focus on article usage (der/die/das)</span>
+                                  </li>
+                                  <li className="flex items-start">
+                                    <span className="mr-2">•</span>
+                                    <span>Practice "ch" and "sch" pronunciation</span>
+                                  </li>
+                                  <li className="flex items-start">
+                                    <span className="mr-2">•</span>
+                                    <span>Review past tense verb conjugations</span>
+                                  </li>
+                                </ul>
                               </div>
                             </div>
-                          </div>
+                          ) : (
+                            <div className="space-y-4">
+                              {/* Weekly Report Content */}
+                              <div>
+                                <h4 className="text-sm font-semibold text-white mb-2 flex items-center">
+                                  <span className="mr-2">📊</span>
+                                  Week Overview
+                                </h4>
+                                <div className="bg-white/10 rounded-lg p-3">
+                                  <p className="text-white/90 text-sm mb-2">
+                                    <span className="font-bold text-lg">{conversations.filter(conv => {
+                                      const weekAgo = new Date();
+                                      weekAgo.setDate(weekAgo.getDate() - 7);
+                                      return new Date(conv.created_at) > weekAgo;
+                                    }).length}</span> conversations this week
+                                  </p>
+                                  <div className="flex justify-between items-end h-20 gap-1">
+                                    {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, i) => {
+                                      const height = Math.random() * 60 + 20;
+                                      return (
+                                        <div key={i} className="flex-1 flex flex-col items-center">
+                                          <div 
+                                            className="w-full bg-white/40 rounded-t"
+                                            style={{ height: `${height}%` }}
+                                          ></div>
+                                          <span className="text-xs text-white/60 mt-1">{day}</span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div>
+                                <h4 className="text-sm font-semibold text-white mb-2 flex items-center">
+                                  <span className="mr-2">📈</span>
+                                  Progress Metrics
+                                </h4>
+                                <div className="bg-white/10 rounded-lg p-3 space-y-2">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-xs text-white/70">vs Last Week</span>
+                                    <span className="text-sm font-bold text-green-400">+15%</span>
+                                  </div>
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-xs text-white/70">Pronunciation Improvement</span>
+                                    <span className="text-sm font-bold text-green-400">+8%</span>
+                                  </div>
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-xs text-white/70">Vocabulary Growth</span>
+                                    <span className="text-sm font-bold text-green-400">+42 words</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div>
+                                <h4 className="text-sm font-semibold text-white mb-2 flex items-center">
+                                  <span className="mr-2">🎭</span>
+                                  Conversation Trends
+                                </h4>
+                                <div className="bg-white/10 rounded-lg p-3">
+                                  <div className="space-y-2">
+                                    <div>
+                                      <div className="flex justify-between text-xs mb-1">
+                                        <span className="text-white/70">General</span>
+                                        <span className="text-white/90">45%</span>
+                                      </div>
+                                      <div className="w-full bg-white/20 rounded-full h-1.5">
+                                        <div className="bg-blue-400 h-1.5 rounded-full" style={{ width: '45%' }}></div>
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <div className="flex justify-between text-xs mb-1">
+                                        <span className="text-white/70">Business</span>
+                                        <span className="text-white/90">35%</span>
+                                      </div>
+                                      <div className="w-full bg-white/20 rounded-full h-1.5">
+                                        <div className="bg-purple-400 h-1.5 rounded-full" style={{ width: '35%' }}></div>
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <div className="flex justify-between text-xs mb-1">
+                                        <span className="text-white/70">Casual</span>
+                                        <span className="text-white/90">20%</span>
+                                      </div>
+                                      <div className="w-full bg-white/20 rounded-full h-1.5">
+                                        <div className="bg-green-400 h-1.5 rounded-full" style={{ width: '20%' }}></div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="bg-green-400/20 border border-green-400/30 rounded-lg p-3">
+                                <h4 className="text-sm font-semibold text-white mb-2 flex items-center">
+                                  <span className="mr-2">✨</span>
+                                  Weekly Summary
+                                </h4>
+                                <p className="text-xs text-white/90 leading-relaxed">
+                                  Great progress this week! Your pronunciation improved by 8% and you've learned 42 new words. 
+                                  Keep focusing on article usage and you'll master German grammar soon!
+                                </p>
+                                <div className="mt-2 pt-2 border-t border-white/20">
+                                  <p className="text-xs text-white/70">🏆 Achievement unlocked: Week Warrior!</p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
-                    )}
+                    ) : null}
                   </div>
 
-                  {/* Collapsible Recent Conversations Tab */}
-                  <div>
-                    <button
-                      onClick={() => setProgressSidebarExpanded(!progressSidebarExpanded)}
-                      className={`w-full flex items-center justify-between px-3 py-2 text-sm font-semibold rounded-lg transition-all duration-200 border-2 ${
-                        progressSidebarExpanded
-                          ? 'bg-gradient-to-r from-purple-500 to-pink-600 text-white border-purple-600 shadow-lg shadow-purple-200'
-                          : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-purple-50 hover:to-pink-50 border-slate-200'
-                      }`}
+                  {/* Your Practice Analysis Toggle */}
+                  <div
+                    key="analysis-toggle"
+                    className="relative overflow-hidden rounded-xl p-6 text-left transition-all duration-300 hover:shadow-lg group cursor-pointer"
+                    style={{
+                      background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)'
+                    }}
+                  >
+                    <div 
+                      className="relative z-10 cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenModal('analysis');
+                      }}
                     >
-                      <span className="flex items-center gap-2">
-                        <MessageCircle className="h-4 w-4" />
-                        Your Recent Conversations
-                      </span>
-                      <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${progressSidebarExpanded ? 'rotate-180' : ''}`} />
-                    </button>
-                    
-                    {progressSidebarExpanded && (
-                      <div className="mt-2 bg-white border border-gray-200 rounded-lg shadow-sm">
-                        <div className="p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-lg font-semibold text-white font-display">Your Practice Analysis</h3>
+                        <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </div>
+                      <p className="text-sm text-white/80 font-body">Click to view full analysis</p>
+                    </div>
+                    <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 transition-all duration-300 pointer-events-none"></div>
+                    {false ? (
+                      <div className="mt-4 pt-4 border-t border-white/20" onClick={(e) => e.stopPropagation()}>
+                        {/* Recent Practice Sessions */}
+                        <div className="mb-4">
+                          <h4 className="text-sm font-semibold text-white mb-3 flex items-center">
+                            <span className="mr-2">📝</span>
+                            Recent Sessions
+                          </h4>
                           {conversations.length > 0 ? (
-                            <div className="space-y-4 max-h-[600px] overflow-y-auto pr-2 conversation-scroll">
-                              {conversations.slice(0, 10).map((conversation) => (
-                                <div key={conversation.id} className="flex flex-col gap-2 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                                  <div className="flex-1">
-                                    <h3 className="font-medium apple-text-primary text-sm">{conversation.title}</h3>
-                                    <p className="text-xs apple-text-secondary truncate mt-1">{conversation.preview}</p>
-                                    <p className="text-xs text-gray-400 mt-1">{formatTime(conversation.updated_at)}</p>
-                                  </div>
-                                  <div className="flex gap-2">
-                                    <button
-                                      onClick={() => setSelectedConversation(conversation.id)}
-                                      className="flex-1 px-2 py-1.5 text-xs bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
-                                    >
-                                      Review
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        setConversationInput(conversation.preview);
-                                        startNewConversation(conversation.id);
-                                        setCurrentView('dashboard');
-                                      }}
-                                      className="flex-1 px-2 py-1.5 text-xs bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors"
-                                    >
-                                      Practice
-                                    </button>
+                            <div className="space-y-2 max-h-64 overflow-y-auto">
+                              {conversations.slice(0, 5).map((conversation) => (
+                                <div key={conversation.id} className="bg-white/10 backdrop-blur-sm rounded-lg p-3 hover:bg-white/15 transition-all">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex-1 min-w-0">
+                                      <h5 className="text-sm font-medium text-white truncate">{conversation.title}</h5>
+                                      <p className="text-xs text-white/60 truncate mt-0.5">{conversation.preview}</p>
+                                      <div className="flex items-center gap-2 mt-1.5">
+                                        <span className="text-xs text-white/50">{formatTime(conversation.updated_at)}</span>
+                                        <span className="text-xs text-white/50">•</span>
+                                        <span className="text-xs text-white/50">~15 min</span>
+                                      </div>
+                                    </div>
+                                    <div className="flex gap-1">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedConversation(conversation.id);
+                                        }}
+                                        className="px-2 py-1 text-xs bg-white/20 text-white rounded hover:bg-white/30 transition-colors whitespace-nowrap"
+                                      >
+                                        Review
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setConversationInput(conversation.preview);
+                                          startNewConversation(conversation.id);
+                                          setCurrentView('dashboard');
+                                        }}
+                                        className="px-2 py-1 text-xs bg-white/20 text-white rounded hover:bg-white/30 transition-colors whitespace-nowrap"
+                                      >
+                                        Retry
+                                      </button>
+                                    </div>
                                   </div>
                                 </div>
                               ))}
                             </div>
                           ) : (
-                            <div className="text-center py-8">
-                              <MessageCircle className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                              <p className="apple-text-secondary text-sm">No conversations yet. Start practicing!</p>
+                            <div className="bg-white/10 rounded-lg p-4 text-center">
+                              <p className="text-xs text-white/60">No practice sessions yet</p>
                             </div>
                           )}
                         </div>
-                      </div>
-                    )}
-                  </div>
 
-                  {/* Collapsible Practice Analysis Tab */}
-                  <div>
-                    <button
-                      onClick={() => setPracticeAnalysisExpanded(!practiceAnalysisExpanded)}
-                      className={`w-full flex items-center justify-between px-3 py-2 text-sm font-semibold rounded-lg transition-all duration-200 border-2 ${
-                        practiceAnalysisExpanded
-                          ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white border-emerald-600 shadow-lg shadow-emerald-200'
-                          : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-emerald-50 hover:to-teal-50 border-slate-200'
-                      }`}
-                    >
-                      <span className="flex items-center gap-2">
-                        <BarChart3 className="h-4 w-4" />
-                        Practice Analysis
-                      </span>
-                      <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${practiceAnalysisExpanded ? 'rotate-180' : ''}`} />
-                    </button>
-                    
-                    {practiceAnalysisExpanded && (
-                      <div className="mt-2 bg-white border border-gray-200 rounded-lg shadow-sm">
-                        <div className="p-4">
-                          {/* Daily/Weekly Toggle */}
-                          <div className="flex gap-2 mb-4 bg-gray-100 rounded-lg p-1">
-                            <button
-                              onClick={() => setAnalysisTimeframe('daily')}
-                              className={`flex-1 px-3 py-2 text-xs font-semibold rounded-md transition-all ${
-                                analysisTimeframe === 'daily'
-                                  ? 'bg-white shadow-sm text-blue-600'
-                                  : 'text-gray-600 hover:text-gray-800'
-                              }`}
-                            >
-                              Daily
-                            </button>
-                            <button
-                              onClick={() => setAnalysisTimeframe('weekly')}
-                              className={`flex-1 px-3 py-2 text-xs font-semibold rounded-md transition-all ${
-                                analysisTimeframe === 'weekly'
-                                  ? 'bg-white shadow-sm text-blue-600'
-                                  : 'text-gray-600 hover:text-gray-800'
-                              }`}
-                            >
-                              Weekly
-                            </button>
-                          </div>
+                        {/* Vocabulary Tests & Summaries */}
+                        <div className="mb-4">
+                          <h4 className="text-sm font-semibold text-white mb-3 flex items-center">
+                            <span className="mr-2">📚</span>
+                            Vocabulary Tests Summary
+                          </h4>
+                          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3 space-y-3">
+                            {/* Overall Test Performance */}
+                            <div className="bg-white/10 rounded-lg p-2.5">
+                              <div className="flex justify-between items-center mb-2">
+                                <span className="text-xs text-white/70">Total Tests Taken</span>
+                                <span className="text-lg font-bold text-white">12</span>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <span className="text-xs text-white/70">Average Score</span>
+                                <span className="text-sm font-bold text-green-300">84%</span>
+                              </div>
+                            </div>
 
-                          {/* Practice Mode Analysis */}
-                          <div className="space-y-4">
+                            {/* Recent Test Results */}
                             <div>
-                              <h3 className="text-sm font-semibold text-slate-800 mb-3">Practice Mode</h3>
-                              <div className="space-y-3">
-                                {/* Today/Today's Sessions */}
-                                <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
-                                  <div className="flex items-center justify-between mb-2">
-                                    <span className="text-xs font-semibold text-blue-700">
-                                      {analysisTimeframe === 'daily' ? "Today's Mode" : "This Week's Mode"}
-                                    </span>
-                                    <span className="text-lg font-bold text-blue-600">
-                                      Professional
-                                    </span>
+                              <p className="text-xs text-white/70 mb-2">Recent Test Results</p>
+                              <div className="space-y-1.5">
+                                <div className="bg-white/10 rounded-lg p-2 flex justify-between items-center">
+                                  <div className="flex-1">
+                                    <p className="text-xs font-medium text-white">General Vocabulary Test</p>
+                                    <p className="text-xs text-white/50">25 words • 2 days ago</p>
                                   </div>
-                                  <div className="text-xs text-blue-600">
-                                    {analysisTimeframe === 'daily' 
-                                      ? 'Most of your sessions were professional' 
-                                      : 'Most sessions this week were professional'}
+                                  <div className="text-right">
+                                    <p className="text-sm font-bold text-green-300">92%</p>
+                                    <p className="text-xs text-white/60">23/25</p>
                                   </div>
                                 </div>
-
-                                {/* Sessions Breakdown */}
-                                <div className="grid grid-cols-2 gap-3">
-                                  <div className="bg-purple-50 rounded-lg p-3 border border-purple-200">
-                                    <div className="text-lg font-bold text-purple-700">{conversations.length}</div>
-                                    <div className="text-xs text-purple-600 font-caption">
-                                      {analysisTimeframe === 'daily' ? 'Sessions Today' : 'Total Sessions'}
-                                    </div>
+                                <div className="bg-white/10 rounded-lg p-2 flex justify-between items-center">
+                                  <div className="flex-1">
+                                    <p className="text-xs font-medium text-white">Daily Life Phrases</p>
+                                    <p className="text-xs text-white/50">20 words • 5 days ago</p>
                                   </div>
-                                  <div className="bg-green-50 rounded-lg p-3 border border-green-200">
-                                    <div className="text-lg font-bold text-green-700">
-                                      {Math.round(conversations.length * 0.75)}
-                                    </div>
-                                    <div className="text-xs text-green-600 font-caption">Professional</div>
+                                  <div className="text-right">
+                                    <p className="text-sm font-bold text-yellow-300">75%</p>
+                                    <p className="text-xs text-white/60">15/20</p>
+                                  </div>
+                                </div>
+                                <div className="bg-white/10 rounded-lg p-2 flex justify-between items-center">
+                                  <div className="flex-1">
+                                    <p className="text-xs font-medium text-white">Travel Vocabulary</p>
+                                    <p className="text-xs text-white/50">30 words • 1 week ago</p>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-sm font-bold text-green-300">87%</p>
+                                    <p className="text-xs text-white/60">26/30</p>
                                   </div>
                                 </div>
                               </div>
                             </div>
 
-                            {/* Additional Stats */}
-                            <div>
-                              <h3 className="text-sm font-semibold text-slate-800 mb-3">
-                                {analysisTimeframe === 'daily' ? 'Today\'s Highlights' : 'Week Highlights'}
-                              </h3>
+                            {/* Test Performance Breakdown */}
+                            <div className="pt-2 border-t border-white/20">
+                              <p className="text-xs text-white/70 mb-2">Performance by Category</p>
                               <div className="space-y-2">
-                                <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                                  <span className="text-xs text-gray-600">Average Session Duration</span>
-                                  <span className="text-xs font-semibold text-gray-800">15 min</span>
+                                <div>
+                                  <div className="flex justify-between text-xs mb-0.5">
+                                    <span className="text-white/70">Nouns</span>
+                                    <span className="text-white/90">89%</span>
+                                  </div>
+                                  <div className="w-full bg-white/20 rounded-full h-1">
+                                    <div className="bg-gradient-to-r from-purple-300 to-purple-400 h-1 rounded-full" style={{ width: '89%' }}></div>
+                                  </div>
                                 </div>
-                                <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                                  <span className="text-xs text-gray-600">Words Practiced</span>
-                                  <span className="text-xs font-semibold text-gray-800">{playerStats.wordsLearned}</span>
+                                <div>
+                                  <div className="flex justify-between text-xs mb-0.5">
+                                    <span className="text-white/70">Verbs</span>
+                                    <span className="text-white/90">82%</span>
+                                  </div>
+                                  <div className="w-full bg-white/20 rounded-full h-1">
+                                    <div className="bg-gradient-to-r from-blue-300 to-blue-400 h-1 rounded-full" style={{ width: '82%' }}></div>
+                                  </div>
                                 </div>
-                                <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                                  <span className="text-xs text-gray-600">Perfect Sessions</span>
-                                  <span className="text-xs font-semibold text-gray-800">{playerStats.perfectConversations}</span>
+                                <div>
+                                  <div className="flex justify-between text-xs mb-0.5">
+                                    <span className="text-white/70">Adjectives</span>
+                                    <span className="text-white/90">76%</span>
+                                  </div>
+                                  <div className="w-full bg-white/20 rounded-full h-1">
+                                    <div className="bg-gradient-to-r from-pink-300 to-pink-400 h-1 rounded-full" style={{ width: '76%' }}></div>
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="flex justify-between text-xs mb-0.5">
+                                    <span className="text-white/70">Phrases</span>
+                                    <span className="text-white/90">91%</span>
+                                  </div>
+                                  <div className="w-full bg-white/20 rounded-full h-1">
+                                    <div className="bg-gradient-to-r from-green-300 to-green-400 h-1 rounded-full" style={{ width: '91%' }}></div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Words to Review */}
+                            <div className="bg-orange-400/20 border border-orange-400/30 rounded-lg p-2.5">
+                              <p className="text-xs font-semibold text-white mb-1.5 flex items-center">
+                                <span className="mr-1">⚠️</span>
+                                Words to Review
+                              </p>
+                              <div className="flex flex-wrap gap-1">
+                                <span className="px-1.5 py-0.5 bg-white/20 text-white text-xs rounded">der/die/das</span>
+                                <span className="px-1.5 py-0.5 bg-white/20 text-white text-xs rounded">Fahren</span>
+                                <span className="px-1.5 py-0.5 bg-white/20 text-white text-xs rounded">Gesundheit</span>
+                                <span className="px-1.5 py-0.5 bg-white/20 text-white text-xs rounded">Sprechen</span>
+                                <span className="px-1.5 py-0.5 bg-white/20 text-white text-xs rounded">+8 more</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Time Analytics */}
+                        <div className="mb-4">
+                          <h4 className="text-sm font-semibold text-white mb-3 flex items-center">
+                            <span className="mr-2">⏱️</span>
+                            Time Analytics
+                          </h4>
+                          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3 space-y-3">
+                            <div className="grid grid-cols-3 gap-2">
+                              <div className="bg-white/10 rounded-lg p-2">
+                                <p className="text-xs text-white/60">Today</p>
+                                <p className="text-lg font-bold text-white">45m</p>
+                              </div>
+                              <div className="bg-white/10 rounded-lg p-2">
+                                <p className="text-xs text-white/60">This Week</p>
+                                <p className="text-lg font-bold text-white">3.5h</p>
+                              </div>
+                              <div className="bg-white/10 rounded-lg p-2">
+                                <p className="text-xs text-white/60">Avg/Session</p>
+                                <p className="text-lg font-bold text-white">18m</p>
+                              </div>
+                            </div>
+                            <div>
+                              <p className="text-xs text-white/70 mb-1">Peak Practice Time: 7-9 PM</p>
+                              <div className="flex justify-between items-end h-12 gap-0.5">
+                                {['12AM', '6AM', '12PM', '6PM', '11PM'].map((time, i) => {
+                                  const heights = [20, 40, 60, 85, 30];
+                                  return (
+                                    <div key={i} className="flex-1 flex flex-col items-center">
+                                      <div 
+                                        className="w-full bg-pink-300/60 rounded-t"
+                                        style={{ height: `${heights[i]}%` }}
+                                      ></div>
+                                      <span className="text-xs text-white/50 mt-1">{time}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Performance Metrics */}
+                        <div className="mb-4">
+                          <h4 className="text-sm font-semibold text-white mb-3 flex items-center">
+                            <span className="mr-2">📊</span>
+                            Performance Metrics
+                          </h4>
+                          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3 space-y-2.5">
+                            <div>
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="text-xs text-white/70">Overall Accuracy</span>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-sm font-bold text-white">87%</span>
+                                  <span className="text-xs text-green-300">↑5%</span>
+                                </div>
+                              </div>
+                              <div className="w-full bg-white/20 rounded-full h-1.5">
+                                <div className="bg-gradient-to-r from-pink-300 to-pink-400 h-1.5 rounded-full" style={{ width: '87%' }}></div>
+                              </div>
+                            </div>
+                            <div>
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="text-xs text-white/70">Pronunciation</span>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-sm font-bold text-white">82%</span>
+                                  <span className="text-xs text-green-300">↑3%</span>
+                                </div>
+                              </div>
+                              <div className="w-full bg-white/20 rounded-full h-1.5">
+                                <div className="bg-gradient-to-r from-blue-300 to-blue-400 h-1.5 rounded-full" style={{ width: '82%' }}></div>
+                              </div>
+                            </div>
+                            <div>
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="text-xs text-white/70">Grammar</span>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-sm font-bold text-white">78%</span>
+                                  <span className="text-xs text-red-300">↓2%</span>
+                                </div>
+                              </div>
+                              <div className="w-full bg-white/20 rounded-full h-1.5">
+                                <div className="bg-gradient-to-r from-yellow-300 to-yellow-400 h-1.5 rounded-full" style={{ width: '78%' }}></div>
+                              </div>
+                            </div>
+                            <div>
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="text-xs text-white/70">Vocabulary Usage</span>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-sm font-bold text-white">91%</span>
+                                  <span className="text-xs text-green-300">↑7%</span>
+                                </div>
+                              </div>
+                              <div className="w-full bg-white/20 rounded-full h-1.5">
+                                <div className="bg-gradient-to-r from-green-300 to-green-400 h-1.5 rounded-full" style={{ width: '91%' }}></div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Practice Patterns */}
+                        <div className="mb-4">
+                          <h4 className="text-sm font-semibold text-white mb-3 flex items-center">
+                            <span className="mr-2">📅</span>
+                            Practice Patterns
+                          </h4>
+                          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3 space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-xs text-white/70">Days Practiced (This Week)</span>
+                              <span className="text-sm font-bold text-white">{weekStreakDays.filter(d => d).length}/7</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-xs text-white/70">Longest Streak</span>
+                              <span className="text-sm font-bold text-white">{playerStats.longestStreak} days</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-xs text-white/70">Consistency Score</span>
+                              <span className="text-sm font-bold text-green-300">Excellent</span>
+                            </div>
+                            <div className="mt-2 pt-2 border-t border-white/20">
+                              <p className="text-xs text-white/70 mb-1.5">Most Practiced Topics</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                <span className="px-2 py-0.5 bg-pink-400/30 text-white text-xs rounded-full">Greetings</span>
+                                <span className="px-2 py-0.5 bg-pink-400/30 text-white text-xs rounded-full">Daily Life</span>
+                                <span className="px-2 py-0.5 bg-pink-400/30 text-white text-xs rounded-full">Travel</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Strengths & Weaknesses */}
+                        <div>
+                          <h4 className="text-sm font-semibold text-white mb-3 flex items-center">
+                            <span className="mr-2">⚖️</span>
+                            Strengths & Weaknesses
+                          </h4>
+                          <div className="space-y-2">
+                            <div className="bg-green-400/20 border border-green-400/40 rounded-lg p-3">
+                              <p className="text-xs font-semibold text-white mb-1.5">💪 Top Strengths</p>
+                              <ul className="space-y-1 text-xs text-white/90">
+                                <li className="flex items-start">
+                                  <span className="mr-1.5">✓</span>
+                                  <span>Excellent vocabulary retention</span>
+                                </li>
+                                <li className="flex items-start">
+                                  <span className="mr-1.5">✓</span>
+                                  <span>Strong pronunciation of vowels</span>
+                                </li>
+                                <li className="flex items-start">
+                                  <span className="mr-1.5">✓</span>
+                                  <span>Consistent daily practice</span>
+                                </li>
+                              </ul>
+                            </div>
+                            <div className="bg-orange-400/20 border border-orange-400/40 rounded-lg p-3">
+                              <p className="text-xs font-semibold text-white mb-1.5">🎯 Areas to Improve</p>
+                              <ul className="space-y-1 text-xs text-white/90">
+                                <li className="flex items-start">
+                                  <span className="mr-1.5">•</span>
+                                  <span>Article usage (der/die/das)</span>
+                                </li>
+                                <li className="flex items-start">
+                                  <span className="mr-1.5">•</span>
+                                  <span>Compound word pronunciation</span>
+                                </li>
+                                <li className="flex items-start">
+                                  <span className="mr-1.5">•</span>
+                                  <span>Past tense conjugations</span>
+                                </li>
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {/* Your Achievements Toggle */}
+                  <div
+                    key="achievements-toggle"
+                    className="relative overflow-hidden rounded-xl p-6 text-left transition-all duration-300 hover:shadow-lg group cursor-pointer"
+                    style={{
+                      background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)'
+                    }}
+                  >
+                    <div 
+                      className="relative z-10 cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenModal('achievements');
+                      }}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-lg font-semibold text-white font-display">Your Achievements</h3>
+                        <svg className="h-5 w-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </div>
+                      {/* Show Recent Achievement Preview */}
+                      <div className="flex items-center gap-3 bg-white/15 backdrop-blur-sm rounded-lg p-3 mt-3">
+                        <div className="text-3xl">🎉</div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <p className="text-sm font-semibold text-white">First Conversation</p>
+                            <span className="px-2 py-0.5 bg-yellow-400/30 text-yellow-100 text-xs rounded-full">Recently Unlocked!</span>
+                          </div>
+                          <p className="text-xs text-white/70">Click to view all badges</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 transition-all duration-300 pointer-events-none"></div>
+                    {false ? (
+                      <div className="mt-4 pt-4 border-t border-white/20" onClick={(e) => e.stopPropagation()}>
+                        {/* Achievement Stats Overview */}
+                        <div className="bg-white/10 backdrop-blur-sm rounded-lg p-3 mb-4">
+                          <div className="grid grid-cols-3 gap-3 text-center">
+                            <div>
+                              <p className="text-2xl font-bold text-white">{playerStats.achievements.length}</p>
+                              <p className="text-xs text-white/70">Unlocked</p>
+                            </div>
+                            <div>
+                              <p className="text-2xl font-bold text-white">65%</p>
+                              <p className="text-xs text-white/70">Completion</p>
+                            </div>
+                            <div>
+                              <p className="text-xl font-bold text-white">🏆</p>
+                              <p className="text-xs text-white/70">Next: 10 Chats</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Unlocked Achievements */}
+                        <div className="mb-4">
+                          <h4 className="text-sm font-semibold text-white mb-3 flex items-center">
+                            <span className="mr-2">✨</span>
+                            Unlocked Badges
+                          </h4>
+                          <div className="grid grid-cols-2 gap-2.5 max-h-64 overflow-y-auto">
+                            {/* Achievement 1 */}
+                            <div className="group relative bg-gradient-to-br from-yellow-400 to-orange-500 rounded-lg p-3 hover:scale-105 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-xl">
+                              <div className="text-center">
+                                <div className="text-3xl mb-1 group-hover:scale-110 transition-transform">🎉</div>
+                                <p className="text-xs font-bold text-white">First Conversation</p>
+                                <p className="text-xs text-white/80 mt-0.5">Unlocked 2 days ago</p>
+                              </div>
+                              <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 rounded-lg transition-all"></div>
+                            </div>
+
+                            {/* Achievement 2 */}
+                            <div className="group relative bg-gradient-to-br from-blue-400 to-purple-500 rounded-lg p-3 hover:scale-105 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-xl">
+                              <div className="text-center">
+                                <div className="text-3xl mb-1 group-hover:scale-110 transition-transform">💬</div>
+                                <p className="text-xs font-bold text-white">Conversation Master</p>
+                                <p className="text-xs text-white/80 mt-0.5">10 conversations</p>
+                              </div>
+                              <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 rounded-lg transition-all"></div>
+                            </div>
+
+                            {/* Achievement 3 */}
+                            <div className="group relative bg-gradient-to-br from-green-400 to-teal-500 rounded-lg p-3 hover:scale-105 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-xl">
+                              <div className="text-center">
+                                <div className="text-3xl mb-1 group-hover:scale-110 transition-transform">📚</div>
+                                <p className="text-xs font-bold text-white">Vocabulary Builder</p>
+                                <p className="text-xs text-white/80 mt-0.5">50 words learned</p>
+                              </div>
+                              <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 rounded-lg transition-all"></div>
+                            </div>
+
+                            {/* Achievement 4 */}
+                            <div className="group relative bg-gradient-to-br from-pink-400 to-red-500 rounded-lg p-3 hover:scale-105 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-xl">
+                              <div className="text-center">
+                                <div className="text-3xl mb-1 group-hover:scale-110 transition-transform">🔥</div>
+                                <p className="text-xs font-bold text-white">Week Warrior</p>
+                                <p className="text-xs text-white/80 mt-0.5">7-day streak</p>
+                              </div>
+                              <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 rounded-lg transition-all"></div>
+                            </div>
+
+                            {/* Achievement 5 */}
+                            <div className="group relative bg-gradient-to-br from-purple-400 to-indigo-500 rounded-lg p-3 hover:scale-105 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-xl">
+                              <div className="text-center">
+                                <div className="text-3xl mb-1 group-hover:scale-110 transition-transform">⭐</div>
+                                <p className="text-xs font-bold text-white">Rising Star</p>
+                                <p className="text-xs text-white/80 mt-0.5">Level 5 reached</p>
+                              </div>
+                              <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 rounded-lg transition-all"></div>
+                            </div>
+
+                            {/* Achievement 6 */}
+                            <div className="group relative bg-gradient-to-br from-cyan-400 to-blue-500 rounded-lg p-3 hover:scale-105 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-xl">
+                              <div className="text-center">
+                                <div className="text-3xl mb-1 group-hover:scale-110 transition-transform">🎯</div>
+                                <p className="text-xs font-bold text-white">Perfect Score</p>
+                                <p className="text-xs text-white/80 mt-0.5">100% on a test</p>
+                              </div>
+                              <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 rounded-lg transition-all"></div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Locked Achievements */}
+                        <div>
+                          <h4 className="text-sm font-semibold text-white mb-3 flex items-center">
+                            <span className="mr-2">🔒</span>
+                            Locked Badges
+                          </h4>
+                          <div className="grid grid-cols-2 gap-2.5">
+                            {/* Locked Achievement 1 */}
+                            <div className="relative bg-white/5 rounded-lg p-3 opacity-60 hover:opacity-80 transition-all">
+                              <div className="text-center">
+                                <div className="text-3xl mb-1 grayscale">💪</div>
+                                <p className="text-xs font-bold text-white">Conversation Expert</p>
+                                <p className="text-xs text-white/60 mt-0.5">Complete 50 conversations</p>
+                                <div className="mt-2">
+                                  <div className="w-full bg-white/20 rounded-full h-1">
+                                    <div className="bg-blue-400 h-1 rounded-full" style={{ width: '40%' }}></div>
+                                  </div>
+                                  <p className="text-xs text-white/50 mt-1">20/50</p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Locked Achievement 2 */}
+                            <div className="relative bg-white/5 rounded-lg p-3 opacity-60 hover:opacity-80 transition-all">
+                              <div className="text-center">
+                                <div className="text-3xl mb-1 grayscale">🌟</div>
+                                <p className="text-xs font-bold text-white">Word Wizard</p>
+                                <p className="text-xs text-white/60 mt-0.5">Learn 200 words</p>
+                                <div className="mt-2">
+                                  <div className="w-full bg-white/20 rounded-full h-1">
+                                    <div className="bg-blue-400 h-1 rounded-full" style={{ width: '65%' }}></div>
+                                  </div>
+                                  <p className="text-xs text-white/50 mt-1">130/200</p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Locked Achievement 3 */}
+                            <div className="relative bg-white/5 rounded-lg p-3 opacity-60 hover:opacity-80 transition-all">
+                              <div className="text-center">
+                                <div className="text-3xl mb-1 grayscale">🏆</div>
+                                <p className="text-xs font-bold text-white">Month Master</p>
+                                <p className="text-xs text-white/60 mt-0.5">30-day practice streak</p>
+                                <div className="mt-2">
+                                  <div className="w-full bg-white/20 rounded-full h-1">
+                                    <div className="bg-blue-400 h-1 rounded-full" style={{ width: '23%' }}></div>
+                                  </div>
+                                  <p className="text-xs text-white/50 mt-1">7/30 days</p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Locked Achievement 4 */}
+                            <div className="relative bg-white/5 rounded-lg p-3 opacity-60 hover:opacity-80 transition-all">
+                              <div className="text-center">
+                                <div className="text-3xl mb-1 grayscale">🎓</div>
+                                <p className="text-xs font-bold text-white">Grammar Guru</p>
+                                <p className="text-xs text-white/60 mt-0.5">90% grammar accuracy</p>
+                                <div className="mt-2">
+                                  <div className="w-full bg-white/20 rounded-full h-1">
+                                    <div className="bg-blue-400 h-1 rounded-full" style={{ width: '87%' }}></div>
+                                  </div>
+                                  <p className="text-xs text-white/50 mt-1">87/90%</p>
                                 </div>
                               </div>
                             </div>
                           </div>
                         </div>
                       </div>
-                    )}
-                  </div>
-
-                  {/* Collapsible Achievements Tab */}
-                  <div>
-                    <button
-                      onClick={() => setAchievementsSidebarExpanded(!achievementsSidebarExpanded)}
-                      className={`w-full flex items-center justify-between px-3 py-2 text-sm font-semibold rounded-lg transition-all duration-200 border-2 ${
-                        achievementsSidebarExpanded
-                          ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white border-amber-600 shadow-lg shadow-amber-200'
-                          : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-amber-50 hover:to-orange-50 border-slate-200'
-                      }`}
-                    >
-                      <span className="flex items-center gap-2">
-                        🏆 Achievements ({playerStats.achievements.length})
-                      </span>
-                      <ChevronDown className={`h-4 w-4 transition-transform duration-300 ${achievementsSidebarExpanded ? 'rotate-180' : ''}`} />
-                    </button>
-                    
-                    {achievementsSidebarExpanded && (
-                      <div className="mt-2 bg-white border border-gray-200 rounded-lg shadow-sm">
-                        <div className="p-4">
-                          <div className="grid grid-cols-1 gap-3 max-h-[500px] overflow-y-auto pr-2">
-                            {ACHIEVEMENTS.map((achievement) => {
-                              const isUnlocked = playerStats.achievements.includes(achievement.id);
-                              return (
-                                <div 
-                                  key={achievement.id}
-                                  className={`rounded-lg p-3 ${
-                                    isUnlocked 
-                                      ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-white' 
-                                      : 'bg-gray-100 text-gray-400'
-                                  }`}
-                                >
-                                  <div className="flex items-center justify-between mb-2">
-                                    <span className="text-xl">{achievement.emoji}</span>
-                                    <div className={`text-xs ${isUnlocked ? 'opacity-90' : ''}`}>
-                                      {isUnlocked ? 'Unlocked' : 'Locked'}
-                                    </div>
-                                  </div>
-                                  <div className="text-xs font-medium">{achievement.name}</div>
-                                  <div className={`text-xs ${isUnlocked ? 'opacity-90' : ''}`}>
-                                    {achievement.description}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               </div>
+
+              {/* YOUR STREAK - 7 DAY BUBBLES */}
+              <div className="apple-card rounded-xl p-6 mb-8">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-xl font-semibold apple-text-primary flex items-center">
+                    <span className="text-2xl mr-2">🔥</span>
+                    Your Streak
+                  </h2>
+                  <button
+                    onClick={() => setOpenModal('calendar')}
+                    className="flex items-center gap-2 px-4 py-2 bg-orange-100 hover:bg-orange-200 rounded-lg transition-all group"
+                    title="View Streak Calendar"
+                  >
+                    <svg className="h-5 w-5 text-orange-600 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span className="text-sm font-medium text-orange-600">Calendar</span>
+                  </button>
+                </div>
+                <div className="flex justify-between items-center gap-3">
+                  {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, index) => {
+                    const isActive = weekStreakDays[index];
+                    const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+                    return (
+                      <div key={index} className="flex flex-col items-center flex-1">
+                        <div
+                          className={`
+                            relative w-16 h-16 rounded-full transition-all duration-500
+                            flex items-center justify-center border-2
+                            ${isActive 
+                              ? 'bg-gradient-to-br from-yellow-400 via-orange-500 to-red-500 shadow-xl scale-110 animate-pulse border-orange-600' 
+                              : 'bg-gradient-to-br from-gray-50 to-gray-100 border-gray-800'
+                            }
+                          `}
+                          style={{
+                            boxShadow: isActive 
+                              ? '0 10px 25px -5px rgba(251, 146, 60, 0.5), inset 0 -3px 8px rgba(0, 0, 0, 0.15), inset 0 3px 8px rgba(255, 255, 255, 0.4)'
+                              : 'inset 0 -3px 8px rgba(0, 0, 0, 0.1), inset 0 3px 8px rgba(255, 255, 255, 0.8), 0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                          }}
+                          title={dayNames[index]}
+                        >
+                          {isActive && (
+                            <>
+                              <div className="absolute inset-0 rounded-full bg-gradient-to-br from-yellow-300 to-orange-400 animate-ping opacity-75"></div>
+                              <span className="relative z-10 text-2xl">🔥</span>
+                            </>
+                          )}
+                        </div>
+                        <span className={`text-sm mt-3 font-semibold ${isActive ? 'text-orange-600' : 'text-gray-500'}`}>
+                          {day}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-6 flex justify-between items-center">
+                  <div className="text-left">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Current Streak</p>
+                    <p className="text-2xl font-bold text-orange-600">{weekStreakDays.filter(d => d).length} <span className="text-base text-gray-600">days</span></p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Best Streak</p>
+                    <p className="text-2xl font-bold text-primary">{playerStats.longestStreak} <span className="text-base text-gray-600">days</span></p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Your Commitments */}
+              <div className="apple-card rounded-xl p-6">
+                <h2 className="text-xl font-semibold apple-text-primary mb-4">Your Commitments</h2>
+                {(() => {
+                  // Calculate days elapsed for demo (using 2 days as example)
+                  const daysElapsed = 2;
+                  const isCommitmentCompleted = selectedCommitment && daysElapsed >= selectedCommitment;
+                  const showOptions = !selectedCommitment || isCommitmentCompleted;
+
+                  return showOptions ? (
+                    <>
+                      <p className="text-sm text-gray-600 mb-6">Select how many days you'd like to commit to practicing German:</p>
+                      <div className="grid grid-cols-3 gap-4">
+                  {[15, 30, 45, 60, 75, 90].map((days) => (
+                    <button
+                      key={days}
+                      onClick={() => {
+                        if (selectedCommitment === days) {
+                          setSelectedCommitment(null);
+                          setCommitmentStartDate(null);
+                        } else {
+                          setSelectedCommitment(days);
+                          setCommitmentStartDate(new Date());
+                        }
+                      }}
+                      className={`
+                        relative rounded-xl p-6 transition-all duration-300 cursor-pointer
+                        border-2 flex flex-col items-center justify-center
+                        hover:shadow-lg hover:scale-105
+                        ${selectedCommitment === days 
+                          ? 'border-primary bg-gradient-to-br from-primary/10 to-accent/10 shadow-md' 
+                          : 'border-gray-200 bg-white hover:border-primary/50'
+                        }
+                      `}
+                    >
+                      <div className={`
+                        w-6 h-6 rounded-full border-2 flex items-center justify-center mb-3
+                        transition-all duration-300
+                        ${selectedCommitment === days 
+                          ? 'border-primary bg-primary' 
+                          : 'border-gray-300 bg-white'
+                        }
+                      `}>
+                        {selectedCommitment === days && (
+                          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+                      <div className={`text-2xl font-bold font-display mb-1 ${selectedCommitment === days ? 'text-primary' : 'text-gray-700'}`}>
+                        {days}
+                      </div>
+                      <div className={`text-xs font-medium font-body ${selectedCommitment === days ? 'text-primary' : 'text-gray-500'}`}>
+                        days
+                      </div>
+                    </button>
+                  ))}
+                      </div>
+                      {isCommitmentCompleted && (
+                        <div className="mt-6 p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border-2 border-green-400">
+                          <div className="text-center">
+                            <p className="text-2xl font-bold text-green-600 mb-2">🎉 Congratulations!</p>
+                            <p className="text-sm text-gray-700">You've completed your {selectedCommitment}-day commitment! Select a new goal to continue your journey.</p>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    /* Show only rocket journey when commitment is active */
+                  <div className="mt-6 p-6 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border-2 border-primary/30">
+                    {/* Rocket Journey Title */}
+                    <div className="mb-4 text-center">
+                      <p className="text-lg font-bold text-primary mb-1">🚀 Your {selectedCommitment}-Day Journey</p>
+                      <p className="text-xs text-gray-600">Started {commitmentStartDate.toLocaleDateString()}</p>
+                    </div>
+
+                    {/* Rocket Journey Visualization */}
+                    <div className="relative">
+                      {/* Journey Track */}
+                      <div className="relative h-16 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 rounded-full overflow-hidden">
+                        {/* Progress Fill */}
+                        <div 
+                          className="absolute left-0 top-0 h-full bg-gradient-to-r from-primary/40 to-accent/40 transition-all duration-1000 ease-out"
+                          style={{ 
+                            width: `${Math.min(100, (2 / selectedCommitment) * 100)}%` // Demo: 2 days elapsed
+                          }}
+                        ></div>
+                        
+                        {/* Start Flag */}
+                        <div className="absolute left-2 top-1/2 -translate-y-1/2 z-10">
+                          <div className="bg-green-500 rounded-full p-2 shadow-lg">
+                            <span className="text-white text-xs font-bold">🏁</span>
+                          </div>
+                        </div>
+
+                        {/* Rocket */}
+                        <div 
+                          className="absolute top-1/2 -translate-y-1/2 z-20 transition-all duration-1000 ease-out transform hover:scale-110"
+                          style={{ 
+                            left: `${Math.min(90, Math.max(5, (2 / selectedCommitment) * 85 + 5))}%` // Demo: 2 days elapsed
+                          }}
+                        >
+                          <div className="relative animate-bounce">
+                            <span className="text-4xl drop-shadow-lg" style={{ 
+                              filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.3))',
+                              transform: 'rotate(-15deg)',
+                              display: 'inline-block'
+                            }}>🚀</span>
+                            {/* Rocket Trail */}
+                            <div className="absolute left-0 top-1/2 -translate-y-1/2 -z-10">
+                              <div className="flex gap-1">
+                                <div className="w-2 h-2 bg-orange-400 rounded-full opacity-60 animate-pulse"></div>
+                                <div className="w-2 h-2 bg-yellow-400 rounded-full opacity-40 animate-pulse delay-75"></div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* End Flag */}
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 z-10">
+                          <div className="bg-red-500 rounded-full p-2 shadow-lg">
+                            <span className="text-white text-xs font-bold">🏆</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Milestones */}
+                      <div className="flex justify-between mt-2 px-4">
+                        <span className="text-xs text-gray-600 font-medium">Day 1</span>
+                        <span className="text-xs text-gray-600 font-medium">Day {Math.floor(selectedCommitment / 2)}</span>
+                        <span className="text-xs text-gray-600 font-medium">Day {selectedCommitment}</span>
+                      </div>
+                    </div>
+
+                    {/* Motivational Message */}
+                    <div className="mt-6 text-center bg-white rounded-lg p-4 shadow-sm border border-primary/20">
+                      <p className="text-2xl font-bold text-primary mb-2">
+                        {selectedCommitment - 2 > 0 ? `${selectedCommitment - 2} more days to go!` : '🎉 Goal Reached!'}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        {selectedCommitment - 2 > 0 
+                          ? `Come on, you can do this! Keep practicing every day! 💪`
+                          : `Amazing! You've completed your commitment! 🌟`
+                        }
+                      </p>
+                      {selectedCommitment - 2 > 0 && (
+                        <div className="mt-3">
+                          <div className="flex justify-center items-center gap-2 text-xs text-gray-500">
+                            <span>Progress:</span>
+                            <span className="font-bold text-primary">{Math.round((2 / selectedCommitment) * 100)}%</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  );
+                })()}
+              </div>
             </div>
+
+            {/* FULL-SCREEN MODALS */}
+            {/* Your Report Modal */}
+            {openModal === 'report' && (
+              <div 
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fadeIn"
+                onClick={() => setOpenModal(null)}
+              >
+                <div 
+                  className="bg-white rounded-2xl shadow-2xl w-[95%] h-[90%] max-w-7xl overflow-hidden animate-scaleIn"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Modal Header */}
+                  <div className="bg-gradient-to-r from-purple-600 to-purple-800 p-6 flex items-center justify-between">
+                    <div>
+                      <h2 className="text-2xl font-bold text-white font-display">Your Report</h2>
+                      <p className="text-purple-100 text-sm mt-1">Comprehensive progress analytics</p>
+                    </div>
+                    <button
+                      onClick={() => setOpenModal(null)}
+                      className="p-2 hover:bg-white/10 rounded-full transition-all"
+                    >
+                      <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Modal Content */}
+                  <div className="p-8 h-[calc(100%-88px)] overflow-y-auto">
+                    <div className="max-w-6xl mx-auto">
+                      {/* Level, XP & Conversations - Horizontal Row */}
+                      <div className="grid grid-cols-3 gap-6 mb-8">
+                        <div className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-xl p-6">
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-sm font-medium text-gray-600">Level</h3>
+                            <span className="text-3xl">🎮</span>
+                          </div>
+                          <p className="text-4xl font-bold text-purple-600">{playerStats.level}</p>
+                          <p className="text-sm text-gray-600 mt-2">{playerStats.experienceToNext} XP to next level</p>
+                        </div>
+                        
+                        <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-6">
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-sm font-medium text-gray-600">Total XP</h3>
+                            <span className="text-3xl">⭐</span>
+                          </div>
+                          <p className="text-4xl font-bold text-blue-600">{playerStats.totalPoints}</p>
+                          <div className="w-full bg-gray-200 rounded-full h-3 mt-3">
+                            <div 
+                              className="bg-gradient-to-r from-blue-500 to-purple-500 h-3 rounded-full transition-all duration-500"
+                              style={{ width: `${(playerStats.experience % 100)}%` }}
+                            ></div>
+                          </div>
+                        </div>
+
+                        <div className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-xl p-6">
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-sm font-medium text-gray-600">Conversations</h3>
+                            <MessageCircle className="h-8 w-8 text-green-600" />
+                          </div>
+                          <p className="text-4xl font-bold text-green-600">{playerStats.conversationsCompleted}</p>
+                          <p className="text-sm text-gray-600 mt-2">{playerStats.wordsLearned} words learned</p>
+                        </div>
+                      </div>
+
+                      {/* Report Type Selector */}
+                      <div className="flex gap-4 mb-6">
+                        <button
+                          onClick={() => setReportView('daily')}
+                          className={`flex-1 py-4 px-6 rounded-xl text-base font-semibold transition-all ${
+                            reportView === 'daily'
+                              ? 'bg-gradient-to-r from-purple-600 to-purple-700 text-white shadow-lg'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          📅 Daily Report
+                        </button>
+                        <button
+                          onClick={() => setReportView('weekly')}
+                          className={`flex-1 py-4 px-6 rounded-xl text-base font-semibold transition-all ${
+                            reportView === 'weekly'
+                              ? 'bg-gradient-to-r from-purple-600 to-purple-700 text-white shadow-lg'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          📊 Weekly Report
+                        </button>
+                      </div>
+
+                      {/* Report Content */}
+                      {reportView === 'daily' ? (
+                        <div className="grid grid-cols-2 gap-6">
+                          {/* Left Column */}
+                          <div className="space-y-6">
+                            {/* Today's Conversations */}
+                            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                              <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                                <span className="mr-2 text-2xl">💬</span>
+                                Today's Conversations
+                              </h4>
+                              <div className="bg-purple-50 rounded-lg p-4">
+                                <p className="text-gray-700 text-base">
+                                  <span className="font-bold text-3xl text-purple-600">{conversations.filter(conv => {
+                                    const today = new Date();
+                                    const convDate = new Date(conv.created_at);
+                                    return convDate.toDateString() === today.toDateString();
+                                  }).length}</span> conversations completed
+                                </p>
+                                <p className="text-gray-600 text-sm mt-2">Modes: General, Casual, Business</p>
+                              </div>
+                            </div>
+
+                            {/* Pronunciation Analytics */}
+                            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                              <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                                <span className="mr-2 text-2xl">🗣️</span>
+                                Pronunciation Analytics
+                              </h4>
+                              <div className="space-y-3">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-base text-gray-600">Average Score</span>
+                                  <span className="text-2xl font-bold text-green-600">85%</span>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-3">
+                                  <div className="bg-gradient-to-r from-green-400 to-green-500 h-3 rounded-full" style={{ width: '85%' }}></div>
+                                </div>
+                                <p className="text-sm text-gray-600">12 words practiced today</p>
+                              </div>
+                            </div>
+
+                            {/* Vocabulary Analytics */}
+                            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                              <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                                <span className="mr-2 text-2xl">📚</span>
+                                Vocabulary Analytics
+                              </h4>
+                              <p className="text-gray-700 text-base mb-1">
+                                <span className="font-bold text-3xl text-blue-600">{playerStats.wordsLearned}</span> total words
+                              </p>
+                              <p className="text-gray-600 text-sm">+8 new words today</p>
+                            </div>
+                          </div>
+
+                          {/* Right Column */}
+                          <div className="space-y-6">
+                            {/* Mistakes Analysis */}
+                            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                              <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                                <span className="mr-2 text-2xl">⚠️</span>
+                                Mistakes Analysis
+                              </h4>
+                              <div className="space-y-3">
+                                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                                  <p className="text-sm text-gray-700">
+                                    <span className="font-semibold">Grammar:</span> Articles (der/die/das) - 3 errors
+                                  </p>
+                                </div>
+                                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                                  <p className="text-sm text-gray-700">
+                                    <span className="font-semibold">Pronunciation:</span> "ch" sounds - needs practice
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Scope of Improvement */}
+                            <div className="bg-gradient-to-br from-orange-50 to-red-50 border-2 border-orange-300 rounded-xl p-6 shadow-sm">
+                              <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                                <span className="mr-2 text-2xl">🎯</span>
+                                Scope of Improvement
+                              </h4>
+                              <ul className="space-y-3 text-base text-gray-700">
+                                <li className="flex items-start">
+                                  <span className="mr-3 text-orange-500 text-xl">•</span>
+                                  <span>Focus on article usage (der/die/das)</span>
+                                </li>
+                                <li className="flex items-start">
+                                  <span className="mr-3 text-orange-500 text-xl">•</span>
+                                  <span>Practice "ch" and "sch" pronunciation</span>
+                                </li>
+                                <li className="flex items-start">
+                                  <span className="mr-3 text-orange-500 text-xl">•</span>
+                                  <span>Review past tense verb conjugations</span>
+                                </li>
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        /* Weekly Report */
+                        <div className="grid grid-cols-3 gap-6">
+                          {/* Week Overview */}
+                          <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                            <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                              <span className="mr-2 text-2xl">📊</span>
+                              Week Overview
+                            </h4>
+                            <p className="text-gray-700 text-base mb-4">
+                              <span className="font-bold text-3xl text-purple-600">{conversations.filter(conv => {
+                                const weekAgo = new Date();
+                                weekAgo.setDate(weekAgo.getDate() - 7);
+                                return new Date(conv.created_at) > weekAgo;
+                              }).length}</span> conversations
+                            </p>
+                            <div className="flex justify-between items-end h-32 gap-2">
+                              {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, i) => {
+                                const height = Math.random() * 60 + 20;
+                                return (
+                                  <div key={i} className="flex-1 flex flex-col items-center">
+                                    <div 
+                                      className="w-full bg-purple-400 rounded-t"
+                                      style={{ height: `${height}%` }}
+                                    ></div>
+                                    <span className="text-xs text-gray-600 mt-2 font-medium">{day}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Progress Metrics */}
+                          <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                            <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                              <span className="mr-2 text-2xl">📈</span>
+                              Progress Metrics
+                            </h4>
+                            <div className="space-y-4">
+                              <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
+                                <span className="text-sm text-gray-700">vs Last Week</span>
+                                <span className="text-xl font-bold text-green-600">+15%</span>
+                              </div>
+                              <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
+                                <span className="text-sm text-gray-700">Pronunciation</span>
+                                <span className="text-xl font-bold text-green-600">+8%</span>
+                              </div>
+                              <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
+                                <span className="text-sm text-gray-700">Vocabulary Growth</span>
+                                <span className="text-xl font-bold text-green-600">+42 words</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Conversation Trends & Weekly Summary */}
+                          <div className="space-y-6">
+                            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                              <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                                <span className="mr-2 text-2xl">🎭</span>
+                                Conversation Trends
+                              </h4>
+                              <div className="space-y-3">
+                                <div>
+                                  <div className="flex justify-between text-sm mb-1">
+                                    <span className="text-gray-600">General</span>
+                                    <span className="font-medium text-gray-800">45%</span>
+                                  </div>
+                                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                                    <div className="bg-blue-500 h-2.5 rounded-full" style={{ width: '45%' }}></div>
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="flex justify-between text-sm mb-1">
+                                    <span className="text-gray-600">Business</span>
+                                    <span className="font-medium text-gray-800">35%</span>
+                                  </div>
+                                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                                    <div className="bg-purple-500 h-2.5 rounded-full" style={{ width: '35%' }}></div>
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="flex justify-between text-sm mb-1">
+                                    <span className="text-gray-600">Casual</span>
+                                    <span className="font-medium text-gray-800">20%</span>
+                                  </div>
+                                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                                    <div className="bg-green-500 h-2.5 rounded-full" style={{ width: '20%' }}></div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl p-6 shadow-sm">
+                              <h4 className="text-lg font-semibold text-gray-800 mb-3 flex items-center">
+                                <span className="mr-2 text-2xl">✨</span>
+                                Weekly Summary
+                              </h4>
+                              <p className="text-sm text-gray-700 leading-relaxed">
+                                Great progress this week! Your pronunciation improved by 8% and you've learned 42 new words. 
+                                Keep focusing on article usage and you'll master German grammar soon!
+                              </p>
+                              <div className="mt-3 pt-3 border-t border-green-200">
+                                <p className="text-sm text-green-700 font-medium">🏆 Achievement unlocked: Week Warrior!</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Your Practice Analysis Modal */}
+            {openModal === 'analysis' && (
+              <div 
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fadeIn"
+                onClick={() => setOpenModal(null)}
+              >
+                <div 
+                  className="bg-white rounded-2xl shadow-2xl w-[95%] h-[90%] max-w-7xl overflow-hidden animate-scaleIn"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Modal Header */}
+                  <div className="bg-gradient-to-r from-pink-500 to-rose-600 p-6 flex items-center justify-between">
+                    <div>
+                      <h2 className="text-2xl font-bold text-white font-display">Your Practice Analysis</h2>
+                      <p className="text-pink-100 text-sm mt-1">Detailed session insights and performance</p>
+                    </div>
+                    <button
+                      onClick={() => setOpenModal(null)}
+                      className="p-2 hover:bg-white/10 rounded-full transition-all"
+                    >
+                      <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Modal Content */}
+                  <div className="p-8 h-[calc(100%-88px)] overflow-y-auto">
+                    <div className="max-w-6xl mx-auto space-y-6">
+                      {/* Recent Sessions & Time Analytics Row */}
+                      <div className="grid grid-cols-2 gap-6">
+                        {/* Recent Practice Sessions */}
+                        <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                          <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <span className="mr-2 text-2xl">📝</span>
+                            Recent Sessions
+                          </h4>
+                          {conversations.length > 0 ? (
+                            <div className="space-y-3 max-h-80 overflow-y-auto">
+                              {conversations.slice(0, 5).map((conversation) => (
+                                <div key={conversation.id} className="bg-pink-50 rounded-lg p-4 hover:bg-pink-100 transition-all border border-pink-200">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="flex-1">
+                                      <h5 className="text-base font-semibold text-gray-800">{conversation.title}</h5>
+                                      <p className="text-sm text-gray-600 mt-1 line-clamp-2">{conversation.preview}</p>
+                                      <div className="flex items-center gap-3 mt-2">
+                                        <span className="text-xs text-gray-500">{formatTime(conversation.updated_at)}</span>
+                                        <span className="text-xs text-gray-400">•</span>
+                                        <span className="text-xs text-gray-500">~15 min</span>
+                                      </div>
+                                    </div>
+                                    <div className="flex flex-col gap-2">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedConversation(conversation.id);
+                                          setOpenModal(null);
+                                        }}
+                                        className="px-3 py-1.5 text-xs bg-pink-600 text-white rounded-lg hover:bg-pink-700 transition-colors"
+                                      >
+                                        Review
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setConversationInput(conversation.preview);
+                                          startNewConversation(conversation.id);
+                                          setCurrentView('dashboard');
+                                          setOpenModal(null);
+                                        }}
+                                        className="px-3 py-1.5 text-xs bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                                      >
+                                        Retry
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="bg-gray-50 rounded-lg p-6 text-center">
+                              <p className="text-sm text-gray-500">No practice sessions yet</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Time Analytics */}
+                        <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                          <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <span className="mr-2 text-2xl">⏱️</span>
+                            Time Analytics
+                          </h4>
+                          <div className="grid grid-cols-3 gap-3 mb-6">
+                            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 text-center border border-blue-200">
+                              <p className="text-xs text-gray-600 mb-1">Today</p>
+                              <p className="text-2xl font-bold text-blue-600">45m</p>
+                            </div>
+                            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 text-center border border-purple-200">
+                              <p className="text-xs text-gray-600 mb-1">This Week</p>
+                              <p className="text-2xl font-bold text-purple-600">3.5h</p>
+                            </div>
+                            <div className="bg-gradient-to-br from-pink-50 to-pink-100 rounded-lg p-4 text-center border border-pink-200">
+                              <p className="text-xs text-gray-600 mb-1">Avg/Session</p>
+                              <p className="text-2xl font-bold text-pink-600">18m</p>
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-600 mb-3">Peak Practice Time: 7-9 PM</p>
+                            <div className="flex justify-between items-end h-24 gap-2">
+                              {['12AM', '6AM', '12PM', '6PM', '11PM'].map((time, i) => {
+                                const heights = [20, 40, 60, 85, 30];
+                                return (
+                                  <div key={i} className="flex-1 flex flex-col items-center">
+                                    <div 
+                                      className="w-full bg-gradient-to-t from-pink-400 to-pink-500 rounded-t"
+                                      style={{ height: `${heights[i]}%` }}
+                                    ></div>
+                                    <span className="text-xs text-gray-500 mt-2">{time}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Vocabulary Tests Summary & Performance Metrics Row */}
+                      <div className="grid grid-cols-2 gap-6">
+                        {/* Vocabulary Tests Summary */}
+                        <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                          <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <span className="mr-2 text-2xl">📚</span>
+                            Vocabulary Tests Summary
+                          </h4>
+                          
+                          <div className="grid grid-cols-2 gap-4 mb-4">
+                            <div className="bg-purple-50 rounded-lg p-3 text-center border border-purple-200">
+                              <p className="text-xs text-gray-600 mb-1">Total Tests</p>
+                              <p className="text-2xl font-bold text-purple-600">12</p>
+                            </div>
+                            <div className="bg-green-50 rounded-lg p-3 text-center border border-green-200">
+                              <p className="text-xs text-gray-600 mb-1">Avg Score</p>
+                              <p className="text-2xl font-bold text-green-600">84%</p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <p className="text-sm font-medium text-gray-700 mb-2">Recent Tests</p>
+                            <div className="bg-gray-50 rounded-lg p-3 flex justify-between items-center border border-gray-200">
+                              <div>
+                                <p className="text-sm font-medium text-gray-800">General Vocabulary</p>
+                                <p className="text-xs text-gray-500">25 words • 2 days ago</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-lg font-bold text-green-600">92%</p>
+                                <p className="text-xs text-gray-500">23/25</p>
+                              </div>
+                            </div>
+                            <div className="bg-gray-50 rounded-lg p-3 flex justify-between items-center border border-gray-200">
+                              <div>
+                                <p className="text-sm font-medium text-gray-800">Daily Life Phrases</p>
+                                <p className="text-xs text-gray-500">20 words • 5 days ago</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-lg font-bold text-yellow-600">75%</p>
+                                <p className="text-xs text-gray-500">15/20</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 bg-orange-50 border border-orange-200 rounded-lg p-3">
+                            <p className="text-sm font-semibold text-gray-800 mb-2">⚠️ Words to Review</p>
+                            <div className="flex flex-wrap gap-2">
+                              <span className="px-2 py-1 bg-white border border-orange-300 text-gray-700 text-xs rounded">der/die/das</span>
+                              <span className="px-2 py-1 bg-white border border-orange-300 text-gray-700 text-xs rounded">Fahren</span>
+                              <span className="px-2 py-1 bg-white border border-orange-300 text-gray-700 text-xs rounded">Gesundheit</span>
+                              <span className="px-2 py-1 bg-white border border-orange-300 text-gray-700 text-xs rounded">+8 more</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Performance Metrics */}
+                        <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                          <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <span className="mr-2 text-2xl">📊</span>
+                            Performance Metrics
+                          </h4>
+                          <div className="space-y-4">
+                            <div>
+                              <div className="flex justify-between items-center mb-2">
+                                <span className="text-sm text-gray-600">Overall Accuracy</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xl font-bold text-gray-800">87%</span>
+                                  <span className="text-sm text-green-600 font-medium">↑5%</span>
+                                </div>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-3">
+                                <div className="bg-gradient-to-r from-pink-400 to-pink-500 h-3 rounded-full" style={{ width: '87%' }}></div>
+                              </div>
+                            </div>
+                            <div>
+                              <div className="flex justify-between items-center mb-2">
+                                <span className="text-sm text-gray-600">Pronunciation</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xl font-bold text-gray-800">82%</span>
+                                  <span className="text-sm text-green-600 font-medium">↑3%</span>
+                                </div>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-3">
+                                <div className="bg-gradient-to-r from-blue-400 to-blue-500 h-3 rounded-full" style={{ width: '82%' }}></div>
+                              </div>
+                            </div>
+                            <div>
+                              <div className="flex justify-between items-center mb-2">
+                                <span className="text-sm text-gray-600">Grammar</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xl font-bold text-gray-800">78%</span>
+                                  <span className="text-sm text-red-600 font-medium">↓2%</span>
+                                </div>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-3">
+                                <div className="bg-gradient-to-r from-yellow-400 to-yellow-500 h-3 rounded-full" style={{ width: '78%' }}></div>
+                              </div>
+                            </div>
+                            <div>
+                              <div className="flex justify-between items-center mb-2">
+                                <span className="text-sm text-gray-600">Vocabulary Usage</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xl font-bold text-gray-800">91%</span>
+                                  <span className="text-sm text-green-600 font-medium">↑7%</span>
+                                </div>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-3">
+                                <div className="bg-gradient-to-r from-green-400 to-green-500 h-3 rounded-full" style={{ width: '91%' }}></div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Practice Patterns & Strengths/Weaknesses Row */}
+                      <div className="grid grid-cols-2 gap-6">
+                        {/* Practice Patterns */}
+                        <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                          <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                            <span className="mr-2 text-2xl">📅</span>
+                            Practice Patterns & Habits
+                          </h4>
+                          <div className="space-y-4">
+                            <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg border border-blue-200">
+                              <span className="text-sm text-gray-700">Days Practiced (This Week)</span>
+                              <span className="text-xl font-bold text-blue-600">{weekStreakDays.filter(d => d).length}/7</span>
+                            </div>
+                            <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg border border-purple-200">
+                              <span className="text-sm text-gray-700">Longest Streak</span>
+                              <span className="text-xl font-bold text-purple-600">{playerStats.longestStreak} days</span>
+                            </div>
+                            <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg border border-green-200">
+                              <span className="text-sm text-gray-700">Consistency Score</span>
+                              <span className="text-lg font-bold text-green-600">Excellent</span>
+                            </div>
+                            <div className="mt-4 p-4 bg-pink-50 rounded-lg border border-pink-200">
+                              <p className="text-sm font-medium text-gray-700 mb-2">Most Practiced Topics</p>
+                              <div className="flex flex-wrap gap-2">
+                                <span className="px-3 py-1.5 bg-pink-200 text-pink-800 text-sm rounded-full font-medium">Greetings</span>
+                                <span className="px-3 py-1.5 bg-pink-200 text-pink-800 text-sm rounded-full font-medium">Daily Life</span>
+                                <span className="px-3 py-1.5 bg-pink-200 text-pink-800 text-sm rounded-full font-medium">Travel</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Strengths & Weaknesses */}
+                        <div className="space-y-4">
+                          <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl p-6 shadow-sm">
+                            <h4 className="text-lg font-semibold text-gray-800 mb-3 flex items-center">
+                              <span className="mr-2 text-2xl">💪</span>
+                              Top Strengths
+                            </h4>
+                            <ul className="space-y-2.5 text-base text-gray-700">
+                              <li className="flex items-start">
+                                <span className="mr-3 text-green-600 text-xl">✓</span>
+                                <span>Excellent vocabulary retention</span>
+                              </li>
+                              <li className="flex items-start">
+                                <span className="mr-3 text-green-600 text-xl">✓</span>
+                                <span>Strong pronunciation of vowels</span>
+                              </li>
+                              <li className="flex items-start">
+                                <span className="mr-3 text-green-600 text-xl">✓</span>
+                                <span>Consistent daily practice</span>
+                              </li>
+                            </ul>
+                          </div>
+
+                          <div className="bg-gradient-to-br from-orange-50 to-red-50 border-2 border-orange-300 rounded-xl p-6 shadow-sm">
+                            <h4 className="text-lg font-semibold text-gray-800 mb-3 flex items-center">
+                              <span className="mr-2 text-2xl">🎯</span>
+                              Areas to Improve
+                            </h4>
+                            <ul className="space-y-2.5 text-base text-gray-700">
+                              <li className="flex items-start">
+                                <span className="mr-3 text-orange-600 text-xl">•</span>
+                                <span>Article usage (der/die/das)</span>
+                              </li>
+                              <li className="flex items-start">
+                                <span className="mr-3 text-orange-600 text-xl">•</span>
+                                <span>Compound word pronunciation</span>
+                              </li>
+                              <li className="flex items-start">
+                                <span className="mr-3 text-orange-600 text-xl">•</span>
+                                <span>Past tense conjugations</span>
+                              </li>
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Your Achievements Modal */}
+            {openModal === 'achievements' && (
+              <div 
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fadeIn"
+                onClick={() => setOpenModal(null)}
+              >
+                <div 
+                  className="bg-white rounded-2xl shadow-2xl w-[95%] h-[90%] max-w-7xl overflow-hidden animate-scaleIn"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Modal Header */}
+                  <div className="bg-gradient-to-r from-blue-500 to-cyan-600 p-6 flex items-center justify-between">
+                    <div>
+                      <h2 className="text-2xl font-bold text-white font-display">Your Achievements</h2>
+                      <p className="text-blue-100 text-sm mt-1">Unlock badges and celebrate your progress</p>
+                    </div>
+                    <button
+                      onClick={() => setOpenModal(null)}
+                      className="p-2 hover:bg-white/10 rounded-full transition-all"
+                    >
+                      <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Modal Content */}
+                  <div className="p-8 h-[calc(100%-88px)] overflow-y-auto">
+                    <div className="max-w-6xl mx-auto">
+                      {/* Achievement Stats Overview */}
+                      <div className="grid grid-cols-3 gap-6 mb-8">
+                        <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-6 text-center">
+                          <p className="text-4xl font-bold text-blue-600 mb-2">{playerStats.achievements.length}</p>
+                          <p className="text-sm text-gray-600">Unlocked Badges</p>
+                        </div>
+                        <div className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-xl p-6 text-center">
+                          <p className="text-4xl font-bold text-purple-600 mb-2">65%</p>
+                          <p className="text-sm text-gray-600">Completion Rate</p>
+                        </div>
+                        <div className="bg-gradient-to-br from-cyan-50 to-cyan-100 border border-cyan-200 rounded-xl p-6 text-center">
+                          <p className="text-3xl font-bold mb-2">🏆</p>
+                          <p className="text-sm text-gray-600">Next: 10 Conversations</p>
+                        </div>
+                      </div>
+
+                      {/* Unlocked Achievements */}
+                      <div className="mb-8">
+                        <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                          <span className="mr-2 text-2xl">✨</span>
+                          Unlocked Badges
+                        </h3>
+                        <div className="grid grid-cols-3 gap-4">
+                          {/* Achievement 1 */}
+                          <div className="group relative bg-gradient-to-br from-yellow-400 to-orange-500 rounded-xl p-6 hover:scale-105 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-2xl">
+                            <div className="text-center">
+                              <div className="text-5xl mb-3 group-hover:scale-110 transition-transform">🎉</div>
+                              <p className="text-base font-bold text-white mb-1">First Conversation</p>
+                              <p className="text-sm text-white/80">Completed your first German conversation!</p>
+                              <p className="text-xs text-white/70 mt-2">Unlocked 2 days ago</p>
+                            </div>
+                            <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 rounded-xl transition-all"></div>
+                          </div>
+
+                          {/* Achievement 2 */}
+                          <div className="group relative bg-gradient-to-br from-blue-400 to-purple-500 rounded-xl p-6 hover:scale-105 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-2xl">
+                            <div className="text-center">
+                              <div className="text-5xl mb-3 group-hover:scale-110 transition-transform">💬</div>
+                              <p className="text-base font-bold text-white mb-1">Conversation Master</p>
+                              <p className="text-sm text-white/80">Completed 10 conversations</p>
+                              <p className="text-xs text-white/70 mt-2">Unlocked 5 days ago</p>
+                            </div>
+                            <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 rounded-xl transition-all"></div>
+                          </div>
+
+                          {/* Achievement 3 */}
+                          <div className="group relative bg-gradient-to-br from-green-400 to-teal-500 rounded-xl p-6 hover:scale-105 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-2xl">
+                            <div className="text-center">
+                              <div className="text-5xl mb-3 group-hover:scale-110 transition-transform">📚</div>
+                              <p className="text-base font-bold text-white mb-1">Vocabulary Builder</p>
+                              <p className="text-sm text-white/80">Learned 50 words</p>
+                              <p className="text-xs text-white/70 mt-2">Unlocked 1 week ago</p>
+                            </div>
+                            <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 rounded-xl transition-all"></div>
+                          </div>
+
+                          {/* Achievement 4 */}
+                          <div className="group relative bg-gradient-to-br from-pink-400 to-red-500 rounded-xl p-6 hover:scale-105 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-2xl">
+                            <div className="text-center">
+                              <div className="text-5xl mb-3 group-hover:scale-110 transition-transform">🔥</div>
+                              <p className="text-base font-bold text-white mb-1">Week Warrior</p>
+                              <p className="text-sm text-white/80">Completed 7-day streak</p>
+                              <p className="text-xs text-white/70 mt-2">Unlocked 3 days ago</p>
+                            </div>
+                            <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 rounded-xl transition-all"></div>
+                          </div>
+
+                          {/* Achievement 5 */}
+                          <div className="group relative bg-gradient-to-br from-purple-400 to-indigo-500 rounded-xl p-6 hover:scale-105 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-2xl">
+                            <div className="text-center">
+                              <div className="text-5xl mb-3 group-hover:scale-110 transition-transform">⭐</div>
+                              <p className="text-base font-bold text-white mb-1">Rising Star</p>
+                              <p className="text-sm text-white/80">Reached Level 5</p>
+                              <p className="text-xs text-white/70 mt-2">Unlocked 1 week ago</p>
+                            </div>
+                            <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 rounded-xl transition-all"></div>
+                          </div>
+
+                          {/* Achievement 6 */}
+                          <div className="group relative bg-gradient-to-br from-cyan-400 to-blue-500 rounded-xl p-6 hover:scale-105 transition-all duration-300 cursor-pointer shadow-lg hover:shadow-2xl">
+                            <div className="text-center">
+                              <div className="text-5xl mb-3 group-hover:scale-110 transition-transform">🎯</div>
+                              <p className="text-base font-bold text-white mb-1">Perfect Score</p>
+                              <p className="text-sm text-white/80">Scored 100% on a test</p>
+                              <p className="text-xs text-white/70 mt-2">Unlocked 2 weeks ago</p>
+                            </div>
+                            <div className="absolute inset-0 bg-white/0 group-hover:bg-white/10 rounded-xl transition-all"></div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Locked Achievements */}
+                      <div>
+                        <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                          <span className="mr-2 text-2xl">🔒</span>
+                          Locked Badges
+                        </h3>
+                        <div className="grid grid-cols-4 gap-4">
+                          {/* Locked Achievement 1 */}
+                          <div className="relative bg-gray-100 border-2 border-gray-300 rounded-xl p-5 opacity-70 hover:opacity-90 transition-all">
+                            <div className="text-center">
+                              <div className="text-4xl mb-2 grayscale">💪</div>
+                              <p className="text-sm font-bold text-gray-700 mb-1">Conversation Expert</p>
+                              <p className="text-xs text-gray-600 mb-3">Complete 50 conversations</p>
+                              <div className="w-full bg-gray-200 rounded-full h-2 mb-1">
+                                <div className="bg-blue-500 h-2 rounded-full" style={{ width: '40%' }}></div>
+                              </div>
+                              <p className="text-xs text-gray-600 font-medium">20/50</p>
+                            </div>
+                          </div>
+
+                          {/* Locked Achievement 2 */}
+                          <div className="relative bg-gray-100 border-2 border-gray-300 rounded-xl p-5 opacity-70 hover:opacity-90 transition-all">
+                            <div className="text-center">
+                              <div className="text-4xl mb-2 grayscale">🌟</div>
+                              <p className="text-sm font-bold text-gray-700 mb-1">Word Wizard</p>
+                              <p className="text-xs text-gray-600 mb-3">Learn 200 words</p>
+                              <div className="w-full bg-gray-200 rounded-full h-2 mb-1">
+                                <div className="bg-purple-500 h-2 rounded-full" style={{ width: '65%' }}></div>
+                              </div>
+                              <p className="text-xs text-gray-600 font-medium">130/200</p>
+                            </div>
+                          </div>
+
+                          {/* Locked Achievement 3 */}
+                          <div className="relative bg-gray-100 border-2 border-gray-300 rounded-xl p-5 opacity-70 hover:opacity-90 transition-all">
+                            <div className="text-center">
+                              <div className="text-4xl mb-2 grayscale">🏆</div>
+                              <p className="text-sm font-bold text-gray-700 mb-1">Month Master</p>
+                              <p className="text-xs text-gray-600 mb-3">30-day practice streak</p>
+                              <div className="w-full bg-gray-200 rounded-full h-2 mb-1">
+                                <div className="bg-orange-500 h-2 rounded-full" style={{ width: '23%' }}></div>
+                              </div>
+                              <p className="text-xs text-gray-600 font-medium">7/30 days</p>
+                            </div>
+                          </div>
+
+                          {/* Locked Achievement 4 */}
+                          <div className="relative bg-gray-100 border-2 border-gray-300 rounded-xl p-5 opacity-70 hover:opacity-90 transition-all">
+                            <div className="text-center">
+                              <div className="text-4xl mb-2 grayscale">🎓</div>
+                              <p className="text-sm font-bold text-gray-700 mb-1">Grammar Guru</p>
+                              <p className="text-xs text-gray-600 mb-3">Achieve 90% grammar accuracy</p>
+                              <div className="w-full bg-gray-200 rounded-full h-2 mb-1">
+                                <div className="bg-green-500 h-2 rounded-full" style={{ width: '87%' }}></div>
+                              </div>
+                              <p className="text-xs text-gray-600 font-medium">87/90%</p>
+                            </div>
+                          </div>
+
+                          {/* Locked Achievement 5 */}
+                          <div className="relative bg-gray-100 border-2 border-gray-300 rounded-xl p-5 opacity-70 hover:opacity-90 transition-all">
+                            <div className="text-center">
+                              <div className="text-4xl mb-2 grayscale">💎</div>
+                              <p className="text-sm font-bold text-gray-700 mb-1">Diamond League</p>
+                              <p className="text-xs text-gray-600 mb-3">Reach Level 10</p>
+                              <div className="w-full bg-gray-200 rounded-full h-2 mb-1">
+                                <div className="bg-cyan-500 h-2 rounded-full" style={{ width: '50%' }}></div>
+                              </div>
+                              <p className="text-xs text-gray-600 font-medium">Level 5/10</p>
+                            </div>
+                          </div>
+
+                          {/* Locked Achievement 6 */}
+                          <div className="relative bg-gray-100 border-2 border-gray-300 rounded-xl p-5 opacity-70 hover:opacity-90 transition-all">
+                            <div className="text-center">
+                              <div className="text-4xl mb-2 grayscale">🎪</div>
+                              <p className="text-sm font-bold text-gray-700 mb-1">Social Butterfly</p>
+                              <p className="text-xs text-gray-600 mb-3">100 conversations</p>
+                              <div className="w-full bg-gray-200 rounded-full h-2 mb-1">
+                                <div className="bg-pink-500 h-2 rounded-full" style={{ width: '20%' }}></div>
+                              </div>
+                              <p className="text-xs text-gray-600 font-medium">20/100</p>
+                            </div>
+                          </div>
+
+                          {/* Locked Achievement 7 */}
+                          <div className="relative bg-gray-100 border-2 border-gray-300 rounded-xl p-5 opacity-70 hover:opacity-90 transition-all">
+                            <div className="text-center">
+                              <div className="text-4xl mb-2 grayscale">⚡</div>
+                              <p className="text-sm font-bold text-gray-700 mb-1">Speed Learner</p>
+                              <p className="text-xs text-gray-600 mb-3">Learn 50 words in a day</p>
+                              <div className="w-full bg-gray-200 rounded-full h-2 mb-1">
+                                <div className="bg-yellow-500 h-2 rounded-full" style={{ width: '16%' }}></div>
+                              </div>
+                              <p className="text-xs text-gray-600 font-medium">8/50</p>
+                            </div>
+                          </div>
+
+                          {/* Locked Achievement 8 */}
+                          <div className="relative bg-gray-100 border-2 border-gray-300 rounded-xl p-5 opacity-70 hover:opacity-90 transition-all">
+                            <div className="text-center">
+                              <div className="text-4xl mb-2 grayscale">🌍</div>
+                              <p className="text-sm font-bold text-gray-700 mb-1">World Explorer</p>
+                              <p className="text-xs text-gray-600 mb-3">Master travel vocabulary</p>
+                              <div className="w-full bg-gray-200 rounded-full h-2 mb-1">
+                                <div className="bg-teal-500 h-2 rounded-full" style={{ width: '45%' }}></div>
+                              </div>
+                              <p className="text-xs text-gray-600 font-medium">45/100</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Streak Calendar Modal */}
+            {openModal === 'calendar' && (
+              <div 
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fadeIn"
+                onClick={() => setOpenModal(null)}
+              >
+                <div 
+                  className="bg-white rounded-2xl shadow-2xl w-[95%] h-[90%] max-w-7xl overflow-hidden animate-scaleIn"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Modal Header */}
+                  <div className="bg-gradient-to-r from-orange-500 to-red-600 p-6 flex items-center justify-between">
+                    <div>
+                      <h2 className="text-2xl font-bold text-white font-display flex items-center gap-2">
+                        <span className="text-3xl">🔥</span>
+                        Your Streak Calendar
+                      </h2>
+                      <p className="text-orange-100 text-sm mt-1">Track your continuous practice journey</p>
+                    </div>
+                    <button
+                      onClick={() => setOpenModal(null)}
+                      className="p-2 hover:bg-white/10 rounded-full transition-all"
+                    >
+                      <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Modal Content */}
+                  <div className="p-8 h-[calc(100%-88px)] overflow-y-auto">
+                    <div className="max-w-5xl mx-auto">
+                      {/* Streak Stats Overview */}
+                      <div className="grid grid-cols-3 gap-6 mb-8">
+                        <div className="bg-gradient-to-br from-orange-50 to-orange-100 border border-orange-200 rounded-xl p-6 text-center">
+                          <p className="text-4xl font-bold text-orange-600 mb-2">{weekStreakDays.filter(d => d).length}</p>
+                          <p className="text-sm text-gray-600">Current Streak (This Week)</p>
+                        </div>
+                        <div className="bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-xl p-6 text-center">
+                          <p className="text-4xl font-bold text-red-600 mb-2">{playerStats.longestStreak}</p>
+                          <p className="text-sm text-gray-600">Longest Streak</p>
+                        </div>
+                        <div className="bg-gradient-to-br from-amber-50 to-amber-100 border border-amber-200 rounded-xl p-6 text-center">
+                          <p className="text-4xl font-bold text-amber-600 mb-2">{playerStats.conversationsCompleted}</p>
+                          <p className="text-sm text-gray-600">Total Days Practiced</p>
+                        </div>
+                      </div>
+
+                      {/* Calendar Navigation */}
+                      <div className="flex items-center justify-between mb-6 bg-gray-50 rounded-xl p-4">
+                        <button
+                          onClick={() => {
+                            const newDate = new Date(calendarMonth);
+                            newDate.setMonth(newDate.getMonth() - 1);
+                            setCalendarMonth(newDate);
+                          }}
+                          className="p-2 hover:bg-white rounded-lg transition-all"
+                        >
+                          <svg className="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                          </svg>
+                        </button>
+                        <h3 className="text-xl font-bold text-gray-800">
+                          {calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                        </h3>
+                        <button
+                          onClick={() => {
+                            const newDate = new Date(calendarMonth);
+                            newDate.setMonth(newDate.getMonth() + 1);
+                            setCalendarMonth(newDate);
+                          }}
+                          className="p-2 hover:bg-white rounded-lg transition-all"
+                        >
+                          <svg className="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </button>
+                      </div>
+
+                      {/* Calendar Grid */}
+                      <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                        {/* Day Headers */}
+                        <div className="grid grid-cols-7 gap-3 mb-4">
+                          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
+                            <div key={day} className="text-center text-sm font-semibold text-gray-600 py-2">
+                              {day}
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Calendar Days */}
+                        <div className="grid grid-cols-7 gap-3">
+                          {(() => {
+                            const year = calendarMonth.getFullYear();
+                            const month = calendarMonth.getMonth();
+                            const firstDay = new Date(year, month, 1);
+                            const lastDay = new Date(year, month + 1, 0);
+                            const daysInMonth = lastDay.getDate();
+                            const startDay = (firstDay.getDay() + 6) % 7; // Adjust to start on Monday
+                            
+                            const days = [];
+                            
+                            // Empty cells before month starts
+                            for (let i = 0; i < startDay; i++) {
+                              days.push(
+                                <div key={`empty-${i}`} className="aspect-square"></div>
+                              );
+                            }
+                            
+                            // Actual days of the month
+                            for (let day = 1; day <= daysInMonth; day++) {
+                              // Mock: Random days are practice days (for demo)
+                              const isPracticeDay = Math.random() > 0.6;
+                              const isToday = day === new Date().getDate() && 
+                                             month === new Date().getMonth() && 
+                                             year === new Date().getFullYear();
+                              
+                              days.push(
+                                <div
+                                  key={day}
+                                  className={`
+                                    aspect-square rounded-lg flex flex-col items-center justify-center
+                                    transition-all duration-200 cursor-pointer
+                                    ${isPracticeDay 
+                                      ? 'bg-gradient-to-br from-orange-400 to-red-500 text-white shadow-lg hover:shadow-xl hover:scale-110' 
+                                      : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                                    }
+                                    ${isToday ? 'ring-2 ring-primary ring-offset-2' : ''}
+                                  `}
+                                >
+                                  <span className="text-base font-semibold">{day}</span>
+                                  {isPracticeDay && (
+                                    <span className="text-xl mt-1">🔥</span>
+                                  )}
+                                </div>
+                              );
+                            }
+                            
+                            return days;
+                          })()}
+                        </div>
+
+                        {/* Legend */}
+                        <div className="flex items-center justify-center gap-6 mt-6 pt-6 border-t border-gray-200">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 bg-gradient-to-br from-orange-400 to-red-500 rounded-lg flex items-center justify-center">
+                              <span className="text-sm">🔥</span>
+                            </div>
+                            <span className="text-sm text-gray-600">Practice Day</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 bg-gray-50 border-2 border-gray-300 rounded-lg"></div>
+                            <span className="text-sm text-gray-600">No Practice</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 bg-white border-2 border-primary rounded-lg"></div>
+                            <span className="text-sm text-gray-600">Today</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Monthly Summary */}
+                      <div className="mt-6 bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl p-6">
+                        <h4 className="text-lg font-semibold text-gray-800 mb-3 flex items-center">
+                          <span className="mr-2 text-2xl">📊</span>
+                          Monthly Summary
+                        </h4>
+                        <div className="grid grid-cols-3 gap-4">
+                          <div className="bg-white rounded-lg p-3 text-center">
+                            <p className="text-2xl font-bold text-orange-600">12</p>
+                            <p className="text-xs text-gray-600">Days Practiced</p>
+                          </div>
+                          <div className="bg-white rounded-lg p-3 text-center">
+                            <p className="text-2xl font-bold text-green-600">40%</p>
+                            <p className="text-xs text-gray-600">Consistency Rate</p>
+                          </div>
+                          <div className="bg-white rounded-lg p-3 text-center">
+                            <p className="text-2xl font-bold text-purple-600">5</p>
+                            <p className="text-xs text-gray-600">Best Weekly Streak</p>
+                          </div>
+                        </div>
+                        <div className="mt-4 pt-4 border-t border-green-200">
+                          <p className="text-sm text-gray-700 text-center">
+                            <span className="font-bold text-green-600">Great job!</span> You practiced 12 days this month. Keep up the momentum! 🚀
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         ) : currentView === 'vocab' ? (
-          // Vocab List View
-          <div className="flex-1 flex items-center justify-center p-8 overflow-y-auto">
+          // Vocab List View - Elingo Purple Theme
+          <div className="flex-1 flex items-center justify-center p-8 overflow-y-auto bg-white" style={{ backgroundColor: '#f5f5f5' }}>
             <div className="text-center">
-              <BookOpen className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-              <h2 className="text-2xl font-semibold apple-text-primary mb-2">Vocabulary List</h2>
-              <p className="text-lg apple-text-secondary">Your saved words and phrases will appear here</p>
+              <div className="w-20 h-20 bg-gradient-to-br from-primary/20 to-accent/20 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm">
+                <BookOpen className="h-10 w-10 text-primary" />
+              </div>
+              <h2 className="text-3xl font-bold text-text font-display mb-3">Vocabulary List</h2>
+              <p className="text-lg text-text-muted font-body">Your saved words and phrases will appear here</p>
             </div>
           </div>
         ) : (
-          // Welcome Screen
-          <div className="flex-1 flex items-center justify-center p-8 bg-gradient-to-br from-slate-50 to-white overflow-y-auto">
-            <div className="max-w-2xl w-full">
+          // Welcome Screen - Elingo Purple Theme with Animated Background
+          <div className="flex-1 flex items-center justify-center p-8 overflow-y-auto relative" style={{ backgroundColor: '#f5f5f5' }}>
+            {/* Animated Background - Fun & Engaging for Professional Learners */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+              {/* Animated Grid Pattern */}
+              <div className="absolute inset-0 opacity-20" style={{
+                backgroundImage: `
+                  linear-gradient(rgba(105, 73, 255, 0.1) 1px, transparent 1px),
+                  linear-gradient(90deg, rgba(105, 73, 255, 0.1) 1px, transparent 1px)
+                `,
+                backgroundSize: '50px 50px',
+                animation: 'grid-move 20s linear infinite'
+              }}></div>
+              
+              {/* Dynamic Floating Geometric Shapes */}
+              <div className="absolute top-20 left-20 w-16 h-16 bg-primary/30 rounded-2xl rotate-45 animate-bounce-slow shadow-lg"></div>
+              <div className="absolute top-40 right-32 w-12 h-12 bg-accent/35 rounded-full animate-bounce-medium shadow-lg" style={{ animationDelay: '0.5s' }}></div>
+              <div className="absolute bottom-32 left-32 w-20 h-20 bg-primary/25 rounded-lg rotate-12 animate-bounce-slow shadow-lg" style={{ animationDelay: '1s' }}></div>
+              <div className="absolute bottom-24 right-24 w-14 h-14 bg-accent/30 rounded-3xl rotate-45 animate-bounce-medium shadow-lg" style={{ animationDelay: '1.5s' }}></div>
+              <div className="absolute top-1/3 left-1/4 w-18 h-18 bg-primary/28 rounded-xl rotate-6 animate-bounce-medium shadow-lg" style={{ animationDelay: '2s' }}></div>
+              
+              {/* Animated Particles/Dots */}
+              <div className="absolute top-32 left-1/3 w-3 h-3 bg-primary rounded-full animate-particle-float shadow-md" style={{ animationDelay: '0s' }}></div>
+              <div className="absolute top-48 right-1/4 w-2 h-2 bg-accent rounded-full animate-particle-float shadow-md" style={{ animationDelay: '1s' }}></div>
+              <div className="absolute bottom-40 left-1/2 w-3 h-3 bg-primary rounded-full animate-particle-float shadow-md" style={{ animationDelay: '2s' }}></div>
+              <div className="absolute top-2/3 right-1/3 w-2.5 h-2.5 bg-accent rounded-full animate-particle-float shadow-md" style={{ animationDelay: '1.5s' }}></div>
+              <div className="absolute bottom-1/3 left-1/5 w-2 h-2 bg-primary rounded-full animate-particle-float shadow-md" style={{ animationDelay: '0.5s' }}></div>
+              
+              {/* Large Gradient Orbs with More Energy */}
+              <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-gradient-to-br from-primary/25 via-primary/15 to-transparent rounded-full blur-3xl animate-orb-drift"></div>
+              <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-gradient-to-tl from-accent/25 via-accent/15 to-transparent rounded-full blur-3xl animate-orb-drift" style={{ animationDelay: '2s' }}></div>
+              
+              {/* Pulsing Energy Rings */}
+              <div className="absolute top-1/2 left-1/2 w-64 h-64 border-2 border-primary/20 rounded-full animate-ring-pulse" style={{ transform: 'translate(-50%, -50%)' }}></div>
+              <div className="absolute top-1/2 left-1/2 w-80 h-80 border-2 border-accent/15 rounded-full animate-ring-pulse" style={{ transform: 'translate(-50%, -50%)', animationDelay: '1s' }}></div>
+              
+              {/* Floating Connection Lines */}
+              <svg className="absolute inset-0 w-full h-full opacity-10">
+                <path d="M 100 200 Q 300 100 500 250" stroke="url(#gradient1)" strokeWidth="2" fill="none" className="animate-draw-line" />
+                <path d="M 800 300 Q 600 200 400 350" stroke="url(#gradient2)" strokeWidth="2" fill="none" className="animate-draw-line" style={{ animationDelay: '1s' }} />
+                <defs>
+                  <linearGradient id="gradient1" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="rgba(105, 73, 255, 0.3)" />
+                    <stop offset="100%" stopColor="rgba(255, 193, 7, 0.3)" />
+                  </linearGradient>
+                  <linearGradient id="gradient2" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="rgba(255, 193, 7, 0.3)" />
+                    <stop offset="100%" stopColor="rgba(105, 73, 255, 0.3)" />
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
+
+            <div className="max-w-2xl w-full relative z-10">
               <div className="text-center mb-8">
-                <h1 className="text-3xl font-display text-gradient-primary mb-2">
-                  Hello {firstName}!
+                <h1 className="text-4xl font-display text-text font-bold mb-3">
+                  Hello {firstName}! 👋
                 </h1>
-                <p className="text-xl text-slate-600 font-body">
+                <p className="text-lg text-text-muted font-body">
                   What would you like to practice in German today?
                 </p>
               </div>
 
-              {/* Enhanced Conversation Input */}
-              <div className="bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-2xl p-6 shadow-lg">
+              {/* Enhanced Conversation Input - Elingo Purple Theme */}
+              <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm relative backdrop-blur-sm bg-white/95">
                 {/* Text Input */}
                 <div className="mb-6">
                   <textarea
                     placeholder="My left knee is injured and I want to visit a doctor."
                     value={conversationInput}
                     onChange={(e) => setConversationInput(e.target.value)}
-                    className="w-full px-4 py-4 border border-slate-300 rounded-xl text-base resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm focus:shadow-md transition-all duration-200 font-body"
+                    data-hint-target="text-input"
+                    className="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl text-base resize-none focus:ring-2 focus:ring-primary focus:border-primary bg-gray-50 transition-all duration-200 font-body placeholder:text-gray-400"
                     rows={4}
                   />
                 </div>
@@ -6592,17 +9780,18 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 <div className="flex space-x-4 mb-6">
                   {/* Context Level */}
                   <div className="flex-1 relative">
-                    <label className="block text-sm font-semibold text-slate-800 mb-2 font-heading">Context</label>
+                    <label className="block text-sm font-semibold text-text800 mb-2 font-heading">Context</label>
                     <button
                       onClick={() => !currentConversationContextLocked && setShowContextDropdown(!showContextDropdown)}
                       disabled={currentConversationContextLocked}
-                      className={`w-full border border-slate-300 rounded-lg px-4 py-3 text-left flex items-center justify-between shadow-sm transition-all duration-200 ${
+                      data-hint-target="context-switcher"
+                      className={`w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-left flex items-center justify-between shadow-sm transition-all duration-200 ${
                         currentConversationContextLocked 
                           ? 'bg-gray-100 cursor-not-allowed opacity-60' 
-                          : 'bg-white hover:shadow-md'
+                          : 'bg-white hover:shadow-md hover:border-primary/30'
                       }`}
                     >
-                      <span className="text-sm font-semibold text-slate-800 font-heading flex items-center">
+                      <span className="text-sm font-semibold text-text800 font-heading flex items-center">
                         {contextLevel}
                         {currentConversationContextLocked && (
                           <span className="ml-2 text-xs">🔒</span>
@@ -6611,7 +9800,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       <ChevronDown className={`h-4 w-4 ${currentConversationContextLocked ? 'text-gray-300' : 'text-gray-400'}`} />
                     </button>
                     {showContextDropdown && !currentConversationContextLocked && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-lg shadow-lg z-10">
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-gradient-to-br from-white to-slate-50 border border-gray-200 rounded-lg shadow-lg z-10">
                         {contextLevels.map((level) => (
                           <button
                             key={level}
@@ -6619,7 +9808,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                               setContextLevel(level);
                               setShowContextDropdown(false);
                             }}
-                            className="w-full text-left px-4 py-3 text-sm hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 first:rounded-t-lg last:rounded-b-lg text-slate-800 font-body transition-all duration-200"
+                            className="w-full text-left px-4 py-3 text-sm hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 first:rounded-t-lg last:rounded-b-lg text-text800 font-body transition-all duration-200"
                           >
                             {level}
                           </button>
@@ -6630,17 +9819,17 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
                   {/* Difficulty Level */}
                   <div className="flex-1 relative">
-                    <label className="block text-sm font-semibold text-slate-800 mb-2 font-heading">Level</label>
+                    <label className="block text-sm font-semibold text-text800 mb-2 font-heading">Level</label>
                     <button
                       onClick={() => !currentConversationDifficultyLocked && setShowDifficultyDropdown(!showDifficultyDropdown)}
                       disabled={currentConversationDifficultyLocked}
-                      className={`w-full border border-slate-300 rounded-lg px-4 py-3 text-left flex items-center justify-between bg-white shadow-sm transition-all duration-200 ${
+                      className={`w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-left flex items-center justify-between bg-white shadow-sm transition-all duration-200 ${
                         currentConversationDifficultyLocked 
                           ? 'opacity-50 cursor-not-allowed' 
-                          : 'hover:shadow-md'
+                          : 'hover:shadow-md hover:border-primary/30'
                       }`}
                     >
-                      <span className="text-sm font-semibold text-slate-800 font-heading">{difficultyLevel}</span>
+                      <span className="text-sm font-semibold text-text800 font-heading">{difficultyLevel}</span>
                       {currentConversationDifficultyLocked ? (
                         <Lock className="h-4 w-4 text-gray-400" />
                       ) : (
@@ -6648,7 +9837,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       )}
                     </button>
                     {showDifficultyDropdown && !currentConversationDifficultyLocked && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-lg shadow-lg z-10">
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-gradient-to-br from-white to-slate-50 border border-gray-200 rounded-lg shadow-lg z-10">
                         {difficultyLevels.map((level) => (
                           <button
                             key={level}
@@ -6656,7 +9845,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                               setDifficultyLevel(level);
                               setShowDifficultyDropdown(false);
                             }}
-                            className="w-full text-left px-4 py-3 text-sm hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 first:rounded-t-lg last:rounded-b-lg text-slate-800 font-body transition-all duration-200"
+                            className="w-full text-left px-4 py-3 text-sm hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 first:rounded-t-lg last:rounded-b-lg text-text800 font-body transition-all duration-200"
                           >
                             {level}
                           </button>
@@ -6674,10 +9863,12 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     <button 
                       onClick={isModalRecording ? stopModalRecording : () => startModalRecording(true)}
                       disabled={isTranscribing}
-                      className={`p-3 rounded-full transition-colors ${
+                      title={isModalRecording ? "Stop recording" : "Start recording"}
+                      data-hint-target="voice-input"
+                      className={`p-3 rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl ${
                         isModalRecording 
                           ? 'bg-red-500 hover:bg-red-600 text-white' 
-                          : 'bg-green-500 hover:bg-green-600 text-white'
+                          : 'bg-accent hover:bg-accent/90 text-white'
                       } ${isTranscribing ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       {isTranscribing ? (
@@ -6691,10 +9882,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     <button 
                       onClick={createNewConversation}
                       disabled={!conversationInput.trim()}
-                      className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-8 py-3 rounded-full flex items-center space-x-2 font-semibold disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg transition-all duration-200"
+                      className="btn-glossy px-8 py-3 rounded-2xl flex items-center space-x-2 font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transition-all duration-200"
                     >
                       <Play className="h-4 w-4" />
-                      <span>Start Chat</span>
+                      <span>Start Conversation</span>
                     </button>
                   </div>
                 </div>
@@ -6738,8 +9929,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                           onClick={() => toggleWordSelection(cleanWord)}
                           className={`inline-block px-2 py-1 mx-1 my-1 rounded-lg transition-all duration-200 ${
                             isSelected 
-                              ? 'bg-blue-500 text-white shadow-md' 
-                              : 'bg-white text-gray-700 hover:bg-blue-100 border border-gray-200'
+                              ? 'bg-primary-500 text-white shadow-md' 
+                              : 'bg-white text-gray-700 hover:bg-primary-100 border border-gray-200'
                           }`}
                         >
                           {cleanWord}
@@ -6757,10 +9948,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 <div className="space-y-2">
                   <h4 className="font-semibold text-gray-900 text-sm">Selected words:</h4>
                   {Array.from(selectedWords).map((word, index) => (
-                    <div key={index} className="flex items-center justify-between bg-blue-50 rounded-lg p-3">
+                    <div key={index} className="flex items-center justify-between bg-primary-50 rounded-lg p-3">
                       <div className="flex-1">
-                        <span className="font-semibold text-blue-900">{word}</span>
-                        <span className="text-blue-600 ml-2 text-sm">Meanings will be generated in vocab tab</span>
+                        <span className="font-semibold text-text900">{word}</span>
+                        <span className="text-text600 ml-2 text-sm">Meanings will be generated in vocab tab</span>
                       </div>
                       <button
                         onClick={() => toggleWordSelection(word)}
@@ -6784,7 +9975,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               <button
                 onClick={addSelectedVocab}
                 disabled={selectedWords.size === 0}
-                className="flex-1 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white rounded-xl transition-colors disabled:cursor-not-allowed"
+                className="flex-1 py-3 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-300 text-white rounded-xl transition-colors disabled:cursor-not-allowed"
               >
                 Add {selectedWords.size} word{selectedWords.size !== 1 ? 's' : ''}
               </button>
@@ -6811,7 +10002,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             
             {/* German Suggestion */}
             <div className="mb-6">
-              <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mb-4">
+              <div className="bg-primary-50 border-2 border-blue-200 rounded-lg p-6 mb-4">
                 <div className="text-center">
                   <div className="text-2xl font-semibold text-gray-900 mb-4">
                     {germanSuggestion || 'Loading...'}
@@ -6827,7 +10018,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     disabled={!germanSuggestion}
                     className={`px-6 py-3 rounded-lg transition-colors flex items-center space-x-2 mx-auto ${
                       germanSuggestion 
-                        ? 'bg-blue-500 hover:bg-blue-600 text-white' 
+                        ? 'bg-primary-500 hover:bg-primary-600 text-white' 
                         : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                     }`}
                   >
@@ -6866,7 +10057,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       disabled={!modalInput.trim()}
                       className={`px-4 py-2 rounded-lg transition-colors ${
                         modalInput.trim()
-                          ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                          ? 'bg-primary-500 hover:bg-primary-600 text-white'
                           : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                       }`}
                     >
@@ -6944,7 +10135,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             </div>
             <button
               onClick={() => setShowLevelUp(false)}
-              className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-lg font-medium transition-colors"
+              className="w-full bg-primary-500 hover:bg-primary-600 text-white py-3 rounded-lg font-medium transition-colors"
             >
               Awesome!
             </button>
@@ -6952,21 +10143,24 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         </div>
       )}
 
-      {/* Achievement Modal */}
-      {showAchievement && (
+      {/* Achievement Modal - Purple Theme */}
+      {showAchievement && achievementData && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-8 max-w-md w-full text-center animate-pulse">
-            <div className="text-6xl mb-4">🏆</div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Achievement Unlocked!</h2>
-            <p className="text-gray-600 mb-4">You've earned a new achievement!</p>
-            <div className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-lg p-4 mb-4">
-              <div className="text-sm opacity-90">Achievement</div>
-              <div className="text-xl font-bold">🎉 First Conversation</div>
-              <div className="text-sm opacity-90">Completed your first German conversation!</div>
+          <div className="card-glass p-8 max-w-md w-full text-center shadow-figma-hero">
+            <div className="text-6xl mb-4 animate-bounce">🏆</div>
+            <h2 className="text-2xl font-bold text-text mb-2">Achievement Unlocked!</h2>
+            <p className="text-text-muted mb-6">You've earned a new achievement!</p>
+            <div className="bg-gradient-to-r from-primary via-primary/90 to-accent text-white rounded-2xl p-6 mb-6 shadow-lg">
+              <div className="text-sm opacity-90 mb-2">Achievement</div>
+              <div className="text-2xl font-bold mb-2">{achievementData.title}</div>
+              <div className="text-sm opacity-90">{achievementData.description}</div>
             </div>
             <button
-              onClick={() => setShowAchievement(null)}
-              className="w-full bg-green-500 hover:bg-green-600 text-white py-3 rounded-lg font-medium transition-colors"
+              onClick={() => {
+                setShowAchievement(null);
+                setAchievementData(null);
+              }}
+              className="btn-glossy w-full"
             >
               Amazing!
             </button>
@@ -6983,6 +10177,28 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             setConversationSummary(null);
           }}
           summary={conversationSummary}
+        />
+      )}
+
+      {/* Onboarding Hints - Dashboard */}
+      {showHints && (
+        <OnboardingHints
+          isVisible={showHints}
+          onDismiss={handleDismissHints}
+          onSkipAll={handleSkipAllHints}
+          hints={dashboardHints}
+          startIndex={0}
+        />
+      )}
+
+      {/* Onboarding Hints - Chat Bubbles */}
+      {showChatHints && selectedConversation && (
+        <OnboardingHints
+          isVisible={showChatHints}
+          onDismiss={handleDismissChatHints}
+          onSkipAll={handleSkipAllHints}
+          hints={chatBubbleHints}
+          startIndex={0}
         />
       )}
     </div>
