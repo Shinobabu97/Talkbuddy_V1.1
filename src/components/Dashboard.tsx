@@ -35,6 +35,7 @@ import OnboardingHints, { dashboardHints, chatBubbleHints } from './OnboardingHi
 import ProfilePictureModal from './ProfilePictureModal';
 import Toolbar from './Toolbar';
 import VocabularyBuilderModal from './VocabularyBuilderModal';
+import PodcastsPanel from './PodcastsPanel';
 import ConversationSummaryModal from './ConversationSummaryModal';
 import SuggestedResponseCard from './SuggestedResponseCard';
 import { SessionData } from '../types/sessionData';
@@ -75,12 +76,12 @@ interface OnboardingData {
   motivations?: string[];
   customMotivation?: string;
   hobbies?: string[];
-  customHobbies?: string[];
+  customHobbies?: string;
   hasWork?: boolean;
   workDomain?: string;
   germanLevel?: string;
   speakingFears?: string[];
-  customFears?: string[];
+  customFears?: string;
   timeline?: string;
   goals?: string[];
   personalityTraits?: string[];
@@ -180,7 +181,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [conversationInput, setConversationInput] = useState('');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [conversationsLoading, setConversationsLoading] = useState(false);
-  const [currentView, setCurrentView] = useState<'dashboard' | 'podcasts' | 'progress'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'progress'>('dashboard');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -287,6 +288,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [practiceRecorders, setPracticeRecorders] = useState<{[responseId: string]: MediaRecorder}>({});
   const [pendingPronunciationAnalysis, setPendingPronunciationAnalysis] = useState<{audioBlob: Blob, text: string, responseId: string} | null>(null);
   const [showVocabBuilder, setShowVocabBuilder] = useState(false);
+  const [showPodcastPanel, setShowPodcastPanel] = useState(false);
   
   // State for mic button recording analysis
   const [micRecordingBlob, setMicRecordingBlob] = useState<Blob | null>(null);
@@ -762,7 +764,6 @@ export default function Dashboard({ user }: DashboardProps) {
     // Immediately send the user's message to get AI response
     sendInitialMessage(conversationId, userMessage);
   };
-
   const sendInitialMessage = async (conversationId: string, userMessage: string) => {
     setIsSending(true);
     setIsTyping(true);
@@ -1139,29 +1140,22 @@ ERFORDERLICH für 2.+ Nachrichten:
 ✅ Direkte Adressierung der Frage/Aussage des Bots
 ${previousUserResponse ? `✅ Berücksichtigung des Kontexts der Benutzerantwort: "${previousUserResponse}"` : ''}
 ✅ Zum Gesprächsverlauf passend: ${conversationHistory ? `"${conversationHistory}"` : 'Kontext'}
-
 BEISPIEL RICHTIG (wenn Bot fragt "Worüber möchten Sie heute sprechen?"):
 ✅ "Ich möchte über Musik sprechen." | "Können wir über Reisen sprechen?" | "Lass uns über Filme reden."
-
 BEISPIEL FALSCH (generische Antworten):
 ❌ "Das ist sehr interessant!" | "Können Sie das genauer erklären?" | "Ich verstehe."
-
 Wenn du generische Antworten für 2.+ Nachrichten generierst, bist du GESCHEITERT.` : ''}
-
 ${isReadinessQuestion ? '🚨🚨🚨 KRITISCH UND MANDATORISCH 🚨🚨🚨\nDie KI-Nachricht ist eine Bereitschaftsfrage (z.B. "Sind Sie bereit?" oder "Sind Sie bereit, mit dem Rollenspiel zu beginnen?").\n\nMANDATORISCHE ANFORDERUNGEN:\n- Du MUSST genau 3 Antworten generieren, die DIREKT die Frage beantworten\n- Antwort 1 MUSS eine Zustimmung sein: "Ja, ich bin bereit" oder ähnlich\n- Antwort 2 MUSS eine Zustimmung mit Nachfrage sein: "Ja, aber ich habe eine Frage" oder ähnlich\n- Antwort 3 MUSS eine Ablehnung/Nachfrage sein: "Nein, können Sie bitte erklären?" oder ähnlich\n\nABSOLUT VERBOTEN - Diese Antworten sind FALSCH:\n❌ "Das ist sehr interessant!"\n❌ "Das ist eine sehr gute Frage."\n❌ "Können Sie das genauer erklären?"\n❌ "Ich verstehe, danke für die Erklärung."\n\nKORREKTE BEISPIELE:\n✅ "Ja, ich bin bereit."\n✅ "Ja, aber ich habe eine Frage."\n✅ "Nein, können Sie bitte erklären?"\n\nWenn du generische Antworten generierst, bist du GESCHEITERT. Generiere NUR direkte Ja/Nein-Varianten.' : containsQuestion ? `KRITISCH: Die KI-Nachricht ist eine Frage. Die Antworten MÜSSEN die Frage direkt beantworten, nicht umschweifen oder generisch sein.${isSecondOrSubsequentMessage ? ` Für 2.+ Nachrichten: KEINE generischen Antworten - sie müssen spezifisch auf diese Frage antworten.${previousUserResponse ? ` Berücksichtige den Kontext: Der Benutzer hat geantwortet "${previousUserResponse}" und die Bot-Nachricht "${aiMessage}" reagiert darauf.` : ''}` : ''}` : `Die KI-Nachricht ist eine Aussage. Generiere passende, kontextuelle Reaktionen.${isSecondOrSubsequentMessage ? ` Für 2.+ Nachrichten: KEINE generischen Antworten - sie müssen spezifisch auf diese Aussage reagieren.${previousUserResponse ? ` Berücksichtige den Kontext: Der Benutzer hat geantwortet "${previousUserResponse}" und die Bot-Nachricht "${aiMessage}" reagiert darauf.` : ''}` : ''}`}
-
 ${conversationHistory ? `Gesprächsverlauf: "${conversationHistory}"` : ''}
 ${previousUserResponse ? `Vorherige Benutzerantwort: "${previousUserResponse}"` : ''}
 ${conversationContext ? `Anfänglicher Kontext: "${conversationContext}"` : ''}
 KI-Nachricht: "${aiMessage}"
 Formellitätsgrad: ${contextLevel}
-
 Regeln:
 - Antworten müssen zur Frage/Aussage passen
 - ${isSecondOrSubsequentMessage ? 'FÜR 2.+ NACHRICHTEN: KEINE generischen Antworten - sie müssen DIREKT auf die Bot-Nachricht antworten' : 'Keine generischen Antworten wie "Das ist interessant" wenn eine Frage gestellt wird'}
 ${isReadinessQuestion ? '- Für Bereitschaftsfragen: IMMER Ja/Nein-Varianten mit direkten Antworten\n- Beispiel RICHTIG: "Ja, ich bin bereit" | "Ja, aber ich habe eine Frage" | "Nein, können Sie bitte erklären"\n- Beispiel FALSCH: "Das ist sehr interessant" | "Können Sie das genauer erklären?" | "Ich verstehe, danke"\n- Wenn die Antworten generisch sind, bist du GESCHEITERT' : containsQuestion ? '- Für Fragen: Direkte, hilfreiche Antworten generieren - DIREKT auf die Frage antworten' : '- Für Aussagen: Natürliche, kontextuelle Reaktionen - DIREKT auf die Aussage reagieren'}
 ${isSecondOrSubsequentMessage ? '- VERBOTEN für 2.+ Nachrichten: Generische Phrasen wie "Das ist interessant" - diese zeigen, dass du die Aufgabe nicht verstanden hast' : ''}
-
 Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1] | [e2] | [e3]`
         })
       });
@@ -1822,7 +1816,6 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
       console.log('✅ Tracked suggestion selection for message:', messageId);
     }
   };
-
   // Generate suggestions on demand when user clicks on suggested responses - UNUSED
   /*
   const generateSuggestionsOnDemand = async (messageId: string, germanText: string) => {
@@ -2579,8 +2572,6 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
       [messageId]: !prev[messageId]
     }));
   };
-
-
   const translateSuggestions = async (messageId: string, suggestions: string[]) => {
     console.log('🔄 translateSuggestions called for messageId:', messageId);
     console.log('🔄 translateSuggestions input suggestions:', suggestions);
@@ -3351,14 +3342,11 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
             {
               role: 'system',
               content: `You are a helpful German language tutor. The user said something in English: "${englishText}". 
-
 Your task is to provide ONE natural German way to express the same meaning. Do NOT translate the phrase "I wanted to say" or "I want to say" - instead, understand what the user actually wants to express and provide the natural German way to say that.
-
 For example:
 - If user says "I wanted to say I went swimming today" → respond with "Ich bin heute schwimmen gegangen"
 - If user says "I want to say I cooked chicken" → respond with "Ich habe Hühnchen gekocht"
 - If user says "I wanted to say I was lazy" → respond with "Ich war faul"
-
 Keep it simple and conversational. Just respond with the German translation, nothing else.`
             },
             {
@@ -4055,7 +4043,6 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       }));
     }
   };
-
   // Practice recording handlers for suggested responses
   const handlePracticeResponse = async (responseId: string, responseText: string) => {
     console.log('🎤 === PRACTICE RESPONSE CLICKED ===');
@@ -4156,7 +4143,6 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       alert('Microphone access denied. Please allow microphone access to use voice input.');
     }
   };
-
   // Analyze handler - navigates to pronunciation tab
   const handleAnalyzeResponse = (responseId: string, responseText: string) => {
     console.log('🔍 === ANALYZE RESPONSE CLICKED ===');
@@ -4689,7 +4675,6 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       alert('Please type it in German. You typed: "' + modalInput + '"');
     }
   };
-
   const processAudioMessage = async (audioBlob: Blob, preExistingMessageId?: string) => {
     // Store audio blob for practice modal use
     setPracticeAudioBlob(audioBlob);
@@ -4951,7 +4936,6 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     // All validation checks passed
     return { isValid: true };
   };
-  
   const transcribeAudio = async (audioBlob: Blob, messageId: string, isRetry: boolean = false) => {
     console.log('🎤 === TRANSCRIBE AUDIO START ===');
     console.log('Message ID:', messageId);
@@ -5108,7 +5092,6 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         
         isWhisperResponse = false; // This is NOT from Whisper API
       }
-
       if (response.ok) {
         console.log('✅ Response is OK, parsing JSON...');
         const data = await response.json();
@@ -5667,7 +5650,6 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             // Don't clear waitingForCorrection here - let the analysis determine if we still need to wait
             console.log('🔄 === KEEPING WAITING FOR CORRECTION STATE ===');
           }
-          
           if (recordingLanguage === 'german') {
             console.log('🇩🇪 === PROCESSING GERMAN VOICE INPUT ===');
             console.log('Transcription:', transcription);
@@ -6463,7 +6445,6 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
      conv.preview.toLowerCase().includes(searchQuery.toLowerCase())) &&
     (selectedCategory === null || conv.context_level === selectedCategory)
   );
-
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -6475,8 +6456,15 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     return `${Math.floor(diffInHours / 24)}d ago`;
   };
 
+  const handleClosePodcastsPanel = () => {
+    setShowPodcastPanel(false);
+    setCurrentView('dashboard');
+    if (!selectedConversation && conversations.length > 0) {
+      setSelectedConversation(conversations[0].id);
+    }
+  };
   return (
-    <div className="h-screen bg-background flex overflow-hidden">
+    <div className="h-screen bg-background flex overflow-hidden relative">
       {/* Mobile Sidebar Overlay */}
       {(mobileSidebarOpen && !sidebarCollapsed) && (
         <div 
@@ -6653,13 +6641,9 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 <span>Progress</span>
               </button>
               <button
-                onClick={() => setCurrentView('podcasts')}
-                className={`flex-1 px-3 py-2 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center space-x-1.5 ${
-                  currentView === 'podcasts'
-                    ? 'bg-primary text-white shadow-lg shadow-primary/30'
-                    : 'text-text-muted hover:text-primary hover:bg-primary/10 border border-gray-200'
-                }`}
-                title="Podcasts (coming soon)"
+                onClick={() => setShowPodcastPanel(true)}
+                className={`flex-1 px-3 py-2 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center space-x-1.5 text-text-muted hover:text-primary hover:bg-primary/10 border border-gray-200`}
+                title="Podcasts"
               >
                 <BookOpen className="h-3.5 w-3.5" />
                 <span>Podcasts</span>
@@ -6680,13 +6664,9 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 <BarChart3 className="h-5 w-5" />
               </button>
               <button
-                onClick={() => setCurrentView('podcasts')}
-                className={`p-3 rounded-xl transition-all duration-200 flex items-center justify-center ${
-                  currentView === 'podcasts'
-                    ? 'bg-primary text-white shadow-lg shadow-primary/30'
-                    : 'text-gray-600 hover:text-primary hover:bg-primary/10'
-                }`}
-                title="Podcasts (coming soon)"
+                onClick={() => setShowPodcastPanel(true)}
+                className="p-3 rounded-xl transition-all duration-200 text-gray-600 hover:text-primary hover:bg-primary/10 flex items-center justify-center"
+                title="Podcasts"
               >
                 <BookOpen className="h-5 w-5" />
               </button>
@@ -6892,9 +6872,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           onTestComplete={handleVocabularyTestComplete}
         />
       )}
-
       {/* Main Content - Elingo Purple Theme */}
-      {!showVocabBuilder && (
+      {!showVocabBuilder && !showPodcastPanel && (
         <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'linear-gradient(135deg, #faf9ff 0%, #f5f5f5 100%)' }}>
           {selectedConversation ? (
           // Conversation View
@@ -7742,17 +7721,6 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               </div>
             </div>
           </div>
-        ) : currentView === 'podcasts' ? (
-          // Podcasts Placeholder View - Elingo Purple Theme
-          <div className="flex-1 flex items-center justify-center p-8 overflow-y-auto bg-white" style={{ backgroundColor: '#f5f5f5' }}>
-            <div className="text-center">
-              <div className="w-20 h-20 bg-gradient-to-br from-primary/20 to-accent/20 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm">
-                <BookOpen className="h-10 w-10 text-primary" />
-              </div>
-              <h2 className="text-3xl font-bold text-text font-display mb-3">Podcasts</h2>
-              <p className="text-lg text-text-muted font-body">Curated listening practice is coming soon.</p>
-            </div>
-          </div>
         ) : (
           // Welcome Screen - Elingo Purple Theme with Animated Background
           <div className="flex-1 flex items-center justify-center p-8 overflow-y-auto relative" style={{ backgroundColor: '#f5f5f5' }}>
@@ -7958,6 +7926,21 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         currentPictureUrl={currentProfilePicture}
         onPictureUpdate={handleProfilePictureUpdate}
       />
+
+      {showPodcastPanel && (
+        <PodcastsPanel
+          onClose={() => {
+            setShowPodcastPanel(false);
+            setSelectedConversation(null);
+            setCurrentView('dashboard');
+            setChatMessages([]);
+            setCurrentAIMessage('');
+            setShowToolbar(false);
+            setToolbarCollapsed(true);
+            resetConversationState();
+          }}
+        />
+      )}
 
 
       {/* Vocabulary Selector Modal */}
