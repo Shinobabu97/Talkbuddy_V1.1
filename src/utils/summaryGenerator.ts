@@ -13,7 +13,8 @@ export interface ConversationSummary {
     testsCompleted: number;
     averageTestScore: number;
     pronunciationAttempts: number;
-    pronunciationSuccessRate: number;
+    sentencePronunciationScore: number;
+    overallPronunciationScore: number;
     grammarMistakes: number;
     correctResponses: number;
     totalMessages: number;
@@ -28,12 +29,16 @@ export function generateConversationSummary(sessionData: SessionData): Conversat
   const averageTestScore = testsCompleted > 0
     ? Math.round(sessionData.vocabularyTests.reduce((sum, test) => sum + test.score, 0) / testsCompleted)
     : 0;
-  const pronunciationAttempts = sessionData.pronunciationAttempts.length;
-  const pronunciationSuccesses = sessionData.pronunciationAttempts.filter(a => a.isSuccess).length;
-  // Calculate average pronunciation score (out of 100)
-  const pronunciationSuccessRate = pronunciationAttempts > 0
-    ? Math.round(sessionData.pronunciationAttempts.reduce((sum, attempt) => sum + attempt.score, 0) / pronunciationAttempts)
-    : 0;
+  const sentenceScores = sessionData.sentencePronunciationScores?.map(item => item.score) || [];
+  const pronunciationAttempts = sentenceScores.length || sessionData.pronunciationAttempts.length;
+  const latestSentenceScore = sessionData.lastSentencePronunciationScore
+    ?? (sessionData.sentencePronunciationScores?.length
+      ? sessionData.sentencePronunciationScores[sessionData.sentencePronunciationScores.length - 1].score
+      : 0);
+  const averageSentenceScore = sentenceScores.length > 0
+    ? Math.round(sentenceScores.reduce((sum, score) => sum + score, 0) / sentenceScores.length)
+    : latestSentenceScore;
+  const overallPronunciationScore = averageSentenceScore;
   const grammarMistakesCount = sessionData.grammarMistakes.length;
   const correctResponsesCount = sessionData.correctResponses;
   const totalMessagesCount = sessionData.totalMessages;
@@ -77,11 +82,11 @@ export function generateConversationSummary(sessionData: SessionData): Conversat
       .filter(a => !a.isSuccess)
       .map(a => a.word)
       .slice(0, 3);
-    
-    if (pronunciationSuccessRate >= 80) {
-      pronunciationFeedback = `Excellent pronunciation! You achieved ${pronunciationSuccessRate}% accuracy. 🎤`;
-    } else if (pronunciationSuccessRate >= 60) {
-      pronunciationFeedback = `Good pronunciation progress at ${pronunciationSuccessRate}% accuracy. `;
+
+    if (overallPronunciationScore >= 80) {
+      pronunciationFeedback = `Excellent pronunciation! You achieved ${overallPronunciationScore}% accuracy. 🎤`;
+    } else if (overallPronunciationScore >= 60) {
+      pronunciationFeedback = `Good pronunciation progress at ${overallPronunciationScore}% accuracy. `;
       if (difficultWords.length > 0) {
         pronunciationFeedback += `Keep practicing: ${difficultWords.join(", ")}.`;
       }
@@ -122,7 +127,8 @@ export function generateConversationSummary(sessionData: SessionData): Conversat
       testsCompleted,
       averageTestScore,
       pronunciationAttempts,
-      pronunciationSuccessRate,
+      sentencePronunciationScore: latestSentenceScore,
+      overallPronunciationScore,
       grammarMistakes: grammarMistakesCount,
       correctResponses: correctResponsesCount,
       totalMessages: totalMessagesCount

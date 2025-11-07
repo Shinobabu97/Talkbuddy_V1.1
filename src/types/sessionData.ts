@@ -22,7 +22,13 @@ export interface SessionData {
     timestamp: string;
     isSuccess: boolean; // score >= 70
   }[];
-  
+  sentencePronunciationScores: {
+    sentence: string;
+    score: number;
+    timestamp: string;
+  }[];
+  lastSentencePronunciationScore: number | null;
+   
   // Grammar tracking
   grammarMistakes: {
     incorrectPhrase: string;

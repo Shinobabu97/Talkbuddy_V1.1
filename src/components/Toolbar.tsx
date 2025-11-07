@@ -1032,6 +1032,14 @@ export default function Toolbar({
             }
             
             setPronunciationAnalysis(data);
+            if (onPronunciationComplete && data.overallScore) {
+              const practicedText = pendingPronunciationAnalysis?.text
+                || currentMessage
+                || lastGermanVoiceMessage?.transcription
+                || 'sentence';
+              onPronunciationComplete(data.overallScore, practicedText);
+              console.log('📊 Pronunciation score sent to Dashboard (pending):', data.overallScore);
+            }
           } catch (error) {
             console.error('❌ Error in pronunciation analysis:', error);
             alert(`Pronunciation analysis failed: ${(error as Error).message}`);
@@ -1874,7 +1882,11 @@ export default function Toolbar({
         
         // Track pronunciation score in session data
         if (onPronunciationComplete && analysisData.overallScore) {
-          onPronunciationComplete(analysisData.overallScore, currentMessage || 'sentence');
+          const practicedText = pendingPronunciationAnalysis?.text
+            || currentMessage
+            || lastGermanVoiceMessage?.transcription
+            || 'sentence';
+          onPronunciationComplete(analysisData.overallScore, practicedText);
           console.log('📊 Pronunciation score sent to Dashboard:', analysisData.overallScore);
         }
       }, 100);

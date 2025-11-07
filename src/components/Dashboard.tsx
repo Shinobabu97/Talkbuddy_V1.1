@@ -156,17 +156,25 @@ export default function Dashboard({ user }: DashboardProps) {
   const [recentAchievements, setRecentAchievements] = React.useState<string[]>([]);
 
   // 📊 SESSION TRACKING STATE
-  const [sessionData, setSessionData] = useState<SessionData>({
+  const createInitialSessionData = (): SessionData => ({
     sessionId: `session-${Date.now()}`,
     startTime: new Date().toISOString(),
     wordsLearned: [],
     wordsDeleted: [],
     vocabularyTests: [],
     pronunciationAttempts: [],
+    sentencePronunciationScores: [],
+    lastSentencePronunciationScore: null,
     grammarMistakes: [],
     correctResponses: 0,
     totalMessages: 0
   });
+
+  const [sessionData, setSessionData] = useState<SessionData>(createInitialSessionData);
+  const sessionDataRef = useRef<SessionData>(sessionData);
+  useEffect(() => {
+    sessionDataRef.current = sessionData;
+  }, [sessionData]);
 
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [conversationSummary, setConversationSummary] = useState<ConversationSummary | null>(null);
@@ -1373,7 +1381,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
     if (text.includes('essen') || text.includes('restaurant') || text.includes('küche') || text.includes('speise') || text.includes('menü')) {
       return [
         { german: 'Ich bin Vegetarier, haben Sie vegetarische Optionen?', english: 'I am vegetarian, do you have vegetarian options?' },
-        { german: 'Das hört sich sehr lecker an!', english: 'That sounds very delicious!' },
+        { german: 'Das hört sich sehr lecker!', english: 'That sounds very delicious!' },
         { german: 'Können Sie das Gericht empfehlen?', english: 'Can you recommend this dish?' }
       ];
     }
@@ -3095,17 +3103,29 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
   };
 
   // Handle pronunciation completion - track sentence pronunciation scores
-  const handlePronunciationComplete = (score: number, word: string) => {
-    setSessionData(prev => ({
-      ...prev,
-      pronunciationAttempts: [...prev.pronunciationAttempts, {
-        word: word,
-        score: score,
-        timestamp: new Date().toISOString(),
-        isSuccess: score >= 70
-      }]
-    }));
-    console.log('📊 Session data updated: pronunciation attempt added', { word, score });
+  const handlePronunciationComplete = (score: number, text: string) => {
+    const timestamp = new Date().toISOString();
+    setSessionData(prev => {
+      const updated = {
+        ...prev,
+        pronunciationAttempts: [...prev.pronunciationAttempts, {
+          word: text,
+          score,
+          timestamp,
+          isSuccess: score >= 70
+        }],
+        sentencePronunciationScores: [...prev.sentencePronunciationScores, {
+          sentence: text,
+          score,
+          timestamp
+        }],
+        lastSentencePronunciationScore: score
+      };
+      console.log('📊 Session pronunciation updated:', updated.sentencePronunciationScores);
+      sessionDataRef.current = updated;
+      return updated;
+    });
+    console.log('📊 Session data updated: pronunciation attempt added', { text, score });
   };
 
   // Handle word selection in sentence - no API calls in modal
@@ -4675,267 +4695,6 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       alert('Please type it in German. You typed: "' + modalInput + '"');
     }
   };
-  const processAudioMessage = async (audioBlob: Blob, preExistingMessageId?: string) => {
-    // Store audio blob for practice modal use
-    setPracticeAudioBlob(audioBlob);
-    
-    // If messageId was passed directly (from stopRecording), use it
-    // Otherwise check state for pre-existing message
-    if (!preExistingMessageId) {
-      preExistingMessageId = currentMicMessageId;
-    }
-    
-    // Check if we're in a retry state - be more robust in detection
-    const isRetry = Boolean(activeMessageId);
-    const existingMessageId = activeMessageId;
-
-    console.log('🎤 === PROCESSING AUDIO MESSAGE ===');
-    console.log('Pre-existing message ID (from parameter or state):', preExistingMessageId);
-    console.log('Is retry:', isRetry);
-    console.log('Existing message ID:', existingMessageId);
-    console.log('Waiting for correction:', waitingForCorrection);
-    console.log('User attempts:', userAttempts);
-    console.log('Error messages:', errorMessages);
-    console.log('Current chat messages count:', chatMessages.length);
-    console.log('🔍 === RETRY DETECTION DETAILS ===');
-    console.log('waitingForCorrection value:', waitingForCorrection);
-    console.log('userAttempts keys:', Object.keys(userAttempts));
-    console.log('userAttempts values:', Object.values(userAttempts));
-    console.log('errorMessages keys:', Object.keys(errorMessages));
-    console.log('errorMessages values:', Object.values(errorMessages));
-    
-    let messageId = '';
-    
-    // If message was already created in stopRecording, use that messageId
-    // CRITICAL: Never create a new message if preExistingMessageId is set
-    if (preExistingMessageId) {
-      console.log('✅ Using pre-existing message ID from mic recording:', preExistingMessageId);
-      messageId = preExistingMessageId;
-      
-      // Wait for React state to update (message was just added in stopRecording)
-      // Retry multiple times to ensure we find the message
-      let messageFound = false;
-      for (let attempt = 0; attempt < 5; attempt++) {
-        await new Promise(resolve => setTimeout(resolve, 50));
-        
-        // Verify message exists using functional state access
-        setChatMessages(currentMessages => {
-          const messageExists = currentMessages.find(msg => msg.id === preExistingMessageId);
-          if (messageExists) {
-            messageFound = true;
-            console.log(`✅ Message found in chatMessages (attempt ${attempt + 1}):`, preExistingMessageId);
-          } else if (attempt === 0) {
-            console.log(`⏳ Message not found yet (attempt ${attempt + 1}), retrying...`);
-            console.log('Current message IDs:', currentMessages.map(m => m.id));
-          }
-          return currentMessages; // Don't modify, just read
-        });
-        
-        if (messageFound) {
-          break;
-        }
-      }
-      
-      if (messageFound) {
-        // Process audio in background - message already exists, just need to transcribe
-        console.log('✅ Message confirmed, starting transcription...');
-        await transcribeAudio(audioBlob, messageId, false);
-        // Clear after transcription completes
-        setCurrentMicMessageId(null);
-        return;
-      } else {
-        // CRITICAL: If message still doesn't exist, log error but DON'T create new message
-        // This prevents duplicate messages
-        console.error('❌ CRITICAL: Message not found after multiple retries:', preExistingMessageId);
-        console.error('❌ This should not happen - message was created in stopRecording()');
-        console.error('❌ NOT creating duplicate message - transcription will be skipped');
-        // Still try to transcribe with the messageId we have - it might work if message exists
-        console.log('⚠️ Attempting transcription anyway with messageId:', preExistingMessageId);
-        await transcribeAudio(audioBlob, preExistingMessageId, false);
-        setCurrentMicMessageId(null);
-        return; // CRITICAL: Return here to prevent creating duplicate message
-      }
-    }
-    
-    if (isRetry && existingMessageId) {
-      // This is a retry - update existing message
-      console.log('🔄 === VOICE RETRY DETECTED ===');
-      console.log('Updating existing message:', existingMessageId);
-      console.log('Current attempts for this message:', userAttempts[existingMessageId] || 0);
-
-      messageId = existingMessageId;
-
-      updateMessageStatus(messageId, 'checking');
-
-      // Update the existing message to show retry attempt
-      setChatMessages(prev => {
-        console.log('🔄 === UPDATING EXISTING MESSAGE FOR RETRY ===');
-        console.log('Previous messages count:', prev.length);
-        console.log('Looking for message ID:', messageId);
-        
-        const updatedMessages = prev.map(msg => {
-          if (msg.id === messageId) {
-            console.log('✅ FOUND MESSAGE TO UPDATE FOR RETRY:', msg.id);
-            console.log('Original content:', msg.content);
-            return { ...msg, content: '🎤 Recording retry...', isTranscribing: true, audioUrl: URL.createObjectURL(audioBlob) };
-          }
-          return msg;
-        });
-
-        console.log('Updated messages count after retry:', updatedMessages.length);
-        return updatedMessages;
-      });
-
-      // Ensure we maintain the retry state
-      setWaitingForCorrection(true);
-    } else {
-      // Check if this is voice correction mode (mismatch modal + mismatch transcription)
-      const isVoiceCorrectionMode = showLanguageMismatchModal && mismatchTranscription && mismatchTranscription !== '🎤 Voice message';
-      
-      if (isVoiceCorrectionMode) {
-        // Voice correction mode - don't create new message, we'll replace the original
-        console.log('🎤 === VOICE CORRECTION MODE - SKIPPING NEW MESSAGE CREATION ===');
-        console.log('Will replace original message:', mismatchMessageId);
-        messageId = mismatchMessageId; // Use the original message ID
-
-        updateMessageStatus(messageId, 'checking');
-      } else {
-        // This is a new message - create new message
-        console.log('🆕 === NEW VOICE MESSAGE ===');
-        console.log('Creating new message because:');
-        console.log('- isRetry:', isRetry);
-        console.log('- existingMessageId:', existingMessageId);
-        console.log('- waitingForCorrection:', waitingForCorrection);
-        
-        const audioUrl = URL.createObjectURL(audioBlob);
-        console.log('✅ Audio URL created:', audioUrl);
-        console.log('✅ Audio blob size:', audioBlob.size, 'bytes');
-        console.log('✅ Audio blob type:', audioBlob.type);
-        
-        const audioMessage: ChatMessage = {
-          id: Date.now().toString(), // Always create new ID to avoid duplicates
-          role: 'user',
-          content: '🎤 Voice message',
-          timestamp: new Date().toISOString(),
-          audioUrl: audioUrl, // Set audioUrl immediately for play button
-          isAudio: true, // Mark as audio message
-          isTranscribing: true
-        };
-        
-        messageId = audioMessage.id;
-        console.log('✅ Message created with ID:', messageId);
-        console.log('✅ Message audioUrl:', audioMessage.audioUrl);
-        console.log('✅ Message isAudio:', audioMessage.isAudio);
-
-        updateMessageStatus(messageId, 'checking');
-        console.log('✅ Message status set to "checking"');
-        
-        // Add to chat immediately
-        setChatMessages(prev => {
-          console.log('🆕 === ADDING NEW MESSAGE TO CHAT ===');
-          console.log('New message ID:', messageId);
-          console.log('Previous messages count:', prev.length);
-          console.log('Audio URL in message:', audioMessage.audioUrl);
-          const newMessages = [...prev, audioMessage];
-          console.log('New messages count:', newMessages.length);
-          console.log('✅ Message added to chat - play button should be enabled');
-          return newMessages;
-        });
-      }
-    }
-    
-    // Process audio in background
-    await transcribeAudio(audioBlob, messageId, isRetry);
-  };
-
-  // Comprehensive transcript validation function
-  // Tests and confirms transcript is valid before displaying
-  const validateTranscript = (transcript: string): { isValid: boolean; reason?: string; matchedPattern?: string } => {
-    const trimmed = transcript.trim();
-    
-    console.log('🔍 validateTranscript called with:', trimmed);
-    
-    // Check if transcript is empty
-    if (!trimmed || trimmed.length === 0) {
-      console.log('🔍 Validation failed: empty transcript');
-      return { isValid: false, reason: 'empty' };
-    }
-    
-    // Comprehensive gibberish pattern detection
-    // Made more specific to avoid rejecting valid German text
-    // Only reject if it contains specific subtitle/credits patterns that are clearly metadata
-    const invalidPatterns: Array<{ pattern: RegExp; name: string; requireShort?: boolean }> = [
-      { pattern: /^🎤/i, name: 'placeholder_emoji' },  // Placeholder like "🎤 Voice message"
-      { pattern: /^Recording/i, name: 'placeholder_recording' },  // Placeholder like "Recording retry..."
-      // Very specific patterns for subtitle credits - these are almost always metadata
-      { pattern: /Untertitel.*Amara/i, name: 'amara_subtitle' },  // "Untertitel" with "Amara"
-      { pattern: /Untertitel.*Community/i, name: 'community_subtitle' },  // "Untertitel" with "Community"
-      { pattern: /Amara\.org/i, name: 'amara_org' },  // "Amara.org" anywhere (subtitle credits)
-      { pattern: /Amara\.org-Community/i, name: 'amara_community' },  // "Amara.org-Community" pattern
-      { pattern: /Amara-Community/i, name: 'amara_community_alt' },  // "Amara-Community" pattern
-      // Only reject "Untertitel im Auftrag" if it's a short transcript (likely just credits)
-      // Longer transcripts with actual content should be allowed
-      { pattern: /^Untertitel im Auftrag.*ZDF.*funk.*\d{4}$/i, name: 'zdf_subtitle_credits', requireShort: true },  // Full ZDF credit line
-      { pattern: /Community.*Untertitel/i, name: 'community_subtitle_reverse' },  // "Community Untertitel" pattern
-      { pattern: /^\d{4}$/, name: 'year_only' },  // Just year numbers like "2017"
-    ];
-    
-    // Check each pattern and log which one matched
-    for (const { pattern, name, requireShort } of invalidPatterns) {
-      if (pattern.test(trimmed)) {
-        // If pattern requires short transcript, only reject if transcript is short (likely just credits)
-        if (requireShort && trimmed.length > 50) {
-          console.log(`🔍 Pattern "${name}" matched but transcript is long (${trimmed.length} chars) - allowing`);
-          continue; // Skip this pattern, allow the transcript
-        }
-        console.log(`🔍 Validation failed: matched pattern "${name}" - ${pattern}`);
-        return { isValid: false, reason: 'gibberish_pattern', matchedPattern: name };
-      }
-    }
-    
-    // Additional check: Reject if transcript is very short and contains only credit-like patterns
-    // This catches cases like "Untertitel im Auftrag des ZDF für funk, 2017" when it's the only content
-    if (trimmed.length < 60) {
-      const creditIndicators = [
-        /Untertitel/i,
-        /im Auftrag/i,
-        /ZDF/i,
-        /funk/i,
-        /^\d{4}$/,
-        /Amara/i,
-        /Community/i
-      ];
-      
-      const matchedIndicators = creditIndicators.filter(pattern => pattern.test(trimmed)).length;
-      // If transcript is short and contains 3+ credit indicators, it's likely just credits
-      if (matchedIndicators >= 3) {
-        console.log(`🔍 Validation failed: short transcript (${trimmed.length} chars) with ${matchedIndicators} credit indicators - likely subtitle metadata`);
-        return { isValid: false, reason: 'gibberish_pattern', matchedPattern: 'multiple_credit_indicators' };
-      }
-    }
-    
-    console.log('🔍 No gibberish patterns matched');
-    
-    // Check if transcript has meaningful content (letters)
-    const hasLetters = /[a-zA-ZäöüÄÖÜß]/.test(trimmed);
-    if (!hasLetters) {
-      return { isValid: false, reason: 'no_letters' };
-    }
-    
-    // Check transcript length (too short might be invalid)
-    if (trimmed.length < 2) {
-      return { isValid: false, reason: 'too_short' };
-    }
-    
-    // Check for too many repeated characters (might indicate corrupted transcription)
-    const repeatedChars = /(.)\1{4,}/.test(trimmed);
-    if (repeatedChars) {
-      return { isValid: false, reason: 'repeated_chars' };
-    }
-    
-    // All validation checks passed
-    return { isValid: true };
-  };
   const transcribeAudio = async (audioBlob: Blob, messageId: string, isRetry: boolean = false) => {
     console.log('🎤 === TRANSCRIBE AUDIO START ===');
     console.log('Message ID:', messageId);
@@ -5690,54 +5449,54 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             console.log('Error messages for this message:', errorMessages[messageId]);
             console.log('Waiting for correction:', waitingForCorrection);
             
-          if (analysis && analysis.hasErrors) {
-            // Don't send to AI if there are errors - focus on correction
-            console.log('🚫 === VOICE MESSAGE HAS ERRORS - NOT SENDING TO AI ===');
-            console.log('Focusing on error correction instead of AI response');
-            updateMessageStatus(messageId, 'needs_correction');
-            return;
-          } else if (!analysis || analysis === null) {
-            // Analysis failed - don't proceed with AI response
-            console.log('🚫 === ANALYSIS FAILED - NOT SENDING TO AI ===');
-            console.log('Analysis returned null or undefined, not proceeding with AI response');
-            console.log('Analysis value:', analysis);
-            console.log('Analysis type:', typeof analysis);
-            
-            // Instead of setting error status, try to get a fallback analysis
-            console.log('🔄 === ATTEMPTING FALLBACK ANALYSIS FOR VOICE ===');
-            const fallbackAnalysis = {
-              hasErrors: false,
-              errorTypes: {
-                grammar: false,
-                vocabulary: false,
-                pronunciation: false
-              },
-              corrections: {
-                grammar: null,
-                vocabulary: [],
-                pronunciation: null
-              },
-              suggestions: {
-                grammar: null,
-                vocabulary: null,
-                pronunciation: null
-              },
-              wordsForPractice: [],
-              message: transcription,
-              timestamp: new Date().toISOString()
-            };
-            
-            // Store the fallback analysis
-            setComprehensiveAnalysis(prev => ({
-              ...prev,
-              [messageId]: fallbackAnalysis
-            }));
-            
-            console.log('✅ === FALLBACK ANALYSIS STORED FOR VOICE - PROCEEDING TO AI ===');
-            // Continue with AI response instead of showing error
-            // updateMessageStatus(messageId, 'error'); // REMOVED - don't show error
-            // return; // REMOVED - continue with AI response
-          }
+            if (analysis && analysis.hasErrors) {
+              // Don't send to AI if there are errors - focus on correction
+              console.log('🚫 === VOICE MESSAGE HAS ERRORS - NOT SENDING TO AI ===');
+              console.log('Focusing on error correction instead of AI response');
+              updateMessageStatus(messageId, 'needs_correction');
+              return;
+            } else if (!analysis || analysis === null) {
+              // Analysis failed - don't proceed with AI response
+              console.log('🚫 === ANALYSIS FAILED - NOT SENDING TO AI ===');
+              console.log('Analysis returned null or undefined, not proceeding with AI response');
+              console.log('Analysis value:', analysis);
+              console.log('Analysis type:', typeof analysis);
+              
+              // Instead of setting error status, try to get a fallback analysis
+              console.log('🔄 === ATTEMPTING FALLBACK ANALYSIS FOR VOICE ===');
+              const fallbackAnalysis = {
+                hasErrors: false,
+                errorTypes: {
+                  grammar: false,
+                  vocabulary: false,
+                  pronunciation: false
+                },
+                corrections: {
+                  grammar: null,
+                  vocabulary: [],
+                  pronunciation: null
+                },
+                suggestions: {
+                  grammar: null,
+                  vocabulary: null,
+                  pronunciation: null
+                },
+                wordsForPractice: [],
+                message: transcription,
+                timestamp: new Date().toISOString()
+              };
+              
+              // Store the fallback analysis
+              setComprehensiveAnalysis(prev => ({
+                ...prev,
+                [messageId]: fallbackAnalysis
+              }));
+              
+              console.log('✅ === FALLBACK ANALYSIS STORED FOR VOICE - PROCEEDING TO AI ===');
+              // Continue with AI response instead of showing error
+              // updateMessageStatus(messageId, 'error'); // REMOVED - don't show error
+              // return; // REMOVED - continue with AI response
+            }
             
             console.log('✅ === NO ERRORS DETECTED - PROCEEDING TO AI ===');
             console.log('🔍 === PRE-STATE CLEARING DEBUG ===');
@@ -5953,54 +5712,6 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       console.error('Error translating English to German:', error);
       // Fallback: Use chat function for translation
       await sendTranscriptionToAI(`Translate this to German and provide suggestions: "${englishText}"`, messageId, true);
-    }
-  };
-
-  // Handle voice message retry
-  const handleVoiceRetry = async (messageId: string) => {
-    const message = chatMessages.find(msg => msg.id === messageId);
-    if (!message || !message.audioUrl) return;
-
-    console.log('🔄 === VOICE RETRY START ===');
-    console.log('Message ID:', messageId);
-    console.log('Current user attempts:', userAttempts[messageId] || 0);
-
-    // Start recording again for retry
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const chunks: BlobPart[] = [];
-      const recorder = new MediaRecorder(stream);
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunks.push(event.data);
-        }
-      };
-
-      recorder.onstop = async () => {
-        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
-        
-        console.log('🔄 === PROCESSING VOICE RETRY ===');
-        console.log('Audio blob size:', audioBlob.size);
-        
-        // Update the existing message to show retry attempt
-        setChatMessages(prev => prev.map(msg => 
-          msg.id === messageId 
-            ? { ...msg, content: '🎤 Recording retry...', isTranscribing: true }
-            : msg
-        ));
-        
-        // Process the retry audio with the same message ID
-        await transcribeAudio(audioBlob, messageId, true);
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      recorder.start();
-      setMediaRecorder(recorder);
-      setIsRecording(true);
-    } catch (error) {
-      console.error('Error starting retry recording:', error);
-      alert('Microphone access denied. Please allow microphone access to retry voice input.');
     }
   };
 
@@ -6236,24 +5947,22 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     setCurrentView('dashboard');
     
     // Reset session data for new conversation
-    setSessionData({
-      sessionId: `session-${Date.now()}`,
-      startTime: new Date().toISOString(),
-      wordsLearned: [],
-      wordsDeleted: [],
-      vocabularyTests: [],
-      pronunciationAttempts: [],
-      grammarMistakes: [],
-      correctResponses: 0,
-      totalMessages: 0
-    });
+    const newData = createInitialSessionData();
+    setSessionData(newData);
+    sessionDataRef.current = newData;
     console.log('📊 Session data reset for new conversation');
   };
 
   // End conversation - shows summary modal
   const endConversation = () => {
     // Generate and show summary before resetting
-    const summary = generateConversationSummary(sessionData);
+    const effectiveSessionData = sessionDataRef.current ?? sessionData;
+    const summary = generateConversationSummary(effectiveSessionData);
+    console.log('📑 Generated summary pronunciation stats:', {
+      latestSentenceScore: summary.stats.sentencePronunciationScore,
+      overallPronunciationScore: summary.stats.overallPronunciationScore,
+      attempts: summary.stats.pronunciationAttempts
+    });
     setConversationSummary(summary);
     setShowSummaryModal(true);
     console.log('📊 Conversation summary generated and modal shown');
@@ -8094,8 +7803,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       onClick={handleModalTextSubmit}
                       disabled={!modalInput.trim()}
                       className={`px-4 py-2 rounded-lg transition-colors ${
-                        modalInput.trim()
-                          ? 'bg-primary-500 hover:bg-primary-600 text-white'
+                        modalInput.trim() 
+                          ? 'bg-primary-500 hover:bg-primary-600 text-white' 
                           : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                       }`}
                     >
