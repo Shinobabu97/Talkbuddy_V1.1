@@ -346,6 +346,7 @@ interface ToolbarProps {
   newVocabItems?: Array<{word: string, meaning: string, context: string}>;
   persistentVocab?: Array<{word: string, meaning: string, context: string}>;
   onUpdatePersistentVocab?: (vocab: Array<{word: string, meaning: string, context: string}>) => void;
+  onOpenVocabularyBuilder?: () => void;
   phoneticBreakdowns?: {[key: string]: Array<{original: string, phonetic: string, transliteration: string, syllables: string[]}>};
   onPlayWordAudio?: (word: string, speed?: number) => void;
   globalPlaybackSpeed?: number;
@@ -421,6 +422,7 @@ export default function Toolbar({
   newVocabItems, 
   persistentVocab = [], 
   onUpdatePersistentVocab,
+  onOpenVocabularyBuilder,
   phoneticBreakdowns = {},
   onPlayWordAudio,
   globalPlaybackSpeed = 1.0,
@@ -588,7 +590,16 @@ export default function Toolbar({
   const [grammarExplanation, setGrammarExplanation] = useState<string>('');
   const [speakingTips, setSpeakingTips] = useState<string>('');
   const [isLoadingExplanation, setIsLoadingExplanation] = useState(false);
-  const [vocabFilter, setVocabFilter] = useState<string>('all');
+  const [vocabView, setVocabView] = useState<'conversation' | 'builder'>('conversation');
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('myVocab');
+      const parsed: string[] = saved ? JSON.parse(saved) : [];
+      setMyVocab(new Set(parsed));
+    } catch (e) {
+      console.error('Error syncing myVocab from localStorage:', e);
+    }
+  }, [persistentVocab]);
   const [explanationCache, setExplanationCache] = useState<{[key: string]: {grammar: string, tips: string}}>({});
   const [showGrammarSection, setShowGrammarSection] = useState<boolean>(false);
   const [showSpeakingSection, setShowSpeakingSection] = useState<boolean>(false);
@@ -2968,180 +2979,189 @@ export default function Toolbar({
       <div className="flex-1 overflow-y-auto p-4">
         {activeTab === 'vocab' && (
           <div className="space-y-6">
-            {/* Vocabulary Filter */}
-            <div className="flex space-x-2">
-              <button
-                onClick={() => setVocabFilter('all')}
-                className={`px-3 py-1 rounded text-sm ${
-                  vocabFilter === 'all' ? 'btn-glossy' : 'bg-gray-200 text-gray-700'
-                }`}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setVocabFilter('conversation')}
-                className={`px-3 py-1 rounded text-sm ${
-                  vocabFilter === 'conversation' ? 'btn-glossy' : 'bg-gray-200 text-gray-700'
-                }`}
-              >
-                Conversation
-              </button>
-                </div>
-
             {/* Instructions Section */}
             <div className="bg-background-light border border-gray-200 rounded-lg p-4">
-              <h4 className="text-sm font-semibold text-text mb-2 flex items-center font-display">
-                <BookOpen className="h-4 w-4 mr-2" />
-                How to Use the Vocabulary Tab
-              </h4>
-              <ul className="text-xs text-text-muted space-y-1.5 leading-relaxed font-body">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold text-primary flex items-center font-display">
+                  <BookOpen className="h-4 w-4 mr-2" />
+                  How to Use the Vocabulary Tab
+                </h4>
+              </div>
+              <ul className="text-xs text-primary space-y-1.5 leading-relaxed font-body">
                 <li className="flex items-start">
                   <Volume2 className="h-3 w-3 mr-2 mt-0.5 flex-shrink-0" />
-                  <span><strong>Listen:</strong> Click the audio icon to hear the German pronunciation</span>
+                  <span><strong>Listen:</strong> Click the audio icon to hear the German pronunciation.</span>
                 </li>
                 <li className="flex items-start">
                   <X className="h-3 w-3 mr-2 mt-0.5 flex-shrink-0" />
-                  <span><strong>Delete:</strong> Mastered a word? Click the X to remove it from your list</span>
+                  <span><strong>Delete:</strong> Mastered a word? Click the X to remove it from your list.</span>
                 </li>
                 <li className="flex items-start">
                   <Star className="h-3 w-3 mr-2 mt-0.5 flex-shrink-0" />
-                  <span><strong>Star:</strong> Add words to My Vocabulary for practice in the Vocab List on the Left Panel</span>
+                  <span><strong>Star:</strong> Save words to My Vocabulary for deeper practice inside the Vocabulary Builder.</span>
                 </li>
                 <li className="flex items-start">
                   <BookOpen className="h-3 w-3 mr-2 mt-0.5 flex-shrink-0" />
-                  <span><strong>Vocab List:</strong> Access the full vocabulary builder with topic-based words, flashcards, and test mode from the left panel</span>
+                  <span><strong>Vocabulary Builder:</strong> Explore topic-based words, flashcards, and tests from the main panel.</span>
                 </li>
               </ul>
             </div>
 
-            {/* Vocabulary List */}
-            <div className="space-y-3">
-                {vocabItems
-                .filter(item => vocabFilter === 'all' || item.category === vocabFilter)
-                  .map((item, index) => {
-                    const isStarred = myVocab.has(item.word);
-                    return (
-                      <div key={index} className="bg-gray-50 rounded-lg p-3">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h4 className="font-semibold text-gray-900">{item.word}</h4>
-                            <p className="text-sm text-gray-600">{item.meaning}</p>
-                            <p className="text-xs text-gray-500 mt-1">{item.category}</p>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            {/* Audio Button */}
-                            <div className="relative group">
-                              <button
-                                onClick={() => handlePlayAudio(item.word)}
-                                className="text-text500 hover:text-text600 transition-colors"
-                              >
-                                <Volume2 className="h-4 w-4" />
-                              </button>
-                              <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
-                                Listen
-                              </div>
-                            </div>
-                            
-                            {/* Delete Button */}
-                            <div className="relative group">
-                              <button
-                                onClick={() => handleDeleteFromVocab(item.word)}
-                                className="text-red-500 hover:text-red-600 transition-colors"
-                              >
-                                <X className="h-4 w-4" />
-                              </button>
-                              <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
-                                Learnt the word, Let's delete it
-                              </div>
-                            </div>
-                            
-                            {/* Star Button */}
-                            <div className="relative group">
-                              <button
-                                onClick={() => handleAddToMyVocab(item.word, item.meaning)}
-                                className={`transition-colors ${
-                                  isStarred 
-                                    ? 'text-yellow-500 hover:text-yellow-600' 
-                                    : 'text-gray-400 hover:text-text500'
-                                }`}
-                              >
-                                <Star className={`h-4 w-4 ${isStarred ? 'fill-yellow-500' : ''}`} />
-                              </button>
-                              <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
-                                {isStarred ? 'Remove from Vocabulary' : 'Add to Vocabulary'}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
+            {/* Vocabulary Views */}
+            <div className="flex space-x-2">
+              <button
+                onClick={() => {
+                  setVocabView('conversation');
+                }}
+                className={`px-3 py-1 rounded text-sm ${
+                  vocabView === 'conversation' ? 'btn-glossy' : 'bg-gray-200 text-gray-700'
+                }`}
+              >
+                Conversations
+              </button>
+              <button
+                onClick={() => {
+                  setVocabView('builder');
+                  if (onOpenVocabularyBuilder) {
+                    onOpenVocabularyBuilder();
+                  }
+                }}
+                className={`px-3 py-1 rounded text-sm ${
+                  vocabView === 'builder' ? 'btn-glossy' : 'bg-gray-200 text-gray-700'
+                }`}
+              >
+                Vocabulary Builder
+              </button>
+            </div>
 
-            {/* New Vocabulary Items */}
-            {newVocabItems && newVocabItems.length > 0 && (
+            {/* Vocabulary Content */}
+            {vocabView === 'conversation' ? (
               <div className="space-y-3">
-                <h3 className="font-semibold text-gray-900">New Words</h3>
-                {newVocabItems.map((item, index) => {
-                  const isStarred = myVocab.has(item.word);
-                  return (
-                      <div key={index} className="bg-background-light border border-gray-200 rounded-lg p-3">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h4 className="font-semibold text-text900">{item.word}</h4>
-                          <p className="text-sm text-text700">{item.meaning}</p>
-                          <p className="text-xs text-text600 mt-1">{item.context}</p>
+                {vocabItems.map((item, index) => {
+                const isStarred = myVocab.has(item.word);
+                return (
+                  <div key={index} className="bg-gray-50 rounded-lg p-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="font-semibold text-gray-900">{item.word}</h4>
+                        <p className="text-sm text-gray-600">{item.meaning}</p>
+                        <p className="text-xs text-gray-500 mt-1">{item.category}</p>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        {/* Audio Button */}
+                        <div className="relative group">
+                          <button
+                            onClick={() => handlePlayAudio(item.word)}
+                            className="text-text500 hover:text-text600 transition-colors"
+                          >
+                            <Volume2 className="h-4 w-4" />
+                          </button>
+                          <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+                            Listen
+                          </div>
                         </div>
-                        <div className="flex items-center space-x-2">
-                          {/* Audio Button */}
-                          <div className="relative group">
-                            <button
-                              onClick={() => handlePlayAudio(item.word)}
-                              className="text-text500 hover:text-text600 transition-colors"
-                            >
-                              <Volume2 className="h-4 w-4" />
-                            </button>
-                            <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
-                              Listen
-                            </div>
+                        
+                        {/* Delete Button */}
+                        <div className="relative group">
+                          <button
+                            onClick={() => handleDeleteFromVocab(item.word)}
+                            className="text-red-500 hover:text-red-600 transition-colors"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                          <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+                            Learnt the word, Let's delete it
                           </div>
-                          
-                          {/* Delete Button */}
-                          <div className="relative group">
-                            <button
-                              onClick={() => handleDeleteFromVocab(item.word)}
-                              className="text-red-500 hover:text-red-600 transition-colors"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                            <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
-                              Learnt the word, Let's delete it
-                            </div>
-                          </div>
-                          
-                          {/* Star Button */}
-                          <div className="relative group">
-                            <button
-                              onClick={() => handleAddToMyVocab(item.word, item.meaning)}
-                              className={`transition-colors ${
-                                isStarred 
-                                  ? 'text-yellow-500 hover:text-yellow-600' 
-                                  : 'text-text500 hover:text-text700'
-                              }`}
-                            >
-                              <Star className={`h-4 w-4 ${isStarred ? 'fill-yellow-500' : ''}`} />
-                            </button>
-                            <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
-                              {isStarred ? 'Remove from Vocabulary' : 'Add to Vocabulary'}
-                            </div>
+                        </div>
+                        
+                        {/* Star Button */}
+                        <div className="relative group">
+                          <button
+                            onClick={() => handleAddToMyVocab(item.word, item.meaning)}
+                            className={`transition-colors ${
+                              isStarred 
+                                ? 'text-yellow-500 hover:text-yellow-600' 
+                                : 'text-gray-400 hover:text-text500'
+                            }`}
+                          >
+                            <Star className={`h-4 w-4 ${isStarred ? 'fill-yellow-500' : ''}`} />
+                          </button>
+                          <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+                            {isStarred ? 'Remove from Vocabulary' : 'Add to Vocabulary'}
                           </div>
                         </div>
                       </div>
                     </div>
-                  );
-                })}
+                  </div>
+                );
+              })}
+
+                {/* New Vocabulary Items */}
+                {newVocabItems && newVocabItems.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-gray-900">New Words</h3>
+                    {newVocabItems.map((item, index) => {
+                      const isStarred = myVocab.has(item.word);
+                      return (
+                        <div key={index} className="bg-background-light border border-gray-200 rounded-lg p-3">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h4 className="font-semibold text-text900">{item.word}</h4>
+                              <p className="text-sm text-text700">{item.meaning}</p>
+                              <p className="text-xs text-text600 mt-1">{item.context}</p>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              {/* Audio Button */}
+                              <div className="relative group">
+                                <button
+                                  onClick={() => handlePlayAudio(item.word)}
+                                  className="text-text500 hover:text-text600 transition-colors"
+                                >
+                                  <Volume2 className="h-4 w-4" />
+                                </button>
+                                <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+                                  Listen
+                                </div>
+                              </div>
+                              
+                              {/* Delete Button */}
+                              <div className="relative group">
+                                <button
+                                  onClick={() => handleDeleteFromVocab(item.word)}
+                                  className="text-red-500 hover:text-red-600 transition-colors"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                                <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+                                  Learnt the word, Let's delete it
+                                </div>
+                              </div>
+                              
+                              {/* Star Button */}
+                              <div className="relative group">
+                                <button
+                                  onClick={() => handleAddToMyVocab(item.word, item.meaning)}
+                                  className={`transition-colors ${
+                                    isStarred 
+                                      ? 'text-yellow-500 hover:text-yellow-600' 
+                                      : 'text-text500 hover:text-text700'
+                                  }`}
+                                >
+                                  <Star className={`h-4 w-4 ${isStarred ? 'fill-yellow-500' : ''}`} />
+                                </button>
+                                <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+                                  {isStarred ? 'Remove from Vocabulary' : 'Add to Vocabulary'}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            )}
+            ) : null}
           </div>
         )}
 

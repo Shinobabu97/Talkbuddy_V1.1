@@ -180,7 +180,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [conversationInput, setConversationInput] = useState('');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [conversationsLoading, setConversationsLoading] = useState(false);
-  const [currentView, setCurrentView] = useState<'dashboard' | 'vocab' | 'progress'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'podcasts' | 'progress'>('dashboard');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -276,7 +276,6 @@ export default function Dashboard({ user }: DashboardProps) {
   const [suggestedAnswers, setSuggestedAnswers] = useState<{[key: string]: string}>({});
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const [messageStatus, setMessageStatus] = useState<{[key: string]: MessageStatus}>({});
-  const [showVocabBuilder, setShowVocabBuilder] = useState(false);
   const [lastSuggestionUsed, setLastSuggestionUsed] = useState<{[messageId: string]: string}>({});
   
   // State for pronunciation practice from suggested responses
@@ -287,6 +286,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [responseHasBeenAnalyzed, setResponseHasBeenAnalyzed] = useState<{[responseId: string]: boolean}>({});
   const [practiceRecorders, setPracticeRecorders] = useState<{[responseId: string]: MediaRecorder}>({});
   const [pendingPronunciationAnalysis, setPendingPronunciationAnalysis] = useState<{audioBlob: Blob, text: string, responseId: string} | null>(null);
+  const [showVocabBuilder, setShowVocabBuilder] = useState(false);
   
   // State for mic button recording analysis
   const [micRecordingBlob, setMicRecordingBlob] = useState<Blob | null>(null);
@@ -2996,8 +2996,10 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
     console.log('Meaning:', meaning);
     console.log('Selected conversation:', selectedConversation);
     
-    const wordKey = `${word}-${selectedConversation}`;
-    const itemKey = `${word}-${meaning}`;
+    const normalizedWord = word.trim().toLowerCase();
+    const normalizedMeaning = meaning.trim().toLowerCase();
+    const wordKey = normalizedWord;
+    const itemKey = `${normalizedWord}-${normalizedMeaning}`;
     
     console.log('Word key:', wordKey);
     console.log('Item key:', itemKey);
@@ -3007,12 +3009,14 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
     
     // Quick duplicate check - if already processed or pending, skip immediately
     if (vocabAdditionTracker.has(wordKey) || 
-        persistentVocab.some(item => item.word === word) ||
+        persistentVocab.some(item => item.word.trim().toLowerCase() === normalizedWord) ||
+        newVocabItems.some(item => item.word.trim().toLowerCase() === normalizedWord) ||
         pendingVocabItems.has(itemKey)) {
       console.log('📚 === SKIPPING DUPLICATE VOCAB ADDITION ===');
       console.log('Reasons:', {
         inTracker: vocabAdditionTracker.has(wordKey),
-        inPersistent: persistentVocab.some(item => item.word === word),
+        inPersistent: persistentVocab.some(item => item.word.trim().toLowerCase() === normalizedWord),
+        inNewVocab: newVocabItems.some(item => item.word.trim().toLowerCase() === normalizedWord),
         inPending: pendingVocabItems.has(itemKey)
       });
       return;
@@ -3044,7 +3048,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
     // Add to persistent vocabulary immediately (for session persistence) - check for duplicates
     setPersistentVocab(prev => {
       // Check if word already exists
-      const exists = prev.some(item => item.word === word);
+      const exists = prev.some(item => item.word.trim().toLowerCase() === normalizedWord);
       if (exists) {
         console.log('📚 === WORD ALREADY EXISTS IN PERSISTENT VOCAB, SKIPPING ===');
         return prev;
@@ -3060,7 +3064,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
     // Track vocabulary addition in session data
     setSessionData(prev => ({
       ...prev,
-      wordsLearned: [...prev.wordsLearned, word]
+      wordsLearned: prev.wordsLearned.includes(word) ? prev.wordsLearned : [...prev.wordsLearned, word]
     }));
     console.log('📊 Session data updated: word added to wordsLearned');
     
@@ -3068,7 +3072,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
     console.log('📚 === ADDING TO NEW VOCAB ITEMS FOR TOOLBAR ===');
     setNewVocabItems(prev => {
       // Check if word already exists
-      const exists = prev.some(item => item.word === word);
+      const exists = prev.some(item => item.word.trim().toLowerCase() === normalizedWord);
       if (exists) {
         console.log('📚 === WORD ALREADY EXISTS IN NEW VOCAB ITEMS, SKIPPING ===');
         return prev;
@@ -3123,6 +3127,21 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
       newSelectedWords.add(word);
       setSelectedWords(newSelectedWords);
     }
+  };
+
+  const handleVocabularyTestComplete = (results: {
+    testId: string;
+    timestamp: string;
+    totalWords: number;
+    correctWords: number;
+    incorrectWords: string[];
+    score: number;
+  }) => {
+    setSessionData(prev => ({
+      ...prev,
+      vocabularyTests: [...prev.vocabularyTests, results]
+    }));
+    console.log('📊 Session data updated: test results added');
   };
 
   // Fetch meaning for a specific word
@@ -6634,11 +6653,16 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 <span>Progress</span>
               </button>
               <button
-                onClick={() => setShowVocabBuilder(true)}
-                className={`flex-1 px-3 py-2 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center space-x-1.5 text-text-muted hover:text-primary hover:bg-primary/10 border border-gray-200`}
+                onClick={() => setCurrentView('podcasts')}
+                className={`flex-1 px-3 py-2 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center space-x-1.5 ${
+                  currentView === 'podcasts'
+                    ? 'bg-primary text-white shadow-lg shadow-primary/30'
+                    : 'text-text-muted hover:text-primary hover:bg-primary/10 border border-gray-200'
+                }`}
+                title="Podcasts (coming soon)"
               >
                 <BookOpen className="h-3.5 w-3.5" />
-                <span>Vocab</span>
+                <span>Podcasts</span>
               </button>
             </div>
           )}
@@ -6656,9 +6680,13 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 <BarChart3 className="h-5 w-5" />
               </button>
               <button
-                onClick={() => setShowVocabBuilder(true)}
-                className="p-3 rounded-xl transition-all duration-200 text-gray-600 hover:text-primary hover:bg-primary/10 flex items-center justify-center"
-                title="Vocab List"
+                onClick={() => setCurrentView('podcasts')}
+                className={`p-3 rounded-xl transition-all duration-200 flex items-center justify-center ${
+                  currentView === 'podcasts'
+                    ? 'bg-primary text-white shadow-lg shadow-primary/30'
+                    : 'text-gray-600 hover:text-primary hover:bg-primary/10'
+                }`}
+                title="Podcasts (coming soon)"
               >
                 <BookOpen className="h-5 w-5" />
               </button>
@@ -6839,7 +6867,6 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           </div>
         )}
       </div>
-
       {/* Vocabulary Builder Panel - Conditionally Rendered */}
       {showVocabBuilder && (
         <VocabularyBuilderModal
@@ -6862,17 +6889,11 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           onUpdatePersistentVocab={(newVocab) => {
             setPersistentVocab(newVocab);
           }}
-          onTestComplete={(results) => {
-            setSessionData(prev => ({
-              ...prev,
-              vocabularyTests: [...prev.vocabularyTests, results]
-            }));
-            console.log('📊 Session data updated: test results added');
-          }}
+          onTestComplete={handleVocabularyTestComplete}
         />
       )}
 
-      {/* Main Content - Hidden when vocab builder is open - Elingo Purple Theme */}
+      {/* Main Content - Elingo Purple Theme */}
       {!showVocabBuilder && (
         <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'linear-gradient(135deg, #faf9ff 0%, #f5f5f5 100%)' }}>
           {selectedConversation ? (
@@ -7482,6 +7503,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       setPersistentVocab(newVocab);
                       console.log('📚 === PERSISTENT VOCAB UPDATED ===');
                     }}
+                    onOpenVocabularyBuilder={() => setShowVocabBuilder(true)}
                   />
                 </div>
               ) : (
@@ -7720,15 +7742,15 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               </div>
             </div>
           </div>
-        ) : currentView === 'vocab' ? (
-          // Vocab List View - Elingo Purple Theme
+        ) : currentView === 'podcasts' ? (
+          // Podcasts Placeholder View - Elingo Purple Theme
           <div className="flex-1 flex items-center justify-center p-8 overflow-y-auto bg-white" style={{ backgroundColor: '#f5f5f5' }}>
             <div className="text-center">
               <div className="w-20 h-20 bg-gradient-to-br from-primary/20 to-accent/20 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm">
                 <BookOpen className="h-10 w-10 text-primary" />
               </div>
-              <h2 className="text-3xl font-bold text-text font-display mb-3">Vocabulary List</h2>
-              <p className="text-lg text-text-muted font-body">Your saved words and phrases will appear here</p>
+              <h2 className="text-3xl font-bold text-text font-display mb-3">Podcasts</h2>
+              <p className="text-lg text-text-muted font-body">Curated listening practice is coming soon.</p>
             </div>
           </div>
         ) : (
