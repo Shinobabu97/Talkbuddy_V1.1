@@ -16,42 +16,42 @@ const PODCASTS: Podcast[] = [
     description:
       'Planning a trip or move to Germany? Tune in for insider tips on driving laws, dining etiquette, and social interactions to ensure a smooth visit.',
     iframe:
-      '<iframe width="100%" height="0" scrolling="no" frameborder="no" allow="autoplay" src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/soundcloud%253Atracks%253A2208497999&color=%23ff5500&auto_play=false&hide_related=false&show_comments=true&show_user=true&show_reposts=false&show_teaser=true&visual=false" style="opacity:0;pointer-events:none;"></iframe>',
+      '<iframe width="100%" height="200" scrolling="no" frameborder="no" allow="autoplay" src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/soundcloud%253Atracks%253A2208497999&color=%23ff5500&auto_play=false&hide_related=false&show_comments=true&show_user=true&show_reposts=false&show_teaser=true&visual=false" style="opacity:0;pointer-events:none;"></iframe>',
   },
   {
     title: 'Wonders of Germany',
     description:
       'Explore Germany’s cultural diversity, engineering marvels, culinary delights, and educational opportunities, plus 28 must-see destinations.',
     iframe:
-      '<iframe width="100%" height="0" scrolling="no" frameborder="no" allow="autoplay" src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/soundcloud%253Atracks%253A2207016735&color=%23ff5500&auto_play=false&hide_related=false&show_comments=true&show_user=true&show_reposts=false&show_teaser=true&visual=false" style="opacity:0;pointer-events:none;"></iframe>',
+      '<iframe width="100%" height="200" scrolling="no" frameborder="no" allow="autoplay" src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/soundcloud%253Atracks%253A2207016735&color=%23ff5500&auto_play=false&hide_related=false&show_comments=true&show_user=true&show_reposts=false&show_teaser=true&visual=false" style="opacity:0;pointer-events:none;"></iframe>',
   },
   {
     title: 'German Common Phrases',
     description:
       'Master essential German phrases for everyday communication and navigate Germany with confidence.',
     iframe:
-      '<iframe width="100%" height="0" scrolling="no" frameborder="no" allow="autoplay" src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/soundcloud%253Atracks%253A2208497996&color=%23ff5500&auto_play=false&hide_related=false&show_comments=true&show_user=true&show_reposts=false&show_teaser=true&visual=false" style="opacity:0;pointer-events:none;"></iframe>',
+      '<iframe width="100%" height="200" scrolling="no" frameborder="no" allow="autoplay" src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/soundcloud%253Atracks%253A2208497996&color=%23ff5500&auto_play=false&hide_related=false&show_comments=true&show_user=true&show_reposts=false&show_teaser=true&visual=false" style="opacity:0;pointer-events:none;"></iframe>',
   },
   {
     title: 'German Work Culture',
     description:
       'Understand German work culture: work-life balance, generous leave policies, and high salaries across diverse industries.',
     iframe:
-      '<iframe width="100%" height="0" scrolling="no" frameborder="no" src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/soundcloud%253Atracks%253A2207014527&color=%23ff5500&auto_play=false&hide_related=false&show_comments=true&show_user=true&show_reposts=false&show_teaser=true&visual=false" style="opacity:0;pointer-events:none;"></iframe>',
+      '<iframe width="100%" height="200" scrolling="no" frameborder="no" src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/soundcloud%253Atracks%253A2207014527&color=%23ff5500&auto_play=false&hide_related=false&show_comments=true&show_user=true&show_reposts=false&show_teaser=true&visual=false" style="opacity:0;pointer-events:none;"></iframe>',
   },
   {
     title: 'Oktoberfest',
     description:
       'Discover the history and traditions behind Munich’s iconic folk festival, from its royal origins to today’s celebrations.',
     iframe:
-      '<iframe width="100%" height="0" scrolling="no" frameborder="no" src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/soundcloud%253Atracks%253A2207014523&color=%23ff5500&auto_play=false&hide_related=false&show_comments=true&show_user=true&show_reposts=false&show_teaser=true&visual=false" style="opacity:0;pointer-events:none;"></iframe>',
+      '<iframe width="100%" height="200" scrolling="no" frameborder="no" src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/soundcloud%253Atracks%253A2207014523&color=%23ff5500&auto_play=false&hide_related=false&show_comments=true&show_user=true&show_reposts=false&show_teaser=true&visual=false" style="opacity:0;pointer-events:none;"></iframe>',
   },
   {
     title: 'German Christmas Traditions',
     description:
       'Learn how Germany celebrates Weihnachten, from Advent Sundays to festive markets and cherished family customs.',
     iframe:
-      '<iframe width="100%" height="0" scrolling="no" frameborder="no" src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/soundcloud%253Atracks%253A2207014519&color=%23ff5500&auto_play=false&hide_related=false&show_comments=true&show_user=true&show_reposts=false&show_teaser=true&visual=false" style="opacity:0;pointer-events:none;"></iframe>',
+      '<iframe width="100%" height="200" scrolling="no" frameborder="no" src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/soundcloud%253Atracks%253A2207014519&color=%23ff5500&auto_play=false&hide_related=false&show_comments=true&show_user=true&show_reposts=false&show_teaser=true&visual=false" style="opacity:0;pointer-events:none;"></iframe>',
   },
 ];
 
@@ -155,9 +155,9 @@ const PodcastsPanel: React.FC<PodcastsPanelProps> = ({ onClose }) => {
           <p className="text-sm text-gray-800 leading-relaxed font-body">{podcast.description}</p>
           <div className="flex items-center justify-center space-x-3 pt-2">
             <button
-              className={`p-3 rounded-full text-white shadow transition ${
+              className={`relative p-3 rounded-full text-white shadow transition ${
                 activePodcast === podcast.title
-                  ? 'bg-[#2ABF90] animate-[pulseGlow_1.5s_ease-in-out_infinite]'
+                  ? 'bg-[#2ABF90] ring-4 ring-[#2ABF90]/40 animate-[pulseGlow_1.5s_ease-in-out_infinite]'
                   : 'bg-[#2ABF90] hover:opacity-90'
               }`}
               onClick={() => handlePlay(podcast.title)}
@@ -182,11 +182,11 @@ const PodcastsPanel: React.FC<PodcastsPanelProps> = ({ onClose }) => {
           />
         </div>
       )),
-    [],
+    [activePodcast],
   );
 
   return (
-    <div className="absolute inset-y-0 right-0 z-30 w-full lg:w-[calc(100%-380px)] bg-white shadow-2xl border-l border-gray-200 flex flex-col">
+    <div className="h-full bg-white shadow-2xl border-l border-gray-200 flex flex-col">
       <style>{glowStyle}</style>
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-[#5a3bcf] via-[#7b4df1] to-[#ffc266] text-white">
         <div>
@@ -211,4 +211,3 @@ const PodcastsPanel: React.FC<PodcastsPanelProps> = ({ onClose }) => {
 };
 
 export default PodcastsPanel;
-

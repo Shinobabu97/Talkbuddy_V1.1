@@ -179,4 +179,3 @@ const PodcastsPanel: React.FC<PodcastsPanelProps> = ({ onClose }) => {
 };
 
 export default PodcastsPanel;
-
