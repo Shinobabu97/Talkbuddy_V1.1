@@ -58,7 +58,17 @@ const PODCASTS: Podcast[] = [
 const PodcastsPanel: React.FC<PodcastsPanelProps> = ({ onClose }) => {
   const widgetRefs = useRef<Record<string, any>>({});
   const [activePodcast, setActivePodcast] = React.useState<string | null>(null);
-  const glowStyle = `@keyframes pulseGlow { 0% { box-shadow: 0 0 0 0 rgba(42, 191, 144, 0.6); } 50% { box-shadow: 0 0 20px 6px rgba(42, 191, 144, 0.45); } 100% { box-shadow: 0 0 0 0 rgba(42, 191, 144, 0.6); } }`;
+  const [volume, setVolume] = React.useState<number>(80);
+  const glowStyle = `
+    .play-button.playing {
+      animation: pulseGlow 1.5s ease-in-out infinite;
+      box-shadow: 0 0 8px 2px #2ABF90;
+    }
+    @keyframes pulseGlow { 
+      0%, 100% { box-shadow: 0 0 8px 2px #2ABF90; } 
+      50% { box-shadow: 0 0 16px 6px #2ABF90; } 
+    }
+  `;
 
   const pauseWidget = (title: string) => {
     const widget = widgetRefs.current[title];
@@ -107,6 +117,11 @@ const PodcastsPanel: React.FC<PodcastsPanelProps> = ({ onClose }) => {
           widgetRefs.current[podcast.title] = widget;
           widget.bind((window as any).SC.Widget.Events.READY, () => {
             pauseWidget(podcast.title);
+            try {
+              widget.setVolume(volume);
+            } catch (e) {
+              console.warn('Unable to set widget volume on ready', podcast.title, e);
+            }
           });
         }
       });
@@ -117,6 +132,16 @@ const PodcastsPanel: React.FC<PodcastsPanelProps> = ({ onClose }) => {
       setActivePodcast(null);
     };
   }, []);
+
+  useEffect(() => {
+    Object.values(widgetRefs.current).forEach(widget => {
+      try {
+        widget?.setVolume?.(volume);
+      } catch (e) {
+        console.warn('Unable to set widget volume', e);
+      }
+    });
+  }, [volume]);
 
   const handlePlay = (title: string) => {
     setActivePodcast(title);
@@ -155,9 +180,9 @@ const PodcastsPanel: React.FC<PodcastsPanelProps> = ({ onClose }) => {
           <p className="text-sm text-gray-800 leading-relaxed font-body">{podcast.description}</p>
           <div className="flex items-center justify-center space-x-3 pt-2">
             <button
-              className={`relative p-3 rounded-full text-white shadow transition ${
+              className={`play-button relative p-3 rounded-full text-white shadow transition ${
                 activePodcast === podcast.title
-                  ? 'bg-[#2ABF90] ring-4 ring-[#2ABF90]/40 animate-[pulseGlow_1.5s_ease-in-out_infinite]'
+                  ? 'bg-[#2ABF90] playing'
                   : 'bg-[#2ABF90] hover:opacity-90'
               }`}
               onClick={() => handlePlay(podcast.title)}
@@ -180,9 +205,23 @@ const PodcastsPanel: React.FC<PodcastsPanelProps> = ({ onClose }) => {
               __html: podcast.iframe.replace('<iframe', `<iframe id="podcast-iframe-${index}"`),
             }}
           />
+          <div className="pt-1">
+            <label className="flex items-center space-x-3 text-xs text-gray-600">
+              <span className="font-semibold text-gray-700">Volume</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={volume}
+                onChange={(event) => setVolume(Number(event.target.value))}
+                className="flex-1 accent-[#2ABF90]"
+              />
+              <span className="w-8 text-right">{volume}%</span>
+            </label>
+          </div>
         </div>
       )),
-    [activePodcast],
+    [activePodcast, volume],
   );
 
   return (
