@@ -163,10 +163,11 @@ export default function Dashboard({ user }: DashboardProps) {
     wordsDeleted: [],
     vocabularyTests: [],
     pronunciationAttempts: [],
+    sentencePronunciationScores: [],
+    lastSentencePronunciationScore: null,
     grammarMistakes: [],
     correctResponses: 0,
-    totalMessages: 0,
-    lastSentenceScore: undefined
+    totalMessages: 0
   });
 
   const sessionDataRef = useRef<SessionData>(createInitialSessionData());
@@ -3180,22 +3181,46 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
   // Handle pronunciation completion - track pronunciation scores
   const handlePronunciationComplete = (
     score: number,
-    word: string,
+    text: string,
     type: 'word' | 'sentence' = 'sentence'
   ) => {
     const successThreshold = 65;
-    updateSessionData(prev => ({
-      ...prev,
-      pronunciationAttempts: [...prev.pronunciationAttempts, {
-        word,
-        score,
-        timestamp: new Date().toISOString(),
-        isSuccess: score >= successThreshold,
-        type
-      }],
-      lastSentenceScore: type === 'sentence' ? score : prev.lastSentenceScore
-    }));
-    console.log('📊 Session data updated: pronunciation attempt added', { word, score, type });
+    updateSessionData(prev => {
+      const timestamp = new Date().toISOString();
+
+      const updatedAttempts = [
+        ...prev.pronunciationAttempts,
+        {
+          word: text,
+          score,
+          timestamp,
+          isSuccess: score >= successThreshold
+        }
+      ];
+
+      let updatedSentenceScores = prev.sentencePronunciationScores;
+      let updatedLastSentenceScore = prev.lastSentencePronunciationScore;
+
+      if (type === 'sentence') {
+        updatedSentenceScores = [
+          ...prev.sentencePronunciationScores,
+          {
+            sentence: text,
+            score,
+            timestamp
+          }
+        ];
+        updatedLastSentenceScore = score;
+      }
+
+      return {
+        ...prev,
+        pronunciationAttempts: updatedAttempts,
+        sentencePronunciationScores: updatedSentenceScores,
+        lastSentencePronunciationScore: updatedLastSentenceScore
+      };
+    });
+    console.log('📊 Session data updated: pronunciation attempt added', { text, score, type });
   };
 
   // Handle word selection in sentence - no API calls in modal
