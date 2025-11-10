@@ -66,7 +66,7 @@ const ConversationSummaryModal: React.FC<ConversationSummaryModalProps> = ({
               </div>
             )}
 
-            {summary.stats.pronunciationAttempts > 0 && (
+        {summary.stats.pronunciationAttempts > 0 && (
               <div className="bg-pink-50 rounded-lg p-4 border border-pink-200">
                 <div className="flex items-center space-x-2 mb-2">
                   <Mic className="h-5 w-5 text-pink-600" />
@@ -74,6 +74,34 @@ const ConversationSummaryModal: React.FC<ConversationSummaryModalProps> = ({
                 </div>
                 <p className="text-2xl font-bold text-pink-600">{summary.stats.sentencePronunciationScore}/100</p>
                 <p className="text-xs text-gray-600">latest sentence score</p>
+            {(summary.pronunciationStrongWords.length > 0 || summary.pronunciationNeedsPractice.length > 0) && (
+              <div className="mt-3 space-y-2">
+                {summary.pronunciationStrongWords.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Strong words</p>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {summary.pronunciationStrongWords.map((word) => (
+                        <span key={word} className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">
+                          {word}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {summary.pronunciationNeedsPractice.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Needs practice</p>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {summary.pronunciationNeedsPractice.map((word) => (
+                        <span key={word} className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-700">
+                          {word}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
               </div>
             )}
 

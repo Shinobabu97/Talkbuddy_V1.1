@@ -19,11 +19,14 @@ export interface ConversationSummary {
     correctResponses: number;
     totalMessages: number;
   };
+  pronunciationStrongWords: string[];
+  pronunciationNeedsPractice: string[];
 }
 
 export function generateConversationSummary(sessionData: SessionData): ConversationSummary {
   // Calculate stats
-  const wordsLearnedCount = sessionData.wordsLearned.length;
+  const wordsLearnedFromTests = sessionData.wordsLearnedFromTests ?? 0;
+  const wordsLearnedCount = sessionData.wordsLearned.length + wordsLearnedFromTests;
   const wordsDeletedCount = sessionData.wordsDeleted.length;
   const testsCompleted = sessionData.vocabularyTests.length;
   const averageTestScore = testsCompleted > 0
@@ -42,6 +45,28 @@ export function generateConversationSummary(sessionData: SessionData): Conversat
   const grammarMistakesCount = sessionData.grammarMistakes.length;
   const correctResponsesCount = sessionData.correctResponses;
   const totalMessagesCount = sessionData.totalMessages;
+  const pronunciationAttemptsDetails = sessionData.pronunciationAttempts || [];
+
+  const wordMaxScores = pronunciationAttemptsDetails.reduce((acc, attempt) => {
+    const word = attempt.word?.trim();
+    if (!word) return acc;
+    const existing = acc.get(word);
+    if (existing === undefined || attempt.score > existing) {
+      acc.set(word, attempt.score);
+    }
+    return acc;
+  }, new Map<string, number>());
+
+  const pronunciationStrongWords: string[] = [];
+  const pronunciationNeedsPractice: string[] = [];
+
+  wordMaxScores.forEach((score, word) => {
+    if (score >= 68) {
+      pronunciationStrongWords.push(word);
+    } else {
+      pronunciationNeedsPractice.push(word);
+    }
+  });
 
   // Generate praise
   const praise = correctResponsesCount > 0
@@ -121,6 +146,8 @@ export function generateConversationSummary(sessionData: SessionData): Conversat
     grammarFeedback,
     testFeedback,
     encouragement,
+    pronunciationStrongWords,
+    pronunciationNeedsPractice,
     stats: {
       wordsLearned: wordsLearnedCount,
       wordsDeleted: wordsDeletedCount,

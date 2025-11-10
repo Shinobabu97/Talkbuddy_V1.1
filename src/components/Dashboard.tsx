@@ -162,6 +162,7 @@ export default function Dashboard({ user }: DashboardProps) {
     wordsLearned: [],
     wordsDeleted: [],
     vocabularyTests: [],
+    wordsLearnedFromTests: 0,
     pronunciationAttempts: [],
     sentencePronunciationScores: [],
     lastSentencePronunciationScore: null,
@@ -6726,8 +6727,12 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           onTestComplete={(results) => {
             updateSessionData(prev => ({
               ...prev,
-              vocabularyTests: [...prev.vocabularyTests, results]
+              vocabularyTests: [...prev.vocabularyTests, results],
+              wordsLearnedFromTests: (prev.wordsLearnedFromTests || 0) + (results.correctWords || 0)
             }));
+            if (results.correctWords) {
+              triggerWordLearned(results.correctWords);
+            }
             console.log('📊 Session data updated: test results added');
           }}
         />

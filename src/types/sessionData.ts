@@ -14,6 +14,7 @@ export interface SessionData {
     incorrectWords: string[];
     score: number; // percentage
   }[];
+  wordsLearnedFromTests: number;
   
   // Pronunciation tracking
   pronunciationAttempts: {
