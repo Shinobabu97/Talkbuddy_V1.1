@@ -132,6 +132,78 @@ export default function Dashboard({ user }: DashboardProps) {
   const [hasSentFirstMessage, setHasSentFirstMessage] = useState(false);
 
   // 🎮 GAMIFICATION STATE
+  const STREAK_STORAGE_KEY = 'lingoStreak';
+
+  interface StreakStorage {
+    current: number;
+    longest: number;
+    lastActiveDate: string | null;
+    lastActivityTimestamp: number | null;
+    weeklyStreakEarned: boolean;
+    monthlyStreakEarned: boolean;
+    monthDaysTarget: number;
+  }
+
+  const getDateKey = (date: Date) => date.toISOString().slice(0, 10);
+
+  const getDaysInMonth = (date: Date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    return new Date(year, month + 1, 0).getDate();
+  };
+
+  const calculateDayDiff = (from: string, to: string) => {
+    const fromDate = new Date(`${from}T00:00:00`);
+    const toDate = new Date(`${to}T00:00:00`);
+    const diff = toDate.getTime() - fromDate.getTime();
+    return Math.floor(diff / (1000 * 60 * 60 * 24));
+  };
+
+  const loadStreakData = (): StreakStorage => {
+    const defaultData = () => ({
+      current: 0,
+      longest: 0,
+      lastActiveDate: null,
+      lastActivityTimestamp: null,
+      weeklyStreakEarned: false,
+      monthlyStreakEarned: false,
+      monthDaysTarget: getDaysInMonth(new Date())
+    });
+
+    if (typeof window === 'undefined') {
+      return defaultData();
+    }
+
+    try {
+      const raw = localStorage.getItem(STREAK_STORAGE_KEY);
+      if (!raw) {
+        return defaultData();
+      }
+      const parsed = JSON.parse(raw) as Partial<StreakStorage>;
+      return {
+        current: Number(parsed.current) || 0,
+        longest: Number(parsed.longest) || 0,
+        lastActiveDate: typeof parsed.lastActiveDate === 'string' ? parsed.lastActiveDate : null,
+        lastActivityTimestamp: Number(parsed.lastActivityTimestamp) || null,
+        weeklyStreakEarned: Boolean(parsed.weeklyStreakEarned),
+        monthlyStreakEarned: Boolean(parsed.monthlyStreakEarned),
+        monthDaysTarget: Number(parsed.monthDaysTarget) || getDaysInMonth(new Date())
+      };
+    } catch (error) {
+      console.warn('Unable to load streak data from storage', error);
+      return defaultData();
+    }
+  };
+
+  const persistStreakData = (data: StreakStorage) => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(STREAK_STORAGE_KEY, JSON.stringify(data));
+    } catch (error) {
+      console.warn('Unable to persist streak data', error);
+    }
+  };
+
   const [playerStats, setPlayerStats] = React.useState({
     level: 1,
     experience: 0,
@@ -149,6 +221,100 @@ export default function Dashboard({ user }: DashboardProps) {
     vocabularyMaster: 0,
     pronunciationChampion: 0
   });
+
+  const streakDataRef = React.useRef<StreakStorage>(loadStreakData());
+
+  React.useEffect(() => {
+    const stored = streakDataRef.current;
+    const today = new Date();
+    const todayKey = getDateKey(today);
+
+    if (stored.lastActiveDate) {
+      const diff = calculateDayDiff(stored.lastActiveDate, todayKey);
+      if (diff > 1) {
+        const reset: StreakStorage = {
+          ...stored,
+          current: 0,
+          lastActiveDate: stored.lastActiveDate,
+          lastActivityTimestamp: stored.lastActivityTimestamp,
+          weeklyStreakEarned: false,
+          monthlyStreakEarned: false,
+          monthDaysTarget: getDaysInMonth(today)
+        };
+        streakDataRef.current = reset;
+        persistStreakData(reset);
+      }
+    } else {
+      streakDataRef.current = {
+        ...stored,
+        lastActiveDate: null,
+        lastActivityTimestamp: null,
+        weeklyStreakEarned: false,
+        monthlyStreakEarned: false,
+        monthDaysTarget: getDaysInMonth(today)
+      };
+      persistStreakData(streakDataRef.current);
+    }
+
+    setPlayerStats(prev => ({
+      ...prev,
+      currentStreak: streakDataRef.current.current,
+      longestStreak: streakDataRef.current.longest
+    }));
+  }, []);
+
+  const updateStreakOnActivity = React.useCallback((): StreakStorage => {
+    const now = new Date();
+    const todayKey = getDateKey(now);
+    const stored = streakDataRef.current;
+
+    if (stored.lastActiveDate === todayKey) {
+      return stored;
+    }
+
+    let current = stored.current;
+
+    const lastActivityTimestamp = stored.lastActivityTimestamp ?? 0;
+    const nowTimestamp = now.getTime();
+    let diffDays = 0;
+
+    if (stored.lastActiveDate) {
+      diffDays = calculateDayDiff(stored.lastActiveDate, todayKey);
+    }
+
+    if (!stored.lastActiveDate || !stored.lastActivityTimestamp) {
+      current = 1;
+    } else if (diffDays === 0) {
+      const diffMs = nowTimestamp - lastActivityTimestamp;
+      if (diffMs >= 24 * 60 * 60 * 1000) {
+        current = stored.current + 1;
+      } else {
+        return stored;
+      }
+    } else if (diffDays === 1) {
+      current = stored.current + 1;
+    } else {
+      current = 1;
+    }
+
+    const monthDaysTarget = getDaysInMonth(now);
+    const weeklyStreakEarned = current >= 7;
+    const monthlyStreakEarned = current >= monthDaysTarget;
+
+    const updated: StreakStorage = {
+      current,
+      longest: Math.max(stored.longest, current),
+      lastActiveDate: todayKey,
+      lastActivityTimestamp: nowTimestamp,
+      weeklyStreakEarned,
+      monthlyStreakEarned,
+      monthDaysTarget
+    };
+
+    streakDataRef.current = updated;
+    persistStreakData(updated);
+    return updated;
+  }, []);
 
   const [showLevelUp, setShowLevelUp] = React.useState(false);
   const [showAchievement, setShowAchievement] = React.useState<string | null>(null);
@@ -171,7 +337,10 @@ export default function Dashboard({ user }: DashboardProps) {
     totalMessages: 0
   });
 
-  const sessionDataRef = useRef<SessionData>(createInitialSessionData());
+  const sessionDataRef = useRef<SessionData>({
+    ...createInitialSessionData(),
+    wordsLearnedFromTests: Number(localStorage.getItem('wordsLearnedTotal') || '0')
+  });
   const [sessionData, setSessionData] = useState<SessionData>(sessionDataRef.current);
 
   const updateSessionData = React.useCallback((updater: (prev: SessionData) => SessionData) => {
@@ -183,7 +352,10 @@ export default function Dashboard({ user }: DashboardProps) {
   }, []);
 
   const resetSessionData = React.useCallback(() => {
-    const next = createInitialSessionData();
+    const next = {
+      ...createInitialSessionData(),
+      wordsLearnedFromTests: Number(localStorage.getItem('wordsLearnedTotal') || '0')
+    };
     sessionDataRef.current = next;
     setSessionData(next);
   }, []);
@@ -1469,15 +1641,28 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
 
   // 🎮 GAMIFICATION TRIGGERS
   const triggerConversationComplete = () => {
+    const streakUpdate = updateStreakOnActivity();
+
     setPlayerStats(prev => ({
       ...prev,
       conversationsCompleted: prev.conversationsCompleted + 1,
-      currentStreak: prev.currentStreak + 1,
-      longestStreak: Math.max(prev.longestStreak, prev.currentStreak + 1)
+      currentStreak: streakUpdate.current,
+      longestStreak: streakUpdate.longest,
+      streak: streakUpdate.current
     }));
     addExperience(25, 'conversation_complete');
     checkAchievements();
   };
+
+  React.useEffect(() => {
+    const stored = streakDataRef.current;
+    setPlayerStats(prev => ({
+      ...prev,
+      currentStreak: stored.current,
+      longestStreak: stored.longest,
+      streak: stored.current
+    }));
+  }, [currentView]);
 
   const triggerWordLearned = (wordCount: number = 1) => {
     setPlayerStats(prev => ({
@@ -6114,10 +6299,16 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     setShowSummaryModal(true);
     console.log('📊 Conversation summary generated and modal shown');
     
-    // Increment conversations completed
+    // Increment conversations completed and update streaks
+    const streakUpdate = updateStreakOnActivity();
+    console.log('🔥 Streak updated on conversation end:', streakUpdate);
+
     setPlayerStats(prev => ({
       ...prev,
-      conversationsCompleted: prev.conversationsCompleted + 1
+      conversationsCompleted: prev.conversationsCompleted + 1,
+      currentStreak: streakUpdate.current,
+      longestStreak: streakUpdate.longest,
+      streak: streakUpdate.current
     }));
     console.log('🎯 Conversations completed incremented');
     
@@ -6725,11 +6916,16 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             setPersistentVocab(newVocab);
           }}
           onTestComplete={(results) => {
-            updateSessionData(prev => ({
-              ...prev,
-              vocabularyTests: [...prev.vocabularyTests, results],
-              wordsLearnedFromTests: (prev.wordsLearnedFromTests || 0) + (results.correctWords || 0)
-            }));
+    updateSessionData(prev => {
+      const updatedTests = [...prev.vocabularyTests, results];
+      const updatedWordsFromTests = (prev.wordsLearnedFromTests || 0) + (results.correctWords || 0);
+      localStorage.setItem('wordsLearnedTotal', String(updatedWordsFromTests));
+      return {
+        ...prev,
+        vocabularyTests: updatedTests,
+        wordsLearnedFromTests: updatedWordsFromTests
+      };
+    });
             if (results.correctWords) {
               triggerWordLearned(results.correctWords);
             }
@@ -7415,7 +7611,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             <div className="max-w-4xl mx-auto">
               <div className="mb-8">
                 <h1 className="text-3xl font-display text-gradient-primary mb-2">
-                  🎮 Your Gaming Progress
+                  🎯 Your German Progress
                 </h1>
                 <p className="text-xl text-text600 font-body">
                   Level up your German skills with achievements and rewards!
@@ -7460,6 +7656,29 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   <p className="text-2xl font-display text-text font-bold">{playerStats.currentStreak}</p>
                   <div className="text-xs text-text-muted mt-1 font-body">
                     Best: {playerStats.longestStreak} days
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    {streakDataRef.current.weeklyStreakEarned ? (
+                      <div className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
+                        <span>✅</span> Weekly streak achieved
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-text-muted">
+                        {Math.max(0, 7 - playerStats.currentStreak)} days to weekly streak
+                      </div>
+                    )}
+                    {streakDataRef.current.monthlyStreakEarned ? (
+                      <div className="text-xs font-semibold text-indigo-600 flex items-center gap-1">
+                        <span>🌙</span> Monthly streak secured
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-text-muted">
+                        {Math.max(
+                          0,
+                          (streakDataRef.current.monthDaysTarget || getDaysInMonth(new Date())) - playerStats.currentStreak
+                        )} days to monthly streak
+                      </div>
+                    )}
                   </div>
                 </div>
                 

@@ -122,12 +122,26 @@ const ConversationSummaryModal: React.FC<ConversationSummaryModalProps> = ({
           {/* Feedback Sections */}
           <div className="space-y-4">
             {/* Vocabulary Feedback */}
-            <div className="bg-white rounded-lg p-4 border border-gray-200">
-              <h3 className="font-semibold text-gray-900 mb-2 flex items-center">
-                <BookOpen className="h-4 w-4 mr-2 text-primary-600" />
-                Vocabulary Progress
-              </h3>
-              <p className="text-sm text-gray-700">{summary.vocabularyFeedback}</p>
+            <div className="bg-white rounded-lg p-4 border border-gray-200 space-y-3">
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-2 flex items-center">
+                  <BookOpen className="h-4 w-4 mr-2 text-primary-600" />
+                  Vocabulary Progress
+                </h3>
+                <p className="text-sm text-gray-700">{summary.vocabularyFeedback}</p>
+              </div>
+              {summary.wordsToPractise.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Words to repractice</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {summary.wordsToPractise.map((word) => (
+                      <span key={word} className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-700">
+                        {word}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Test Feedback */}

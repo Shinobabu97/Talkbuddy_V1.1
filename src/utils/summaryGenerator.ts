@@ -21,12 +21,14 @@ export interface ConversationSummary {
   };
   pronunciationStrongWords: string[];
   pronunciationNeedsPractice: string[];
+  wordsToPractise: string[];
 }
 
 export function generateConversationSummary(sessionData: SessionData): ConversationSummary {
   // Calculate stats
   const wordsLearnedFromTests = sessionData.wordsLearnedFromTests ?? 0;
   const wordsLearnedCount = sessionData.wordsLearned.length + wordsLearnedFromTests;
+  const wordsToPractise = new Set<string>();
   const wordsDeletedCount = sessionData.wordsDeleted.length;
   const testsCompleted = sessionData.vocabularyTests.length;
   const averageTestScore = testsCompleted > 0
@@ -66,6 +68,14 @@ export function generateConversationSummary(sessionData: SessionData): Conversat
     } else {
       pronunciationNeedsPractice.push(word);
     }
+  });
+
+  sessionData.vocabularyTests?.forEach(test => {
+    test.incorrectWords?.forEach(word => {
+      if (word?.trim()) {
+        wordsToPractise.add(word.trim());
+      }
+    });
   });
 
   // Generate praise
@@ -148,6 +158,7 @@ export function generateConversationSummary(sessionData: SessionData): Conversat
     encouragement,
     pronunciationStrongWords,
     pronunciationNeedsPractice,
+    wordsToPractise: Array.from(wordsToPractise),
     stats: {
       wordsLearned: wordsLearnedCount,
       wordsDeleted: wordsDeletedCount,
