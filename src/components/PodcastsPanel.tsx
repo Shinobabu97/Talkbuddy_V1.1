@@ -57,8 +57,19 @@ const PODCASTS: Podcast[] = [
 
 const PodcastsPanel: React.FC<PodcastsPanelProps> = ({ onClose }) => {
   const widgetRefs = useRef<Record<string, any>>({});
+  const [progress, setProgress] = React.useState<Record<string, number>>(() =>
+    PODCASTS.reduce((acc, podcast) => {
+      acc[podcast.title] = 0;
+      return acc;
+    }, {} as Record<string, number>)
+  );
   const [activePodcast, setActivePodcast] = React.useState<string | null>(null);
-  const [volume, setVolume] = React.useState<number>(80);
+  const [volumes, setVolumes] = React.useState<Record<string, number>>(() =>
+    PODCASTS.reduce((acc, podcast) => {
+      acc[podcast.title] = 80;
+      return acc;
+    }, {} as Record<string, number>)
+  );
   const glowStyle = `
     .play-button.playing {
       animation: pulseGlow 1.5s ease-in-out infinite;
@@ -67,6 +78,33 @@ const PodcastsPanel: React.FC<PodcastsPanelProps> = ({ onClose }) => {
     @keyframes pulseGlow { 
       0%, 100% { box-shadow: 0 0 8px 2px #2ABF90; } 
       50% { box-shadow: 0 0 16px 6px #2ABF90; } 
+    }
+    .volume-slider {
+      appearance: none;
+      width: 100%;
+      height: 4px;
+      background: #dfe3f0;
+      border-radius: 9999px;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.12);
+      outline: none;
+    }
+    .volume-slider::-webkit-slider-thumb {
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #2ABF90;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+      cursor: pointer;
+    }
+    .volume-slider::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #2ABF90;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+      cursor: pointer;
+      border: none;
     }
   `;
 
@@ -118,10 +156,17 @@ const PodcastsPanel: React.FC<PodcastsPanelProps> = ({ onClose }) => {
           widget.bind((window as any).SC.Widget.Events.READY, () => {
             pauseWidget(podcast.title);
             try {
-              widget.setVolume(volume);
+              widget.setVolume(volumes[podcast.title] ?? 80);
             } catch (e) {
               console.warn('Unable to set widget volume on ready', podcast.title, e);
             }
+          });
+          widget.bind((window as any).SC.Widget.Events.PLAY_PROGRESS, (event: any) => {
+            const percent = Math.min(Math.max(event.relativePosition * 100, 0), 100);
+            setProgress(prev => ({
+              ...prev,
+              [podcast.title]: percent,
+            }));
           });
         }
       });
@@ -134,14 +179,14 @@ const PodcastsPanel: React.FC<PodcastsPanelProps> = ({ onClose }) => {
   }, []);
 
   useEffect(() => {
-    Object.values(widgetRefs.current).forEach(widget => {
+    Object.entries(widgetRefs.current).forEach(([title, widget]) => {
       try {
-        widget?.setVolume?.(volume);
+        widget?.setVolume?.(volumes[title] ?? 80);
       } catch (e) {
-        console.warn('Unable to set widget volume', e);
+        console.warn('Unable to set widget volume', title, e);
       }
     });
-  }, [volume]);
+  }, [volumes]);
 
   const handlePlay = (title: string) => {
     setActivePodcast(title);
@@ -165,6 +210,13 @@ const PodcastsPanel: React.FC<PodcastsPanelProps> = ({ onClose }) => {
     if (activePodcast === title) {
       setActivePodcast(null);
     }
+  };
+
+  const handleVolumeChange = (title: string, value: number) => {
+    setVolumes(prev => ({
+      ...prev,
+      [title]: value,
+    }));
   };
 
   const cards = useMemo(
@@ -198,6 +250,14 @@ const PodcastsPanel: React.FC<PodcastsPanelProps> = ({ onClose }) => {
               ⏸
             </button>
           </div>
+          <div className="pt-2">
+            <div className="h-1.5 bg-[#e5e9ff] rounded-full overflow-hidden">
+              <div
+                className="h-full bg-[#4D5BFF] transition-all duration-300"
+                style={{ width: `${progress[podcast.title] ?? 0}%` }}
+              />
+            </div>
+          </div>
           <div
             className="absolute inset-0 pointer-events-none opacity-0"
             aria-hidden="true"
@@ -206,22 +266,26 @@ const PodcastsPanel: React.FC<PodcastsPanelProps> = ({ onClose }) => {
             }}
           />
           <div className="pt-1">
-            <label className="flex items-center space-x-3 text-xs text-gray-600">
-              <span className="font-semibold text-gray-700">Volume</span>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={volume}
-                onChange={(event) => setVolume(Number(event.target.value))}
-                className="flex-1 accent-[#2ABF90]"
-              />
-              <span className="w-8 text-right">{volume}%</span>
-            </label>
+            <div className="flex items-center space-x-3 text-xs text-gray-600 group">
+              <span className="speaker-icon text-black">🔊</span>
+              <div className="relative w-1/4 min-w-[90px]">
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={volumes[podcast.title] ?? 80}
+                  onChange={(event) => handleVolumeChange(podcast.title, Number(event.target.value))}
+                  className="volume-slider w-full"
+                />
+                <span className="absolute -top-6 left-1/2 -translate-x-1/2 bg-gray-800 text-white text-[10px] px-2 py-0.5 rounded opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity pointer-events-none">
+                  {volumes[podcast.title] ?? 80}%
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       )),
-    [activePodcast, volume],
+    [activePodcast, volumes, progress],
   );
 
   return (
