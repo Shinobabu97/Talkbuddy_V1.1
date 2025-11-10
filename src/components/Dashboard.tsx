@@ -6433,25 +6433,25 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 <div className="space-y-2 mb-3">
                   {/* Compact Stats - Horizontal */}
                   <div className="grid grid-cols-2 gap-2">
-                    <div className="bg-white rounded-lg p-2.5 text-center border border-gray-200 shadow-sm">
+                    <div className="bg-white rounded-lg p-2.5 text-center border border-primary/40 shadow-sm">
                       <div className="text-lg font-bold text-primary font-display">{playerStats.conversationsCompleted}</div>
-                      <div className="text-[10px] text-text-muted font-body">Conversations</div>
+                      <div className="text-[10px] text-gray-700 font-body">Conversations</div>
                     </div>
-                    <div className="bg-white rounded-lg p-2.5 text-center border border-gray-200 shadow-sm">
+                    <div className="bg-white rounded-lg p-2.5 text-center border border-primary/40 shadow-sm">
                       <div className="text-lg font-bold text-primary font-display">{playerStats.wordsLearned}</div>
-                      <div className="text-[10px] text-text-muted font-body">Words Learned</div>
+                      <div className="text-[10px] text-gray-700 font-body">Words Learned</div>
                     </div>
                   </div>
 
                   {/* Compact Experience Bar */}
-                  <div className="bg-white rounded-lg p-2.5 border border-gray-200 shadow-sm">
+                  <div className="bg-white rounded-lg p-2.5 border border-primary/40 shadow-sm">
                     <div className="w-full bg-gray-200 rounded-full h-1.5 mb-1 overflow-hidden">
                       <div 
                         className="bg-gradient-to-r from-primary to-accent rounded-full h-1.5 transition-all duration-500"
                         style={{ width: `${(playerStats.experience % 100)}%` }}
                       ></div>
                     </div>
-                    <div className="text-[10px] text-text-muted font-body">
+                    <div className="text-[10px] text-gray-700 font-body">
                       {100 - (playerStats.experience % 100)} XP to next level
                     </div>
                   </div>
@@ -6482,8 +6482,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 onClick={() => setCurrentView('progress')}
                 className={`flex-1 px-3 py-2 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center space-x-1.5 ${
                   currentView === 'progress'
-                    ? 'bg-primary text-white shadow-lg shadow-primary/30' 
-                    : 'text-text-muted hover:text-primary hover:bg-primary/10 border border-gray-200'
+                    ? 'bg-primary text-white shadow-lg shadow-primary/30 border border-primary'
+                    : 'text-gray-600 hover:text-primary hover:bg-primary/10 border border-primary/40'
                 }`}
               >
                 <BarChart3 className="h-3.5 w-3.5" />
@@ -6491,7 +6491,11 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               </button>
               <button
                 onClick={() => setShowPodcastsModal(true)}
-                className={`flex-1 px-3 py-2 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center space-x-1.5 text-text-muted hover:text-primary hover:bg-primary/10 border border-gray-200`}
+                className={`flex-1 px-3 py-2 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center space-x-1.5 ${
+                  showPodcastsModal
+                    ? 'bg-primary/10 text-primary border border-primary'
+                    : 'text-gray-600 hover:text-primary hover:bg-primary/10 border border-primary/40'
+                }`}
                 title="Podcasts"
               >
                 <BookOpen className="h-3.5 w-3.5" />
@@ -6544,7 +6548,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   placeholder="Search conversations..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all duration-200 font-body"
+                  className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-primary/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all duration-200 font-body placeholder:text-gray-500"
                 />
               </div>
             </div>
@@ -6627,9 +6631,9 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                         </h4>
                       </div>
                       <p className={`text-[10px] truncate mb-0.5 font-body leading-tight ${
-                        selectedConversation === conversation.id ? 'text-primary/70' : 'text-text-muted'
+                        selectedConversation === conversation.id ? 'text-primary/70' : 'text-gray-600'
                       }`}>{conversation.preview}</p>
-                      <p className="text-[10px] text-text-muted font-body">{formatTime(conversation.updated_at)}</p>
+                      <p className="text-[10px] text-gray-600 font-body">{formatTime(conversation.updated_at)}</p>
                     </button>
                     
                     {/* Delete button - appears on hover */}
@@ -6682,7 +6686,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 )}
                 <div className="flex-1">
                   <p className="text-sm font-bold text-text font-display">{firstName}</p>
-                  <p className="text-xs text-text-muted font-body">Profile Settings</p>
+                  <p className="text-xs text-gray-600 font-body">Profile Settings</p>
                 </div>
               </div>
               <button
@@ -7684,7 +7688,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 <h1 className="text-4xl font-display text-text font-bold mb-3">
                   Hello {firstName}! 👋
                 </h1>
-                <p className="text-lg text-text-muted font-body">
+                <p className="text-lg text-gray-600 font-body">
                   What would you like to practice in German today?
                 </p>
               </div>
