@@ -448,6 +448,10 @@ export default function Dashboard({ user }: DashboardProps) {
   const [isTyping, setIsTyping] = useState(false);
   const [translatedMessages, setTranslatedMessages] = useState<{[key: string]: string}>({});
   const [suggestedResponses, setSuggestedResponses] = useState<{[key: string]: (string | {german: string, english: string})[]}>({});
+  const getSuggestionKey = (conversationIdValue: string | null | undefined, messageId: string) => {
+    const convoPart = conversationIdValue ?? selectedConversation ?? 'new-conversation';
+    return `${convoPart}::${messageId}`;
+  };
   const [showTranslation, setShowTranslation] = useState<{[key: string]: boolean}>({});
   const [showSuggestionTranslation, setShowSuggestionTranslation] = useState<{[key: string]: boolean}>({});
   const [showSuggestions, setShowSuggestions] = useState<{[key: string]: boolean}>({});
@@ -1062,7 +1066,11 @@ export default function Dashboard({ user }: DashboardProps) {
         timestamp: new Date().toISOString()
       };
 
-      setChatMessages(prev => [...prev, assistantMessage]);
+      let updatedInitialMessages: ChatMessage[] = [];
+      setChatMessages(prev => {
+        updatedInitialMessages = [...prev, assistantMessage];
+        return updatedInitialMessages;
+      });
       
       // Lock the context AND difficulty for this conversation
       await supabase
@@ -1082,7 +1090,13 @@ export default function Dashboard({ user }: DashboardProps) {
       
       // Auto-generate 3 contextual suggestions after initial AI response
       const messageId = '2'; // First AI message ID
-      await generateContextualSuggestionsForInitialResponse(messageId, data.message, userMessage);
+      await generateContextualSuggestionsForInitialResponse(
+        messageId,
+        data.message,
+        userMessage,
+        updatedInitialMessages.length ? updatedInitialMessages : chatMessages,
+        conversationId
+      );
 
     } catch (error) {
       console.error('❌ === ERROR SENDING INITIAL MESSAGE ===');
@@ -1119,19 +1133,24 @@ export default function Dashboard({ user }: DashboardProps) {
   const generateSuggestionsUsingOpenAI = async (
     messageId: string,
     botMessage?: string,
-    userContext?: string
+    userContext?: string,
+    messagesOverride?: ChatMessage[],
+    conversationIdParam?: string | null
   ) => {
     console.log('🎯 === GENERATING SUGGESTIONS USING OPENAI ===');
     console.log('Message ID:', messageId);
     
     // Auto-detect most recent bot message if not provided
     let aiMessage: string;
+    const messages = messagesOverride ?? chatMessages;
+    const suggestionKey = getSuggestionKey(conversationIdParam, messageId);
+
     if (botMessage) {
       aiMessage = botMessage;
       console.log('Using provided bot message:', aiMessage);
     } else {
       // Find most recent assistant message from chatMessages
-      const assistantMessages = chatMessages.filter(msg => msg.role === 'assistant');
+      const assistantMessages = messages.filter(msg => msg.role === 'assistant');
       const mostRecentBotMessage = assistantMessages[assistantMessages.length - 1];
       
       if (!mostRecentBotMessage) {
@@ -1140,7 +1159,7 @@ export default function Dashboard({ user }: DashboardProps) {
         const contextualFallbacks = generateContextualFallbacks('');
         setSuggestedResponses(prev => ({
           ...prev,
-          [messageId]: contextualFallbacks
+          [suggestionKey]: contextualFallbacks
         }));
         return;
       }
@@ -1154,14 +1173,14 @@ export default function Dashboard({ user }: DashboardProps) {
     let conversationHistory: string = '';
     
     // Find the current bot message index
-    const currentBotMessageIndex = chatMessages.findIndex(msg => 
+    const currentBotMessageIndex = messages.findIndex(msg => 
       msg.id === messageId && msg.role === 'assistant'
     );
     
     // Get last 2-3 messages (including current bot message and previous messages)
     if (currentBotMessageIndex >= 0) {
       const startIndex = Math.max(0, currentBotMessageIndex - 2);
-      const recentMessages = chatMessages.slice(startIndex, currentBotMessageIndex + 1);
+      const recentMessages = messages.slice(startIndex, currentBotMessageIndex + 1);
       conversationHistory = recentMessages.map(msg => 
         `${msg.role === 'user' ? 'User' : 'Bot'}: ${msg.content}`
       ).join(' -> ');
@@ -1170,7 +1189,7 @@ export default function Dashboard({ user }: DashboardProps) {
     
     // Also get initial user context if available (for first message)
     if (!conversationContext) {
-      const firstUserMessage = chatMessages.find(msg => msg.role === 'user');
+      const firstUserMessage = messages.find(msg => msg.role === 'user');
       if (firstUserMessage) {
         conversationContext = firstUserMessage.content;
         console.log('Using first user message as context:', conversationContext);
@@ -1178,7 +1197,7 @@ export default function Dashboard({ user }: DashboardProps) {
     }
     
     // Determine if this is 2nd+ bot message (not the first one)
-    const assistantMessages = chatMessages.filter(msg => msg.role === 'assistant');
+    const assistantMessages = messages.filter(msg => msg.role === 'assistant');
     const isSecondOrSubsequentMessage = assistantMessages.length > 1;
     console.log('📊 Is 2nd+ bot message:', isSecondOrSubsequentMessage, 'Total assistant messages:', assistantMessages.length);
     
@@ -1422,7 +1441,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
               const contextualFallbacks = generateContextualFallbacks(aiMessage);
               setSuggestedResponses(prev => ({
                 ...prev,
-                [messageId]: contextualFallbacks
+                [suggestionKey]: contextualFallbacks
               }));
               return;
             }
@@ -1442,7 +1461,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
               const contextualFallbacks = generateContextualFallbacks(aiMessage);
               setSuggestedResponses(prev => ({
                 ...prev,
-                [messageId]: contextualFallbacks
+                [suggestionKey]: contextualFallbacks
               }));
               return;
             }
@@ -1450,7 +1469,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
           
           setSuggestedResponses(prev => ({
             ...prev,
-            [messageId]: pairedSuggestions
+            [suggestionKey]: pairedSuggestions
           }));
           
           // Don't automatically show suggestions - only show when user clicks question mark icon
@@ -1460,7 +1479,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
           const contextualFallbacks = generateContextualFallbacks(aiMessage);
           setSuggestedResponses(prev => ({
             ...prev,
-            [messageId]: contextualFallbacks
+            [suggestionKey]: contextualFallbacks
           }));
           // Don't automatically show suggestions - only show when user clicks question mark icon
         }
@@ -1471,7 +1490,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
         const contextualFallbacks = generateContextualFallbacks(aiMessage);
         setSuggestedResponses(prev => ({
           ...prev,
-          [messageId]: contextualFallbacks
+          [suggestionKey]: contextualFallbacks
         }));
         // Don't automatically show suggestions - only show when user clicks question mark icon
       }
@@ -1481,21 +1500,27 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
       const contextualFallbacks = generateContextualFallbacks(aiMessage);
       setSuggestedResponses(prev => ({
         ...prev,
-        [messageId]: contextualFallbacks
+        [suggestionKey]: contextualFallbacks
       }));
       // Don't automatically show suggestions - only show when user clicks question mark icon
     }
   };
 
   // Generate 3 contextual suggestions for initial AI response
-  const generateContextualSuggestionsForInitialResponse = async (messageId: string, aiMessage: string, userContext: string) => {
+  const generateContextualSuggestionsForInitialResponse = async (
+    messageId: string,
+    aiMessage: string,
+    userContext: string,
+    messagesOverride?: ChatMessage[],
+    conversationIdParam?: string | null
+  ) => {
     console.log('🎯 === GENERATING CONTEXTUAL SUGGESTIONS FOR INITIAL RESPONSE ===');
     console.log('Message ID:', messageId);
     console.log('AI Message:', aiMessage);
     console.log('User Context:', userContext);
     
     // Use unified function with provided bot message and user context
-    await generateSuggestionsUsingOpenAI(messageId, aiMessage, userContext);
+    await generateSuggestionsUsingOpenAI(messageId, aiMessage, userContext, messagesOverride, conversationIdParam);
   };
 
   // Generate contextual fallback suggestions based on AI message content
@@ -1603,7 +1628,12 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
     }
   };
 
-  const generateTranslationAndSuggestions = async (messageId: string, germanText: string) => {
+  const generateTranslationAndSuggestions = async (
+    messageId: string,
+    germanText: string,
+    messagesOverride?: ChatMessage[],
+    conversationIdParam?: string | null
+  ) => {
     console.log('🎯 === AUTO-GENERATING SUGGESTIONS ===');
     console.log('Message ID:', messageId);
     console.log('German text:', germanText);
@@ -1611,7 +1641,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
     
     // Use unified function with provided bot message
     // It will auto-detect conversation context from chatMessages
-    await generateSuggestionsUsingOpenAI(messageId, germanText);
+    await generateSuggestionsUsingOpenAI(messageId, germanText, undefined, messagesOverride, conversationIdParam);
   };
 
   // Audio cache is now handled by the centralized TTS service
@@ -1966,7 +1996,8 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
       }));
       
       // Check if we already have suggestions for this message
-      const currentSuggestions = suggestedResponses[messageId];
+      const suggestionKey = getSuggestionKey(selectedConversation, messageId);
+      const currentSuggestions = suggestedResponses[suggestionKey];
       console.log('🔍 toggleSuggestions: Current suggestions for messageId:', currentSuggestions);
       console.log('🔍 toggleSuggestions: Suggestions type:', typeof currentSuggestions);
       console.log('🔍 toggleSuggestions: Suggestions length:', currentSuggestions?.length);
@@ -1977,7 +2008,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
         const message = chatMessages.find(msg => msg.id === messageId);
         if (message) {
           console.log('🔍 toggleSuggestions: Found message, generating suggestions for:', message.content);
-          await generateTranslationAndSuggestions(messageId, message.content);
+          await generateTranslationAndSuggestions(messageId, message.content, undefined, selectedConversation);
         } else {
           console.log('🔍 toggleSuggestions: No message found for messageId:', messageId);
         }
@@ -1991,7 +2022,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
         if (typeof firstSuggestion === 'string') {
           // They're still strings, need translation
           console.log('🔍 toggleSuggestions: Converting string suggestions to translated format...');
-          translateSuggestions(messageId, currentSuggestions as string[]);
+          translateSuggestions(messageId, currentSuggestions as string[], suggestionKey);
         } else {
           console.log('🔍 toggleSuggestions: Suggestions already in object format, no action needed');
         }
@@ -2358,8 +2389,10 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
         console.log('AI message ID:', assistantMessage.id);
         console.log('AI message content:', assistantMessage.content);
         
+        let updatedMessages: ChatMessage[] = [];
         setChatMessages(prev => {
           const newMessages = [...prev, assistantMessage];
+          updatedMessages = newMessages;
           console.log('Updated chat messages count:', newMessages.length);
           return newMessages;
         });
@@ -2372,7 +2405,12 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
         console.log('🤖 AI message content:', data.message);
         console.log('🤖 Calling generateTranslationAndSuggestions...');
         
-        await generateTranslationAndSuggestions(messageId, data.message);
+        await generateTranslationAndSuggestions(
+          messageId,
+          data.message,
+          updatedMessages.length ? updatedMessages : chatMessages,
+          selectedConversation
+        );
         
         console.log('🤖 === AUTO-GENERATION CALL COMPLETED ===');
         
@@ -2767,12 +2805,17 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
   };
 
 
-  const translateSuggestions = async (messageId: string, suggestions: string[]) => {
+  const translateSuggestions = async (
+    messageId: string,
+    suggestions: string[],
+    suggestionKeyOverride?: string
+  ) => {
     console.log('🔄 translateSuggestions called for messageId:', messageId);
     console.log('🔄 translateSuggestions input suggestions:', suggestions);
     
     // Check if we already have test suggestions (object format)
-    const currentSuggestions = suggestedResponses[messageId];
+    const key = suggestionKeyOverride ?? getSuggestionKey(selectedConversation, messageId);
+    const currentSuggestions = suggestedResponses[key];
     if (currentSuggestions && currentSuggestions.length > 0 && typeof currentSuggestions[0] === 'object') {
       console.log('🔄 translateSuggestions: Test suggestions already exist, skipping translation');
       return;
@@ -2805,7 +2848,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
         
         setSuggestedResponses(prev => ({
           ...prev,
-          [messageId]: translatedSuggestions
+          [key]: translatedSuggestions
         }));
       }
     } catch (error) {
@@ -7336,8 +7379,11 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   {message.role === 'assistant' && showSuggestions[message.id] && (
                     <div className="ml-4 mt-2 max-w-sm lg:max-w-lg space-y-1">
                       <div className="text-xs font-medium text-gray-600 mb-1">Suggested responses:</div>
-                      {suggestedResponses[message.id] ? (
-                        suggestedResponses[message.id].map((suggestion, index) => {
+                      {(() => {
+                        const suggestionKey = getSuggestionKey(selectedConversation, message.id);
+                        const suggestionsForMessage = suggestedResponses[suggestionKey];
+                        return suggestionsForMessage ? (
+                        suggestionsForMessage.map((suggestion, index) => {
                           const responseId = `${message.id}-${index}`;
                           const suggestionText = typeof suggestion === 'string' ? suggestion : suggestion.german;
                           const suggestionTranslation = typeof suggestion === 'string' 
@@ -7359,10 +7405,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                               onAnalyze={handleAnalyzeResponse}
                             />
                           );
-                        })
-                      ) : (
+                        })) : (
                         <div className="text-xs text-gray-500 italic">Loading suggestions...</div>
-                      )}
+                      );
+                      })()}
                     </div>
                   )}
                   
