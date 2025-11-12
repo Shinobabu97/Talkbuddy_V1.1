@@ -4,7 +4,8 @@
  * Tests for context-aware suggested responses functionality
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import { buildSuggestionKey, isDentalScenario, inferDentalConcern } from '../components/Dashboard';
 
 describe('Context-Aware Suggested Responses', () => {
   
@@ -73,7 +74,7 @@ describe('Context-Aware Suggested Responses', () => {
       ];
       
       validSuggestions.forEach(suggestion => {
-        expect(suggestion).toContain("Preisgestaltung|Vertragslaufzeit|Zahlungsbedingungen");
+        expect(suggestion).toMatch(/Preisgestaltung|Vertragslaufzeit|Zahlungsbedingungen/);
       });
     });
     
@@ -87,7 +88,7 @@ describe('Context-Aware Suggested Responses', () => {
       
       // Generic suggestions should not match context-specific question
       genericSuggestions.forEach(suggestion => {
-        expect(suggestion).not.toContain("contract|negotiation|terms");
+        expect(suggestion.toLowerCase()).not.toMatch(/contract|negotiation|terms/);
       });
     });
     
@@ -200,6 +201,43 @@ describe('Context-Aware Suggested Responses', () => {
       
       expect(question).toContain("Tisch reservieren");
       expect(expectedTopics).toBeTruthy();
+    });
+  });
+
+  describe('Suggestion Key Utilities', () => {
+    it('should combine conversation and message ids when provided', () => {
+      const key = buildSuggestionKey('conversation-123', 'assistant-message-1', 'fallback');
+      expect(key).toBe('conversation-123::assistant-message-1');
+    });
+
+    it('should fall back to active conversation when explicit id missing', () => {
+      const key = buildSuggestionKey(null, 'assistant-message-1', 'conversation-active');
+      expect(key).toBe('conversation-active::assistant-message-1');
+    });
+
+    it('should use default marker when no conversation context exists', () => {
+      const key = buildSuggestionKey(undefined, 'assistant-message-1', null);
+      expect(key).toBe('new-conversation::assistant-message-1');
+    });
+  });
+
+  describe('Dental Scenario Detection', () => {
+    it('should detect dental context from assistant questions', () => {
+      const question =
+        "Haben Sie spezielle Zahnschmerzen oder möchten Sie einfach eine Routineuntersuchung durchführen lassen?";
+      expect(isDentalScenario(question)).toBe(true);
+    });
+
+    it('should recognise tooth pain as a primary dental concern', () => {
+      const concern = inferDentalConcern('Mein Zahn tut seit gestern sehr weh.');
+      expect(concern.type).toBe('pain');
+      expect(concern.german).toBe('starke Zahnschmerzen');
+    });
+
+    it('should recognise the intention for a routine check-up', () => {
+      const concern = inferDentalConcern('Ich brauche eine Routineuntersuchung und eine Zahnreinigung.');
+      expect(concern.type).toBe('checkup');
+      expect(concern.german).toBe('eine Routineuntersuchung');
     });
   });
 });

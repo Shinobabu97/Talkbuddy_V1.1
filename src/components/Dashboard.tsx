@@ -41,6 +41,98 @@ import SuggestedResponseCard from './SuggestedResponseCard';
 import { SessionData } from '../types/sessionData';
 import { generateConversationSummary, ConversationSummary } from '../utils/summaryGenerator';
 
+export const normalizeForMatching = (text: string) => {
+  return text
+    .toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss');
+};
+
+export const buildSuggestionKey = (
+  conversationIdValue: string | null | undefined,
+  messageId: string,
+  fallbackConversationId?: string | null
+) => {
+  const convoPart = conversationIdValue ?? fallbackConversationId ?? 'new-conversation';
+  return `${convoPart}::${messageId}`;
+};
+
+const DENTAL_KEYWORDS = [
+  'zahnarzt',
+  'zahnschmerz',
+  'zahnschmerzen',
+  'routineuntersuchung',
+  'routine check',
+  'routine-check',
+  'mundhygiene',
+  'zahnreinigung',
+  'karies',
+  'empfindlich',
+  'weisheitszahn',
+  'loch im zahn',
+  'zahnfleisch',
+  'zaehne',
+  'toothache',
+  'dental'
+];
+
+export const isDentalScenario = (text: string | null | undefined) => {
+  if (!text) return false;
+  const normalized = normalizeForMatching(text);
+  return DENTAL_KEYWORDS.some(keyword => normalized.includes(keyword));
+};
+
+export type DentalConcern =
+  | 'checkup'
+  | 'cleaning'
+  | 'sensitivity'
+  | 'cavity'
+  | 'gum'
+  | 'pain'
+  | 'generic';
+
+export interface DentalConcernDetails {
+  german: string;
+  english: string;
+  type: DentalConcern;
+}
+
+export const inferDentalConcern = (text: string | null | undefined): DentalConcernDetails => {
+  if (!text) {
+    return { german: 'ein Zahnproblem', english: 'a tooth issue', type: 'generic' };
+  }
+
+  const normalized = normalizeForMatching(text);
+
+  if (normalized.includes('routineuntersuchung') || normalized.includes('routine check') || normalized.includes('routine-check')) {
+    return { german: 'eine Routineuntersuchung', english: 'a routine check-up', type: 'checkup' };
+  }
+
+  if (normalized.includes('reinigung') || normalized.includes('professional cleaning')) {
+    return { german: 'eine professionelle Zahnreinigung', english: 'a professional cleaning', type: 'cleaning' };
+  }
+
+  if (normalized.includes('empfind')) {
+    return { german: 'empfindliche Zähne', english: 'sensitive teeth', type: 'sensitivity' };
+  }
+
+  if (normalized.includes('karies') || normalized.includes('loch im zahn') || normalized.includes('cavity')) {
+    return { german: 'eine mögliche Karies', english: 'a possible cavity', type: 'cavity' };
+  }
+
+  if (normalized.includes('entzuendung') || normalized.includes('entzundung') || normalized.includes('entzündung') || normalized.includes('geschwollen') || normalized.includes('blut')) {
+    return { german: 'entzündetes Zahnfleisch', english: 'inflamed gums', type: 'gum' };
+  }
+
+  if (normalized.includes('schmerz') || normalized.includes('weh') || normalized.includes('toothache')) {
+    return { german: 'starke Zahnschmerzen', english: 'severe tooth pain', type: 'pain' };
+  }
+
+  return { german: 'ein Zahnproblem', english: 'a tooth issue', type: 'generic' };
+};
+
 interface DashboardProps {
   user: AuthUser;
 }
@@ -449,8 +541,7 @@ export default function Dashboard({ user }: DashboardProps) {
   const [translatedMessages, setTranslatedMessages] = useState<{[key: string]: string}>({});
   const [suggestedResponses, setSuggestedResponses] = useState<{[key: string]: (string | {german: string, english: string})[]}>({});
   const getSuggestionKey = (conversationIdValue: string | null | undefined, messageId: string) => {
-    const convoPart = conversationIdValue ?? selectedConversation ?? 'new-conversation';
-    return `${convoPart}::${messageId}`;
+    return buildSuggestionKey(conversationIdValue, messageId, selectedConversation);
   };
   const [showTranslation, setShowTranslation] = useState<{[key: string]: boolean}>({});
   const [showSuggestionTranslation, setShowSuggestionTranslation] = useState<{[key: string]: boolean}>({});
@@ -1156,7 +1247,12 @@ export default function Dashboard({ user }: DashboardProps) {
       if (!mostRecentBotMessage) {
         console.error('❌ No bot message found in chatMessages');
         // Fallback: use generateContextualFallbacks
-        const contextualFallbacks = generateContextualFallbacks('');
+        const contextualFallbacks = generateContextualFallbacks({
+          germanText: botMessage || '',
+          contextLevel,
+          messages,
+          forceNonGeneric: false
+        });
         setSuggestedResponses(prev => ({
           ...prev,
           [suggestionKey]: contextualFallbacks
@@ -1214,6 +1310,14 @@ export default function Dashboard({ user }: DashboardProps) {
       containsQuestion
     });
     
+    const fallbackParamsBase: FallbackContextParams = {
+      germanText: aiMessage,
+      contextLevel,
+      messages,
+      conversationHistory,
+      forceNonGeneric: isSecondOrSubsequentMessage
+    };
+
     // Build enhanced prompt with emphasis on immediate context for 2nd+ messages
     let contextEmphasis = '';
     if (isSecondOrSubsequentMessage) {
@@ -1424,21 +1528,24 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
           ];
           
           // Check if suggestions are generic (not contextually relevant)
-          const hasGenericResponses = pairedSuggestions.some(suggestion => {
+          const hasGenericResponses = pairedSuggestions.some((suggestion: { german: string; english: string }) => {
             const germanText = suggestion.german.toLowerCase().trim();
             return genericPatterns.some(pattern => pattern.test(germanText));
           });
           
           // For readiness questions, check for direct responses
           if (isReadinessQuestion) {
-            const hasDirectResponses = pairedSuggestions.some(suggestion => {
+            const hasDirectResponses = pairedSuggestions.some((suggestion: { german: string; english: string }) => {
               const germanText = suggestion.german.toLowerCase();
               return /^ja[,!.]|^nein[,!.]|bereit|aber.*frage/i.test(germanText);
             });
             
             if (hasGenericResponses || !hasDirectResponses) {
               console.warn('⚠️ OpenAI returned generic responses for readiness question, using fallback');
-              const contextualFallbacks = generateContextualFallbacks(aiMessage);
+          const contextualFallbacks = generateContextualFallbacks({
+            ...fallbackParamsBase,
+            forceNonGeneric: true
+          });
               setSuggestedResponses(prev => ({
                 ...prev,
                 [suggestionKey]: contextualFallbacks
@@ -1449,7 +1556,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
           
           // For 2nd+ messages, reject if all suggestions are generic
           if (isSecondOrSubsequentMessage && hasGenericResponses) {
-            const genericCount = pairedSuggestions.filter(suggestion => {
+            const genericCount = pairedSuggestions.filter((suggestion: { german: string; english: string }) => {
               const germanText = suggestion.german.toLowerCase().trim();
               return genericPatterns.some(pattern => pattern.test(germanText));
             }).length;
@@ -1458,7 +1565,10 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
             if (genericCount >= 2) {
               console.warn('⚠️ OpenAI returned generic responses for 2nd+ message, using fallback');
               console.warn('⚠️ Generic count:', genericCount, 'out of', pairedSuggestions.length);
-              const contextualFallbacks = generateContextualFallbacks(aiMessage);
+          const contextualFallbacks = generateContextualFallbacks({
+            ...fallbackParamsBase,
+            forceNonGeneric: true
+          });
               setSuggestedResponses(prev => ({
                 ...prev,
                 [suggestionKey]: contextualFallbacks
@@ -1476,7 +1586,10 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
         } else {
           console.log('⚠️ Could not parse suggestions from API response, using fallback');
           // Fallback to contextual suggestions
-          const contextualFallbacks = generateContextualFallbacks(aiMessage);
+          const contextualFallbacks = generateContextualFallbacks({
+            ...fallbackParamsBase,
+            forceNonGeneric: true
+          });
           setSuggestedResponses(prev => ({
             ...prev,
             [suggestionKey]: contextualFallbacks
@@ -1487,7 +1600,10 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
         const errorText = await response.text();
         console.error('❌ API call failed:', response.status, errorText);
         // Fallback to contextual suggestions
-        const contextualFallbacks = generateContextualFallbacks(aiMessage);
+        const contextualFallbacks = generateContextualFallbacks({
+          ...fallbackParamsBase,
+          forceNonGeneric: true
+        });
         setSuggestedResponses(prev => ({
           ...prev,
           [suggestionKey]: contextualFallbacks
@@ -1497,7 +1613,10 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
     } catch (error) {
       console.error('❌ Error generating suggestions:', error);
       // Fallback to contextual suggestions
-      const contextualFallbacks = generateContextualFallbacks(aiMessage);
+      const contextualFallbacks = generateContextualFallbacks({
+        ...fallbackParamsBase,
+        forceNonGeneric: true
+      });
       setSuggestedResponses(prev => ({
         ...prev,
         [suggestionKey]: contextualFallbacks
@@ -1524,94 +1643,652 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
   };
 
   // Generate contextual fallback suggestions based on AI message content
-  const generateContextualFallbacks = (germanText: string) => {
+  type FallbackContextParams = {
+    germanText: string;
+    contextLevel: string;
+    messages?: ChatMessage[];
+    conversationHistory?: string;
+    forceNonGeneric?: boolean;
+  };
+
+  const generateContextualFallbacks = ({
+    germanText,
+    contextLevel,
+    messages = [],
+    conversationHistory = '',
+    forceNonGeneric = false
+  }: FallbackContextParams) => {
     const text = germanText.toLowerCase();
-    
-    // Check for readiness questions FIRST - this is critical!
+    const recentMessages = [...messages].reverse();
+    const lastUserMessage = recentMessages.find(msg => msg.role === 'user')?.content ?? '';
+    const combinedContext = `${text} ${conversationHistory.toLowerCase()} ${lastUserMessage.toLowerCase()}`.trim();
+    const isFormal = contextLevel === 'Professional';
+    const { pronounObject, greeting } = buildSpeechProfile(isFormal);
+
     if (text.includes('bereit') && (text.includes('rollenspiel') || text.includes('beginnen') || text.includes('starten') || text.includes('mit dem'))) {
       console.log('✅ Fallback: Detected readiness question, returning appropriate responses');
+      return buildReadinessFallback(isFormal);
+    }
+
+    const scenario = detectFallbackScenario(combinedContext, germanText);
+    const lastQuestion = extractLastQuestion(germanText);
+    if (lastQuestion) {
+      return buildQuestionDrivenFallback(
+        lastQuestion,
+        { isFormal, pronounObject, greeting, forceNonGeneric },
+        scenario
+      );
+    }
+
+    if (scenario) {
+      return buildScenarioFallback(scenario, { isFormal, pronounObject, greeting }, germanText);
+    }
+
+    return buildStatementFallback(germanText, { isFormal, pronounObject, greeting, forceNonGeneric }, scenario);
+  };
+
+  const buildSpeechProfile = (isFormal: boolean) => ({
+    pronounObject: isFormal ? 'Sie' : 'du',
+    greeting: isFormal ? 'Guten Tag' : 'Hallo'
+  });
+
+  const buildReadinessFallback = (isFormal: boolean) => [
+    {
+      german: isFormal ? 'Ja, ich bin bereit.' : 'Ja, ich bin bereit.',
+      english: 'Yes, I am ready.'
+    },
+    {
+      german: isFormal ? 'Ja, aber ich habe noch eine Frage.' : 'Ja, aber ich habe noch eine Frage.',
+      english: 'Yes, but I still have a question.'
+    },
+    {
+      german: isFormal ? 'Noch nicht ganz, könnten Sie es kurz erklären?' : 'Noch nicht ganz, kannst du es kurz erklären?',
+      english: 'Not quite yet—could you explain it briefly?'
+    }
+  ];
+
+type DentalResponse = { german: string; english: string };
+
+const buildDentalQuestionSuggestions = (concern: DentalConcernDetails): DentalResponse[] => {
+  switch (concern.type) {
+    case 'checkup':
       return [
-        { german: 'Ja, ich bin bereit.', english: 'Yes, I am ready.' },
-        { german: 'Ja, aber ich habe eine Frage.', english: 'Yes, but I have a question.' },
-        { german: 'Nein, können Sie bitte erklären?', english: 'No, can you please explain?' }
+        {
+          german: 'Ich möchte gern eine Routineuntersuchung durchführen lassen.',
+          english: "I'd like to have a routine check-up."
+        },
+        {
+          german: 'Ich habe keine akuten Schmerzen, möchte aber sicher sein, dass alles in Ordnung ist.',
+          english: "I don't have any acute pain but want to make sure everything is okay."
+        },
+        {
+          german: 'Falls möglich, würde ich auch eine professionelle Reinigung machen lassen.',
+          english: "If possible, I'd also like to have a professional cleaning."
+        }
+      ];
+    case 'cleaning':
+      return [
+        {
+          german: 'Ich hätte gern eine professionelle Zahnreinigung, wenn das möglich ist.',
+          english: "I'd like a professional dental cleaning if that's possible."
+        },
+        {
+          german: 'Meine Zähne fühlen sich rau an und ich möchte sie gründlich reinigen lassen.',
+          english: 'My teeth feel rough and I would like to have them cleaned thoroughly.'
+        },
+        {
+          german: 'Könnten Sie außerdem kurz prüfen, ob alles gesund ist?',
+          english: 'Could you also take a quick look to make sure everything is healthy?'
+        }
+      ];
+    case 'sensitivity':
+      return [
+        {
+          german: 'Meine Zähne sind sehr empfindlich, besonders bei kalten Getränken.',
+          english: 'My teeth are very sensitive, especially with cold drinks.'
+        },
+        {
+          german: 'Seit einigen Wochen zieht es stark, wenn ich etwas Süßes esse.',
+          english: 'For a few weeks it has really hurt whenever I eat something sweet.'
+        },
+        {
+          german: 'Was empfehlen Sie, um die Empfindlichkeit zu lindern?',
+          english: 'What do you recommend to reduce the sensitivity?'
+        }
+      ];
+    case 'cavity':
+      return [
+        {
+          german: 'Ich glaube, dass ich eine Karies habe und brauche einen Termin.',
+          english: "I think I might have a cavity and need an appointment."
+        },
+        {
+          german: 'Beim Kauen pulsiert es stark an der betroffenen Stelle.',
+          english: 'The area throbs a lot when I chew.'
+        },
+        {
+          german: 'Könnten Sie prüfen, ob gebohrt werden muss?',
+          english: 'Could you check whether a filling is necessary?'
+        }
+      ];
+    case 'gum':
+      return [
+        {
+          german: 'Mein Zahnfleisch ist entzündet und blutet beim Putzen.',
+          english: 'My gums are inflamed and bleed when I brush.'
+        },
+        {
+          german: 'Ich möchte wissen, wie wir die Entzündung schnell behandeln können.',
+          english: 'I want to know how we can treat the inflammation quickly.'
+        },
+        {
+          german: 'Brauche ich dafür eine spezielle Behandlung?',
+          english: 'Do I need a special treatment for that?'
+        }
+      ];
+    case 'pain':
+      return [
+        {
+          german: 'Ich habe starke Zahnschmerzen hinten rechts.',
+          english: 'I have severe tooth pain in the back right tooth.'
+        },
+        {
+          german: 'Der Schmerz ist beim Kauen und nachts am schlimmsten.',
+          english: 'The pain is worst when I chew and during the night.'
+        },
+        {
+          german: 'Könnten Sie mir bitte so bald wie möglich helfen?',
+          english: 'Could you please help me as soon as possible?'
+        }
+      ];
+    default:
+      return [
+        {
+          german: 'Ich habe ein Zahnproblem und brauche Ihren Rat.',
+          english: 'I have a tooth issue and need your advice.'
+        },
+        {
+          german: 'Seit ein paar Tagen wird es deutlich schlimmer.',
+          english: "It's been getting noticeably worse over the past few days."
+        },
+        {
+          german: 'Welche Untersuchung würden Sie empfehlen?',
+          english: 'Which examination would you recommend?'
+        }
+      ];
+  }
+};
+
+const buildDentalStatementSuggestions = (
+  concern: DentalConcernDetails,
+  speech: { greeting: string; pronounObject: string }
+): DentalResponse[] => {
+  const baseSuggestions = buildDentalQuestionSuggestions(concern);
+  const followUpGerman =
+    speech.pronounObject === 'Sie'
+      ? 'Könnten Sie mir erklären, welche Untersuchung als Nächstes sinnvoll ist?'
+      : 'Kannst du mir erklären, welche Untersuchung als Nächstes sinnvoll ist?';
+
+  return [
+    {
+      german: `${speech.greeting}! ${baseSuggestions[0].german}`,
+      english: `Hello! ${baseSuggestions[0].english}`
+    },
+    baseSuggestions[1],
+    {
+      german: followUpGerman,
+      english: 'Could you explain which examination makes sense next?'
+    }
+  ];
+};
+
+  type Scenario =
+    | 'dentist'
+    | 'doctor'
+    | 'business'
+    | 'travel'
+    | 'restaurant'
+    | 'hotel'
+    | 'shopping'
+    | 'emergency';
+
+  const detectFallbackScenario = (context: string, germanText?: string): Scenario | null => {
+    const combined = `${context} ${germanText ?? ''}`;
+    if (isDentalScenario(combined)) {
+      return 'dentist';
+    }
+    if (/\barzt|\bdoktor|\bpraxis|\bpatient|\bwartezimmer/.test(context)) return 'doctor';
+    if (/\bvertrag|\bmeeting|\bprojekt|\bgeschäft|\bkolleg/.test(context)) return 'business';
+    if (/\breise|\bflug|\bflughafen|\bticket|\bzug|\bstadt/.test(context)) return 'travel';
+    if (/\brestaurant|\bmenu|\bgericht|\breservier/.test(context)) return 'restaurant';
+    if (/\bhotel|\bcheck-in|\bzimmer|\breservierung/.test(context)) return 'hotel';
+    if (/\beinkauf|\bladen|\bpreis|\bangebot|\bkaufen/.test(context)) return 'shopping';
+    if (/\bnotfall|\bharzt|\bkrankenhaus|\bambulanz/.test(context)) return 'emergency';
+    return null;
+  };
+
+  type ScenarioSpeechProfile = {
+    isFormal: boolean;
+    pronounObject: string;
+    greeting: string;
+  };
+
+  const buildScenarioFallback = (
+    scenario: Scenario,
+    profile: ScenarioSpeechProfile,
+    germanText?: string
+  ) => {
+    const statementTopic = deriveStatementTopic(germanText);
+    const politeAsk = profile.pronounObject === 'Sie' ? 'Könnten Sie' : 'Kannst du';
+    const address = profile.pronounObject === 'Sie' ? 'Sie' : 'du';
+
+    switch (scenario) {
+      case 'dentist': {
+        const concern = inferDentalConcern(germanText);
+        return buildDentalStatementSuggestions(concern, {
+          greeting: profile.greeting,
+          pronounObject: profile.pronounObject
+        });
+      }
+      case 'doctor':
+        if (isDentalScenario(germanText)) {
+          const concern = inferDentalConcern(germanText);
+          return buildDentalStatementSuggestions(concern, {
+            greeting: profile.greeting,
+            pronounObject: profile.pronounObject
+          });
+        }
+        return [
+          {
+            german: `${profile.greeting}, Herr Doktor. Ich mache mir Sorgen wegen ${statementTopic || 'meiner Beschwerden'}.`,
+            english: 'Good day, doctor. I am worried about my symptoms.'
+          },
+          {
+            german: `Vor allem möchte ich verstehen, wie wir ${statementTopic || 'diese Beschwerden'} behandeln können.`,
+            english: 'Above all, I want to understand how we can treat these symptoms.'
+          },
+          {
+            german: `${politeAsk} mir erklären, welche Untersuchung als Nächstes für ${statementTopic || 'mein Anliegen'} sinnvoll ist?`,
+            english: 'Could you explain which examination makes sense next for my concern?'
+          }
+        ];
+      case 'business':
+        return [
+          {
+            german: `Mir ist wichtig, dass wir ${statementTopic || 'den Vertrag'} klar besprechen.`,
+            english: 'It is important to me that we discuss the agreement clearly.'
+          },
+          {
+            german: `Ich möchte sicherstellen, dass ${statementTopic || 'diese Punkte'} gut zu unseren Zielen passen.`,
+            english: 'I want to make sure these points fit our goals.'
+          },
+          {
+            german: `${politeAsk} mir einen Vorschlag machen, wie wir bei ${statementTopic || 'diesem Thema'} weiter vorgehen sollten?`,
+            english: 'Could you suggest how we should move forward on this topic?'
+          }
+        ];
+      case 'travel':
+        return [
+          {
+            german: `Ich habe vor allem ${statementTopic || 'die Reiseplanung'} überprüft, damit nichts schiefgeht.`,
+            english: 'I reviewed the travel plan so that nothing goes wrong.'
+          },
+          {
+            german: `Für mich ist wichtig zu wissen, ob wir für ${statementTopic || 'die Reise'} noch etwas vorbereiten müssen.`,
+            english: 'I need to know whether we still have to prepare anything for the trip.'
+          },
+          {
+            german: `${politeAsk} mir sagen, welche nächsten Schritte für ${statementTopic || 'die Reise'} anstehen?`,
+            english: 'Could you tell me what the next steps for the trip are?'
+          }
+        ];
+      case 'restaurant':
+        return [
+          {
+            german: `Ich möchte sicherstellen, dass ${statementTopic || 'die Reservierung'} für ${address} passt.`,
+            english: 'I want to ensure the reservation works for us.'
+          },
+          {
+            german: `Uns interessiert vor allem, ob wir besondere Wünsche für ${statementTopic || 'den Tisch'} angeben können.`,
+            english: 'We mainly want to know if we can state special requests for the table.'
+          },
+          {
+            german: `${politeAsk} mir kurz sagen, welche Optionen ${address} empfehlen würdest?`,
+            english: 'Could you briefly tell me which options you would recommend?'
+          }
+        ];
+      case 'hotel':
+        return [
+          {
+            german: `Ich prüfe noch einmal, ob ${statementTopic || 'das Zimmer'} verfügbar ist.`,
+            english: 'I am double-checking whether the room is available.'
+          },
+          {
+            german: `Für unseren Aufenthalt ist wichtig, dass ${statementTopic || 'die Ausstattung'} passt.`,
+            english: 'For our stay it is important that the amenities are suitable.'
+          },
+          {
+            german: `${politeAsk} mir erklären, welche nächsten Schritte wir für ${statementTopic || 'den Aufenthalt'} einplanen sollten?`,
+            english: 'Could you explain which next steps we should plan for the stay?'
+          }
+        ];
+      case 'shopping':
+        return [
+          {
+            german: `Ich vergleiche gerade Optionen für ${statementTopic || 'dieses Produkt'}.`,
+            english: 'I am comparing options for this product.'
+          },
+          {
+            german: `Mir ist wichtig zu wissen, welche Qualität ${statementTopic || 'die Variante'} bietet.`,
+            english: 'I want to know what quality the variant offers.'
+          },
+          {
+            german: `${politeAsk} mir kurz erklären, welche Konditionen für ${statementTopic || 'den Kauf'} gelten?`,
+            english: 'Could you briefly explain the conditions for the purchase?'
+          }
+        ];
+      case 'emergency':
+        return [
+          {
+            german: `Ich reagiere sofort, weil ${statementTopic || 'die Situation'} dringend ist.`,
+            english: 'I am responding immediately because the situation is urgent.'
+          },
+          {
+            german: `Mir ist besonders wichtig, dass ${statementTopic || 'die betroffene Person'} schnell Hilfe bekommt.`,
+            english: 'It is especially important to me that the person affected receives help quickly.'
+          },
+          {
+            german: `${politeAsk} mir sagen, was ich als Nächstes für ${statementTopic || 'diese Situation'} tun soll?`,
+            english: 'Could you tell me what I should do next for this situation?'
+          }
+        ];
+      default:
+        return buildReadinessFallback(profile.isFormal);
+    }
+  };
+
+  const extractLastQuestion = (text: string): string | null => {
+    const segments = text.split('?').map(segment => segment.trim()).filter(Boolean);
+    if (segments.length === 0) return null;
+    return segments[segments.length - 1];
+  };
+
+  type GeneralFallbackProfile = {
+    isFormal: boolean;
+    pronounObject: string;
+    greeting: string;
+    forceNonGeneric: boolean;
+  };
+
+  const buildQuestionDrivenFallback = (
+    question: string,
+    profile: GeneralFallbackProfile,
+    scenario?: Scenario | null
+  ) => {
+    const focus = extractFocusPhrase(question);
+    const topicPhrase = cleanTopicPhrase(focus || '');
+    const politeAsk = profile.pronounObject === 'Sie' ? 'Könnten Sie' : 'Kannst du';
+    const dentalConcern = inferDentalConcern(question);
+    const hasDentalConcern = dentalConcern.type !== 'generic';
+
+    if (scenario === 'dentist') {
+      return buildDentalQuestionSuggestions(dentalConcern);
+    }
+
+    if (scenario === 'doctor') {
+      if (hasDentalConcern) {
+        return buildDentalQuestionSuggestions(dentalConcern);
+      }
+      return [
+        {
+          german: `Ich habe meine Werte überprüft, weil mir seit gestern schwindelig ist.`,
+          english: 'I checked my readings because I have felt dizzy since yesterday.'
+        },
+        {
+          german: `Mich beunruhigt besonders, dass mein ${topicPhrase || 'Knie'} weiterhin schmerzt.`,
+          english: `I am especially worried that my ${topicPhrase || 'knee'} still hurts.`
+        },
+        {
+          german: `${politeAsk} mir erklären, ob diese Ergebnisse normal sind oder ob ich mir Sorgen machen muss?`,
+          english: `Could you explain whether these results are normal or if I should be concerned?`
+        }
       ];
     }
-    
-    // Specific question patterns and their direct answers
-    if (text.includes('welche details') || text.includes('which details') || text.includes('am wichtigsten')) {
+
+    if (scenario === 'business') {
       return [
-        { german: 'Die Budgetplanung ist am wichtigsten für uns.', english: 'Budget planning is most important for us.' },
-        { german: 'Die technischen Spezifikationen sind entscheidend.', english: 'Technical specifications are crucial.' },
-        { german: 'Die Sicherheitsanforderungen haben Priorität.', english: 'Security requirements have priority.' }
+        {
+          german: `Ich möchte sicherstellen, dass wir die ${topicPhrase || 'wichtigsten Vertragsbedingungen'} richtig verstanden haben.`,
+          english: `I want to make sure we properly understood the ${topicPhrase || 'key contract terms'}.`
+        },
+        {
+          german: `Für mich ist besonders wichtig, wie wir mit ${topicPhrase || 'den Zahlungsfristen'} umgehen.`,
+          english: `It is especially important to me how we handle ${topicPhrase || 'the payment schedule'}.`
+        },
+        {
+          german: `${politeAsk} mir kurz erklären, welche Punkte Sie priorisieren würden?`,
+          english: `Could you briefly explain which points you would prioritise?`
+        }
       ];
     }
-    
-    if (text.includes('anforderungen') || text.includes('requirements')) {
+
+    if (hasDentalConcern) {
+      return buildDentalQuestionSuggestions(dentalConcern);
+    }
+
+    if (scenario === 'travel') {
       return [
-        { german: 'Wir brauchen eine Cloud-basierte Lösung.', english: 'We need a cloud-based solution.' },
-        { german: 'Die Sicherheit ist unsere Hauptpriorität.', english: 'Security is our main priority.' },
-        { german: 'Wir benötigen 24/7 Support.', english: 'We need 24/7 support.' }
+        {
+          german: `Ich habe vor allem ${topicPhrase || 'die Reisedaten'} geprüft, weil ich nichts verpassen möchte.`,
+          english: `I focused on checking ${topicPhrase || 'the travel dates'} because I don’t want to miss anything.`
+        },
+        {
+          german: `Mir ist wichtig zu wissen, ob wir für ${topicPhrase || 'den Flug'} noch etwas vorbereiten müssen.`,
+          english: `It’s important for me to know if we need to prepare anything else for ${topicPhrase || 'the flight'}.`
+        },
+        {
+          german: `${politeAsk} mir sagen, ob es bei ${topicPhrase || 'der Reiseplanung'} noch offene Punkte gibt?`,
+          english: `Could you tell me if there are any open points with ${topicPhrase || 'the travel plan'}?`
+        }
       ];
     }
-    
-    if (text.includes('erfahrung') || text.includes('experience')) {
+
+    if (scenario === 'restaurant') {
       return [
-        { german: 'Ja, ich habe Erfahrung mit Microsoft-Produkten.', english: 'Yes, I have experience with Microsoft products.' },
-        { german: 'Ich arbeite seit 5 Jahren in der IT-Branche.', english: 'I have been working in IT for 5 years.' },
-        { german: 'Nein, aber ich lerne sehr schnell.', english: 'No, but I learn very quickly.' }
+        {
+          german: `Ich habe vor allem ${topicPhrase || 'die verfügbaren Zeiten'} geprüft, um eine passende Reservierung zu finden.`,
+          english: `I mainly checked ${topicPhrase || 'the available times'} to find a suitable reservation.`
+        },
+        {
+          german: `Für uns wäre wichtig zu wissen, ob ${topicPhrase || 'besondere Wünsche'} berücksichtigt werden können.`,
+          english: `It is important for us to know if ${topicPhrase || 'special requests'} can be accommodated.`
+        },
+        {
+          german: `${politeAsk} mir kurz sagen, welche Optionen Sie empfehlen würden?`,
+          english: `Could you briefly tell me which options you would recommend?`
+        }
       ];
     }
-    
-    if (text.includes('finanz') || text.includes('budget') || text.includes('kosten')) {
+
+    if (scenario === 'hotel') {
       return [
-        { german: 'Unser Budget liegt bei 50.000 Euro.', english: 'Our budget is 50,000 euros.' },
-        { german: 'Die Kosten sind ein wichtiger Faktor.', english: 'Costs are an important factor.' },
-        { german: 'Wir suchen nach einer kosteneffizienten Lösung.', english: 'We are looking for a cost-effective solution.' }
+        {
+          german: `Ich habe ${topicPhrase || 'den Check-in-Zeitpunkt'} nachgeprüft, damit alles reibungslos läuft.`,
+          english: `I double-checked ${topicPhrase || 'the check-in time'} so that everything runs smoothly.`
+        },
+        {
+          german: `Mich interessiert besonders, ob ${topicPhrase || 'das Zimmer'} noch verfügbar ist.`,
+          english: `I am particularly interested in whether ${topicPhrase || 'the room'} is still available.`
+        },
+        {
+          german: `${politeAsk} mir sagen, ob wir für ${topicPhrase || 'den Aufenthalt'} noch etwas vorbereiten sollen?`,
+          english: `Could you tell me if we should prepare anything else for ${topicPhrase || 'the stay'}?`
+        }
       ];
     }
-    
-    // Business/Professional context
-    if (text.includes('vertrag') || text.includes('software') || text.includes('geschäft') || text.includes('meeting') || text.includes('projekt')) {
+
+    if (scenario === 'shopping') {
       return [
-        { german: 'Das Projekt sollte bis Ende des Jahres abgeschlossen sein.', english: 'The project should be completed by the end of the year.' },
-        { german: 'Wir haben bereits einen ähnlichen Vertrag abgeschlossen.', english: 'We have already signed a similar contract.' },
-        { german: 'Können wir die nächsten Schritte besprechen?', english: 'Can we discuss the next steps?' }
+        {
+          german: `Ich habe Preise und Varianten für ${topicPhrase || 'das Produkt'} verglichen, um die beste Option zu finden.`,
+          english: `I compared prices and options for ${topicPhrase || 'the product'} to find the best fit.`
+        },
+        {
+          german: `Mir ist wichtig zu verstehen, welche Qualität ${topicPhrase || 'dieses Modell'} bietet.`,
+          english: `It’s important for me to understand the quality of ${topicPhrase || 'this model'}.`
+        },
+        {
+          german: `${politeAsk} mir erklären, welche Garantie wir auf ${topicPhrase || 'den Artikel'} bekommen?`,
+          english: `Could you explain what warranty we get on ${topicPhrase || 'the item'}?`
+        }
       ];
     }
-    
-    // Travel context
-    if (text.includes('reise') || text.includes('hotel') || text.includes('flug') || text.includes('stadt') || text.includes('urlaub')) {
+
+    if (scenario === 'emergency') {
       return [
-        { german: 'Ich möchte gerne die Altstadt besichtigen.', english: 'I would like to visit the old town.' },
-        { german: 'Welche Sehenswürdigkeiten empfehlen Sie?', english: 'What sights do you recommend?' },
-        { german: 'Ich interessiere mich für die lokale Küche.', english: 'I am interested in the local cuisine.' }
+        {
+          german: `Ich habe sofort überprüft, wie schwer ${topicPhrase || 'die Verletzung'} ist.`,
+          english: `I immediately checked how serious ${topicPhrase || 'the injury'} is.`
+        },
+        {
+          german: `Mir ist besonders wichtig, dass ${topicPhrase || 'die betroffene Person'} schnell Hilfe bekommt.`,
+          english: `It’s crucial to me that ${topicPhrase || 'the person affected'} gets help quickly.`
+        },
+        {
+          german: `${politeAsk} mir sagen, was ich als Nächstes tun soll, bis Hilfe eintrifft?`,
+          english: `Could you tell me what I should do next until help arrives?`
+        }
       ];
     }
-    
-    // Food/Restaurant context
-    if (text.includes('essen') || text.includes('restaurant') || text.includes('küche') || text.includes('speise') || text.includes('menü')) {
-      return [
-        { german: 'Ich bin Vegetarier, haben Sie vegetarische Optionen?', english: 'I am vegetarian, do you have vegetarian options?' },
-        { german: 'Das hört sich sehr lecker an!', english: 'That sounds very delicious!' },
-        { german: 'Können Sie das Gericht empfehlen?', english: 'Can you recommend this dish?' }
-      ];
-    }
-    
-    // General conversation context
-    if (text.includes('frage') || text.includes('denken') || text.includes('meinung') || text.includes('glauben')) {
-      return [
-        { german: 'Das ist eine sehr gute Frage.', english: 'That is a very good question.' },
-        { german: 'Ich denke, dass...', english: 'I think that...' },
-        { german: 'Meine Meinung dazu ist...', english: 'My opinion on this is...' }
-      ];
-    }
-    
-    // Default contextual responses
+
+    const safeTopic = topicPhrase || 'dieses Thema';
     return [
-      { german: 'Das ist sehr interessant!', english: 'That is very interesting!' },
-      { german: 'Können Sie das genauer erklären?', english: 'Can you explain that in more detail?' },
-      { german: 'Ich verstehe, danke für die Erklärung.', english: 'I understand, thank you for the explanation.' }
+      {
+        german: `${profile.isFormal ? 'Für mich ist' : 'Mir ist'} ${safeTopic} am wichtigsten.`,
+        english: `${safeTopic} is most important to me.`
+      },
+      {
+        german: `Ich möchte gern mehr über ${safeTopic} sprechen.`,
+        english: `I'd like to talk more about ${safeTopic}.`
+      },
+      {
+        german: `${politeAsk} mir auch helfen, ${safeTopic} besser zu verstehen?`,
+        english: `Could you help me understand ${safeTopic} a bit better?`
+      }
     ];
+  };
+
+  const buildStatementFallback = (
+    germanText: string,
+    profile: GeneralFallbackProfile,
+    scenario?: Scenario | null
+  ) => {
+    if (!germanText && !profile.forceNonGeneric) {
+      return buildReadinessFallback(profile.isFormal);
+    }
+
+    const shortStatement = germanText
+      ? germanText.split(/[.!?]/).map(part => part.trim()).filter(Boolean)[0] || germanText
+      : 'das Thema';
+
+    if (scenario) {
+      return buildScenarioFallback(scenario, {
+        isFormal: profile.isFormal,
+        pronounObject: profile.pronounObject,
+        greeting: profile.greeting
+      }, germanText);
+    }
+
+    if (isDentalScenario(germanText)) {
+      const concern = inferDentalConcern(germanText);
+      return buildDentalStatementSuggestions(concern, {
+        greeting: profile.greeting,
+        pronounObject: profile.pronounObject
+      });
+    }
+
+    return [
+      {
+        german: `${profile.greeting}! Das klingt spannend – erzählen ${profile.pronounObject === 'Sie' ? 'Sie' : 'mir'} gern mehr darüber.`,
+        english: 'Hello! That sounds exciting—please tell me more about it.'
+      },
+      {
+        german: `Mich interessiert besonders, wie es mit ${shortStatement} weitergeht.`,
+        english: `I am especially curious about what happens next with that.`
+      },
+      {
+        german: 'Vielleicht könnten wir auch besprechen, welche nächsten Schritte sinnvoll wären?',
+        english: 'Perhaps we could also discuss what next steps would make sense?'
+      }
+    ];
+  };
+
+  const extractFocusPhrase = (question: string) => {
+    const normalized = question.replace(/[?!]/g, ' ').replace(/\s+/g, ' ').trim();
+    const patterns = [
+      /wie\s+(?:würden|würdest|kannst|können)\s+(?:sie|du)\s+([^,]+)/i,
+      /was\s+(?:möchten|würden)\s+(?:sie|du)\s+([^,]+)/i,
+      /was\s+genau\s+(?:haben|hatten|hast)\s+(?:sie|du)\s+(?:gemessen|getan|geplant)\s+([^,]+)/i,
+      /welche(?:r|s|n)?\s+([^,]+)/i,
+      /über\s+([^,]+)/i,
+      /für\s+([^,]+)/i,
+      /wegen\s+([^,]+)/i,
+      /mit\s+([^,]+)/i,
+      /haben\s+(?:sie|du)\s+(?:ein(?:e|en)?\s+)?([^,?]+?)(?:\s+oder|\s+und|$)/i
+    ];
+
+    for (const pattern of patterns) {
+      const match = normalized.match(pattern);
+      if (match && match[1]) {
+        return match[1].trim();
+      }
+    }
+
+    return null;
+  };
+
+  const cleanTopicPhrase = (phrase: string) => {
+    if (!phrase) return '';
+
+    let cleaned = phrase
+      .replace(/^(?:haben|hatten|hast|hat)\s+(?:sie|du)\s+/i, '')
+      .replace(/^(?:möchten|würden|könnten|kannst|können|sollten)\s+(?:sie|du)\s+/i, '')
+      .replace(/^(?:sie|du)\s+/i, '')
+      .replace(/^(?:genau|einfach|bitte)\s+/i, '')
+      .replace(/^(?:noch)\s+/i, '')
+      .replace(/\bbitte\b/gi, '')
+      .replace(/\bein(?:e|en)?\s+bestimmtes?\s+anliegen\s+oder\s+eine\s+frage\b/i, 'ein bestimmtes Anliegen')
+      .replace(/\bor\s+eine\s+frage\b/i, '')
+      .replace(/\boder\b\s*$/i, '')
+      .replace(/[.?!]/g, '')
+      .trim();
+
+    if (!cleaned) {
+      return '';
+    }
+
+    const lowerFirst = cleaned.charAt(0).toLowerCase() + cleaned.slice(1);
+    return lowerFirst;
+  };
+
+  const deriveStatementTopic = (text?: string) => {
+    if (!text) return '';
+    const snippet = text
+      .split(/[.!?]/)
+      .map(part => part.trim())
+      .filter(Boolean)[0];
+
+    if (!snippet) return '';
+
+    const cleaned = snippet
+      .replace(/^ich\s+habe\s+/i, '')
+      .replace(/^ich\s+spüre\s+/i, '')
+      .replace(/^es\s+geht\s+um\s+/i, '')
+      .replace(/^mir\s+geht\s+es\s+um\s+/i, '')
+      .replace(/^wir\s+haben\s+/i, '')
+      .trim();
+
+    return cleanTopicPhrase(cleaned);
   };
 
   // Context enhancement function - extracts key topics from user messages
@@ -2231,12 +2908,48 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
     await runComprehensiveAnalysis(messageContent, messageId);
   };
 
+  const buildConversationHistoryForAI = (
+    messageId: string,
+    userMessage: string,
+    baseMessages?: ChatMessage[]
+  ) => {
+    const sourceMessages = baseMessages ? [...baseMessages] : [...chatMessages];
+    let found = false;
 
-  const triggerAIResponse = async (userMessage: string, messageId: string, clearedState?: {
-    waitingForCorrection: boolean;
-    errorMessages: { [key: string]: string };
-    userAttempts: { [key: string]: number };
-  }) => {
+    const updatedMessages = sourceMessages.map(msg => {
+      if (msg.id === messageId) {
+        found = true;
+        return {
+          ...msg,
+          content: userMessage,
+          timestamp: msg.timestamp || new Date().toISOString()
+        };
+      }
+      return msg;
+    });
+
+    if (!found) {
+      updatedMessages.push({
+        id: messageId,
+        role: 'user',
+        content: userMessage,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    return updatedMessages.filter(msg => msg.role === 'user' || msg.role === 'assistant');
+  };
+
+  const triggerAIResponse = async (
+    userMessage: string,
+    messageId: string,
+    clearedState?: {
+      waitingForCorrection: boolean;
+      errorMessages: { [key: string]: string };
+      userAttempts: { [key: string]: number };
+    },
+    messagesOverride?: ChatMessage[]
+  ) => {
     console.log('🤖 === TRIGGER AI RESPONSE DEBUG ===');
     console.log('User message:', userMessage);
     console.log('Message ID:', messageId);
@@ -2245,31 +2958,33 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
     console.log('waitingForCorrection:', waitingForCorrection);
     console.log('errorMessages:', errorMessages);
     console.log('userAttempts:', userAttempts);
-    
+
+    const userMessageId = messageId;
+
     // Use cleared state if provided, otherwise use current state
     const currentWaitingForCorrection = clearedState ? clearedState.waitingForCorrection : waitingForCorrection;
     const currentErrorMessages = clearedState ? clearedState.errorMessages : errorMessages;
     const currentUserAttempts = clearedState ? clearedState.userAttempts : userAttempts;
-    
-    const hasErrorMessages = currentErrorMessages[messageId];
-    
+
+    const hasErrorMessages = currentErrorMessages[userMessageId];
+
     console.log('Has error messages:', !!hasErrorMessages);
     console.log('Error messages content:', currentErrorMessages);
     console.log('User attempts content:', currentUserAttempts);
     console.log('Using cleared state:', !!clearedState);
     console.log('Current waitingForCorrection:', currentWaitingForCorrection);
-    
+
     // Check if we should block AI response
     const shouldBlockAI = hasErrorMessages || currentWaitingForCorrection;
-    
+
     console.log('🚫 === AI RESPONSE BLOCKING CHECK ===');
     console.log('Should block AI:', shouldBlockAI);
     console.log('Blocking reasons:');
     console.log('- hasErrorMessages:', !!hasErrorMessages);
     console.log('- waitingForCorrection:', currentWaitingForCorrection);
-    console.log('- Error messages for this message:', currentErrorMessages[messageId]);
-    console.log('- User attempts for this message:', currentUserAttempts[messageId]);
-    
+    console.log('- Error messages for this message:', currentErrorMessages[userMessageId]);
+    console.log('- User attempts for this message:', currentUserAttempts[userMessageId]);
+
     if (shouldBlockAI) {
       console.log('🚫 === BLOCKING AI RESPONSE - ERRORS DETECTED ===');
       console.log('Not sending to AI because errors need to be corrected first');
@@ -2278,30 +2993,30 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
       return;
     }
 
-    clearCheckingStatus(messageId);
+    clearCheckingStatus(userMessageId);
 
     console.log('✅ === PROCEEDING WITH AI RESPONSE ===');
     console.log('📡 === STARTING AI API CALL ===');
     console.log('Selected conversation:', selectedConversation);
     console.log('User message being sent:', userMessage);
-    
+
     setIsSending(true);
     setIsTyping(true);
-    
+
     // Check if user selected a suggestion for this message
-    const selectedSuggestion = lastSuggestionUsed[messageId];
-    console.log('🔍 Checking if suggestion was used for this message:', messageId);
+    const selectedSuggestion = lastSuggestionUsed[userMessageId];
+    console.log('🔍 Checking if suggestion was used for this message:', userMessageId);
     console.log('Selected suggestion:', selectedSuggestion);
-    
+
     // Build enhanced system instruction if suggestion was selected
     let enhancedSystemInstruction = `${contextLevel === 'Professional' ? 'Sie sind' : 'Du bist'} ein freundlicher Gesprächspartner. Antworte kurz und natürlich (1-2 Sätze). Stelle viele Fragen. Sei neugierig und interessiert. Lass den Nutzer viel sprechen. ${contextLevel === 'Professional' ? 'Verwende "Sie" und höfliche Ausdrücke.' : 'Verwende "Du" und umgangssprachliche Ausdrücke.'} KEINE englischen Übersetzungen oder Erklärungen.`;
-    
+
     if (selectedSuggestion) {
       console.log('✅ User selected a suggestion - enhancing AI context');
       enhancedSystemInstruction += `\n\nWICHTIGER HINWEIS: Der Nutzer hat diese Antwort aus vorgeschlagenen Optionen ausgewählt: "${selectedSuggestion}". Das zeigt, dass der Nutzer mit dieser Perspektive einverstanden ist oder diese Antwort für passend hält. Baue deine Antwort darauf auf und entwickle das Gespräch weiter basierend auf dieser Auswahl.`;
       console.log('Enhanced system instruction:', enhancedSystemInstruction.substring(0, 200) + '...');
     }
-    
+
     // Get conversation context from current conversation
     let conversationContextToSend = userMessage;
     if (selectedConversation) {
@@ -2311,18 +3026,37 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
         console.log('📝 Using conversation context:', conversationContextToSend);
       }
     }
-    
+
     try {
       // Get user session token for authenticated requests
       const { data: { session } } = await supabase.auth.getSession();
       const authToken = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
-      
+
       console.log('📡 === TRIGGERING AI RESPONSE ===');
       console.log('Conversation ID:', selectedConversation);
       console.log('User message:', userMessage);
       console.log('Has session token:', !!session?.access_token);
       console.log('Onboarding data exists:', !!onboardingData);
-      
+
+      const conversationMessagesForRequest = buildConversationHistoryForAI(
+        userMessageId,
+        userMessage,
+        messagesOverride ?? chatMessages
+      );
+
+      const openAiMessages = conversationMessagesForRequest.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }));
+
+      const lastMessage = openAiMessages[openAiMessages.length - 1];
+      if (!lastMessage || lastMessage.role !== 'user') {
+        openAiMessages.push({
+          role: 'user',
+          content: userMessage
+        });
+      }
+
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
         headers: {
@@ -2330,10 +3064,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: [{
-            role: 'user',
-            content: userMessage
-          }],
+          messages: openAiMessages,
           conversationId: selectedConversation,
           contextLevel,
           difficultyLevel,
@@ -2359,7 +3090,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
         const errorMessage = errorText || `API request failed with status ${response.status}`;
         setIsSending(false);
         setIsTyping(false);
-        setErrorMessages(prev => ({ ...prev, [messageId]: errorMessage }));
+        setErrorMessages(prev => ({ ...prev, [userMessageId]: errorMessage }));
         return;
       }
       
@@ -2375,11 +3106,11 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
       console.log('AI message:', data.message);
       
       // Generate message ID first
-      const messageId = (Date.now() + 1).toString();
-        console.log('🤖 Generated message ID:', messageId);
+      const assistantMessageId = (Date.now() + 1).toString();
+        console.log('🤖 Generated message ID:', assistantMessageId);
         
         const assistantMessage: ChatMessage = {
-          id: messageId,
+          id: assistantMessageId,
           role: 'assistant',
           content: data.message,
           timestamp: new Date().toISOString()
@@ -2389,10 +3120,8 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
         console.log('AI message ID:', assistantMessage.id);
         console.log('AI message content:', assistantMessage.content);
         
-        let updatedMessages: ChatMessage[] = [];
         setChatMessages(prev => {
           const newMessages = [...prev, assistantMessage];
-          updatedMessages = newMessages;
           console.log('Updated chat messages count:', newMessages.length);
           return newMessages;
         });
@@ -2401,14 +3130,19 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
         
         // Automatically generate contextual suggestions for the AI's response
         console.log('🤖 === ABOUT TO AUTO-GENERATE SUGGESTIONS ===');
-        console.log('🤖 Message ID for suggestions:', messageId);
+        console.log('🤖 Message ID for suggestions:', assistantMessageId);
         console.log('🤖 AI message content:', data.message);
         console.log('🤖 Calling generateTranslationAndSuggestions...');
         
+        const suggestionHistory = [
+          ...conversationMessagesForRequest,
+          assistantMessage
+        ];
+        
         await generateTranslationAndSuggestions(
-          messageId,
+          assistantMessageId,
           data.message,
-          updatedMessages.length ? updatedMessages : chatMessages,
+          suggestionHistory,
           selectedConversation
         );
         
@@ -2416,10 +3150,10 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
         
         // Clear the suggestion tracking for this message after AI has responded
         if (selectedSuggestion) {
-          console.log('🧹 Clearing suggestion tracking for message:', messageId);
+          console.log('🧹 Clearing suggestion tracking for message:', userMessageId);
           setLastSuggestionUsed(prev => {
             const newState = { ...prev };
-            delete newState[messageId];
+            delete newState[userMessageId];
             return newState;
           });
         }
@@ -2433,7 +3167,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       setIsSending(false);
       setIsTyping(false);
-      setErrorMessages(prev => ({ ...prev, [messageId]: errorMessage }));
+      setErrorMessages(prev => ({ ...prev, [userMessageId]: errorMessage }));
     } finally {
       console.log('🏁 === AI RESPONSE FINALLY BLOCK ===');
       setIsSending(false);
@@ -2515,7 +3249,8 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
           // Show typing animation and trigger AI response
           setIsSending(true);
           setIsTyping(true);
-          await triggerAIResponse(userMessage, messageId);
+          const conversationHistory = buildConversationHistoryForAI(messageId, userMessage);
+          await triggerAIResponse(userMessage, messageId, undefined, conversationHistory);
         }
       }
     } catch (error) {
@@ -2787,7 +3522,8 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
     console.log('Cleared state being passed:', clearedState);
     
     // Trigger AI response immediately with cleared state
-    triggerAIResponse(suggestedAnswer, messageId, clearedState);
+    const conversationHistory = buildConversationHistoryForAI(messageId, suggestedAnswer);
+    triggerAIResponse(suggestedAnswer, messageId, clearedState, conversationHistory);
   };
 
   // Add logic to generate suggested answer when max attempts are reached
@@ -3000,11 +3736,13 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
     
     console.log('⏰ === CALLING AI RESPONSE WITH CLEARED STATE ===');
     // Call AI response directly with cleared state (EXACT SAME AS VOICE)
+    const clearedConversationHistory = buildConversationHistoryForAI(messageId, textContent);
+
     await triggerAIResponse(textContent, messageId, {
       waitingForCorrection: false,
       errorMessages: clearedErrorMessages,
       userAttempts: clearedUserAttempts
-    });
+    }, clearedConversationHistory);
 
     // Ensure the message content stays as the text content (EXACT SAME AS VOICE)
     setTimeout(() => {
@@ -4956,7 +5694,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     }
   };
 
-  const processAudioMessage = async (audioBlob: Blob, preExistingMessageId?: string) => {
+  const processAudioMessage = async (audioBlob: Blob, preExistingMessageId?: string | null) => {
     // Store audio blob for practice modal use
     setPracticeAudioBlob(audioBlob);
     
