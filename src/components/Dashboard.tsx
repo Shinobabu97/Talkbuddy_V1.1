@@ -1605,12 +1605,73 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
         { german: 'Meine Meinung dazu ist...', english: 'My opinion on this is...' }
       ];
     }
+    const questionWordMatch = text.match(/\b(welche|welcher|welches|was|wie|wo|wann|warum|wer)\b/);
+    const hasQuestionMark = text.includes('?');
+
+    if (questionWordMatch || hasQuestionMark) {
+      const questionWord = questionWordMatch ? questionWordMatch[1] : '';
+
+      if (questionWord.startsWith('welch') || questionWord === 'was') {
+        return [
+          { german: 'Am wichtigsten sind für mich die konkreten nächsten Schritte.', english: 'The most important thing for me is the concrete next steps.' },
+          { german: 'Wir sollten uns zuerst auf die Erwartungen und Ziele einigen.', english: 'We should first agree on the expectations and goals.' },
+          { german: 'Bitte konzentrieren wir uns auf das Thema Budget und Zeitplan.', english: 'Let’s focus on the budget and timeline.' }
+        ];
+      }
+
+      if (questionWord === 'wie') {
+        return [
+          { german: 'Ich würde gern Schritt für Schritt vorgehen.', english: 'I would like to proceed step by step.' },
+          { german: 'Vielleicht beginnen wir mit einer kurzen Zusammenfassung.', english: 'Perhaps we can start with a short summary.' },
+          { german: 'Lassen Sie uns zuerst die wichtigsten Punkte priorisieren.', english: 'Let’s prioritize the key points first.' }
+        ];
+      }
+
+      if (questionWord === 'wo') {
+        return [
+          { german: 'Wir können uns gern im Büro in Berlin treffen.', english: 'We can meet at the office in Berlin.' },
+          { german: 'Ein Treffen online über Teams wäre für mich ideal.', english: 'An online meeting via Teams would be ideal for me.' },
+          { german: 'Lassen Sie uns einen neutralen Ort wählen, z. B. das Café am Bahnhof.', english: 'Let’s choose a neutral location, for example the café at the station.' }
+        ];
+      }
+
+      if (questionWord === 'wann') {
+        return [
+          { german: 'Mir passt der kommende Dienstagvormittag sehr gut.', english: 'Next Tuesday morning works very well for me.' },
+          { german: 'Ich könnte auch Donnerstag gegen 15 Uhr einrichten.', english: 'I could also make Thursday around 3 PM work.' },
+          { german: 'Lassen Sie uns gerne noch diese Woche einen Termin finden.', english: 'Let’s find an appointment later this week.' }
+        ];
+      }
+
+      if (questionWord === 'warum') {
+        return [
+          { german: 'Weil wir langfristige Stabilität für das Projekt benötigen.', english: 'Because we need long-term stability for the project.' },
+          { german: 'Der Hauptgrund ist, dass unsere Kunden klare Prozesse erwarten.', english: 'The main reason is that our customers expect clear processes.' },
+          { german: 'Ohne diese Anpassung riskieren wir Verzögerungen im Ablauf.', english: 'Without this adjustment we risk delays in the process.' }
+        ];
+      }
+
+      if (questionWord === 'wer') {
+        return [
+          { german: 'Mein Kollege Herr Müller übernimmt die Projektleitung.', english: 'My colleague Mr. Müller will take over the project lead.' },
+          { german: 'Für die Abstimmung ist unser Teamleiterin Frau Becker zuständig.', english: 'Our team lead, Ms. Becker, is responsible for coordination.' },
+          { german: 'Ich arbeite eng mit unserem Support-Team zusammen.', english: 'I am working closely with our support team.' }
+        ];
+      }
+
+      // General yes/no or clarification style question fallback
+      return [
+        { german: 'Ja, das passt für mich sehr gut.', english: 'Yes, that works very well for me.' },
+        { german: 'Ich bin mir noch unsicher, könnten Sie das kurz erläutern?', english: 'I’m still unsure, could you briefly explain it?' },
+        { german: 'Im Moment habe ich Bedenken, weil wir noch offene Fragen haben.', english: 'At the moment I have concerns because we still have open questions.' }
+      ];
+    }
     
-    // Default contextual responses
+    // Statement fallback referencing the bot message while driving the conversation forward
     return [
-      { german: 'Das ist sehr interessant!', english: 'That is very interesting!' },
-      { german: 'Können Sie das genauer erklären?', english: 'Can you explain that in more detail?' },
-      { german: 'Ich verstehe, danke für die Erklärung.', english: 'I understand, thank you for the explanation.' }
+      { german: 'Danke für die Information. Wie sollen wir als Nächstes vorgehen?', english: 'Thanks for the information. How should we proceed next?' },
+      { german: 'Verstanden, ich unterstütze diesen Ansatz und bringe meine Ideen ein.', english: 'Understood, I support this approach and will contribute my ideas.' },
+      { german: 'Das klingt nach einem guten Plan. Lassen Sie uns die nächsten Schritte klären.', english: 'That sounds like a good plan. Let’s clarify the next steps.' }
     ];
   };
 
@@ -2313,6 +2374,44 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
     }
     
     try {
+      // Build recent conversation history (user + assistant) to maintain context
+      const ensureUserMessagePresent = chatMessages.some(msg => msg.id === messageId)
+        ? chatMessages
+        : [
+            ...chatMessages,
+            {
+              id: messageId,
+              role: 'user',
+              content: textContent,
+              timestamp: new Date().toISOString()
+            }
+          ];
+
+      const sortedMessages = [...ensureUserMessagePresent].sort((a, b) => {
+        const aTime = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const bTime = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return aTime - bTime;
+      });
+
+      const recentMessages = sortedMessages.slice(-8);
+      let openAIMessages = recentMessages.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }));
+
+      if (
+        openAIMessages.length === 0 ||
+        openAIMessages[openAIMessages.length - 1].role !== 'user'
+      ) {
+        openAIMessages = [
+          ...openAIMessages,
+          {
+            role: 'user' as const,
+            content: textContent
+          }
+        ];
+      }
+
       // Get user session token for authenticated requests
       const { data: { session } } = await supabase.auth.getSession();
       const authToken = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -2330,10 +2429,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: [{
-            role: 'user',
-            content: userMessage
-          }],
+          messages: openAIMessages,
           conversationId: selectedConversation,
           contextLevel,
           difficultyLevel,
