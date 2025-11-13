@@ -21,6 +21,75 @@ interface PronunciationSentenceViewProps {
   isWordAnalyzed?: (word: string) => boolean; // Add flag to check if word has been analyzed
 }
 
+type DimensionKey = keyof PronunciationWord['dimensions'];
+
+const dimensionNames: Record<DimensionKey, string> = {
+  soundAccuracy: 'Sound Accuracy',
+  stressEmphasis: 'Stress & Emphasis',
+  smoothness: 'Smoothness (Fluency)',
+  correctSpeed: 'Correct Speed',
+  intonationRhythm: 'Intonation & Rhythm',
+  understandability: 'Understandability'
+};
+
+const dimensionFeedbackFallbacks: Record<
+  DimensionKey,
+  {
+    positive: string;
+    needs: string;
+    tips: string[];
+  }
+> = {
+  soundAccuracy: {
+    positive: 'Many of the sounds were articulated clearly.',
+    needs: 'Some consonants and vowels still need cleaner articulation.',
+    tips: [
+      'Practice the tricky sounds slowly, then increase speed.',
+      'Compare your recording with a native pronunciation and mimic the mouth shape.'
+    ]
+  },
+  stressEmphasis: {
+    positive: 'You placed emphasis correctly in parts of the word.',
+    needs: 'Stress slips off the target syllable in a few spots.',
+    tips: [
+      'Tap the beat while speaking to lock in the stressed syllable.',
+      'Listen to native speakers and mirror where they add emphasis.'
+    ]
+  },
+  smoothness: {
+    positive: 'Several segments flowed smoothly.',
+    needs: 'There are brief pauses that interrupt the flow.',
+    tips: [
+      'Practice linking the syllables without breaks.',
+      'Record yourself and focus on reducing hesitations.'
+    ]
+  },
+  correctSpeed: {
+    positive: 'Most of the line matches a natural pace.',
+    needs: 'The speed drifts slightly faster or slower in places.',
+    tips: [
+      'Count a steady beat to keep your pace consistent.',
+      'Practice with a metronome-style timer to reinforce rhythm.'
+    ]
+  },
+  intonationRhythm: {
+    positive: 'You followed the German melody in several phrases.',
+    needs: 'The pitch contour flattens in parts of the sentence.',
+    tips: [
+      'Exaggerate the rises and falls as you practice.',
+      'Shadow a native recording to copy the rhythm and pitch.'
+    ]
+  },
+  understandability: {
+    positive: 'Most of the word remains understandable.',
+    needs: 'A few syllables are hard to catch on the first listen.',
+    tips: [
+      'Focus on enunciating the less clear syllables.',
+      'Open your mouth a bit more and slow down the tough parts first.'
+    ]
+  }
+};
+
 interface WordDetailsProps {
   word: PronunciationWord;
   onRepractice: () => void;
@@ -35,9 +104,28 @@ interface WordDetailsProps {
 
 // Helper function to get RAG color based on score
 const getRAGColor = (score: number) => {
-  if (score < 70) return { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-200' };
-  if (score >= 70 && score < 90) return { bg: 'bg-amber-100', text: 'text-amber-800', border: 'border-amber-200' };
-  return { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-200' };
+  if (score < 70) {
+    return {
+      bg: 'bg-red-100',
+      text: 'text-red-800',
+      border: 'border-red-200',
+      progress: 'bg-red-500'
+    };
+  }
+  if (score >= 70 && score < 90) {
+    return {
+      bg: 'bg-amber-100',
+      text: 'text-amber-800',
+      border: 'border-amber-200',
+      progress: 'bg-amber-500'
+    };
+  }
+  return {
+    bg: 'bg-green-100',
+    text: 'text-green-800',
+    border: 'border-green-200',
+    progress: 'bg-green-500'
+  };
 };
 
 const WordDetails: React.FC<WordDetailsProps> = ({ 
@@ -53,15 +141,6 @@ const WordDetails: React.FC<WordDetailsProps> = ({
 }) => {
   const [showDimensions, setShowDimensions] = useState(false);
   const colors = getRAGColor(word.score);
-
-  const dimensionNames = {
-    soundAccuracy: 'Sound Accuracy',
-    stressEmphasis: 'Stress & Emphasis',
-    smoothness: 'Smoothness (Fluency)',
-    correctSpeed: 'Correct Speed',
-    intonationRhythm: 'Intonation & Rhythm',
-    understandability: 'Understandability'
-  };
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-lg max-w-md">
@@ -113,12 +192,35 @@ const WordDetails: React.FC<WordDetailsProps> = ({
           {showDimensions && (
             <div className="space-y-3 pl-4">
               {Object.entries(word.dimensions).map(([key, dimension]) => {
+                const dimKey = key as DimensionKey;
                 const dimColors = getRAGColor(dimension.score);
+                const fallback = dimensionFeedbackFallbacks[dimKey];
+                const needsAttention = dimension.score < 90;
+
+                const correctFeedback =
+                  dimension.feedback.correct.length > 0
+                    ? dimension.feedback.correct
+                    : needsAttention
+                    ? [fallback.positive]
+                    : [];
+
+                const needsFeedback = [...dimension.feedback.incorrect];
+                if (needsAttention && needsFeedback.length === 0) {
+                  needsFeedback.push(fallback.needs);
+                }
+
+                const improvementFeedback =
+                  dimension.feedback.improvement.length > 0
+                    ? dimension.feedback.improvement
+                    : needsAttention
+                    ? fallback.tips
+                    : [];
+
                 return (
                   <div key={key} className="border border-gray-200 rounded-lg p-3">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium text-gray-700">
-                        {dimensionNames[key as keyof typeof dimensionNames]}
+                        {dimensionNames[dimKey]}
                       </span>
                       <div className={`px-2 py-1 rounded text-xs font-medium ${dimColors.bg} ${dimColors.text}`}>
                         {dimension.score}/100
@@ -128,39 +230,39 @@ const WordDetails: React.FC<WordDetailsProps> = ({
                     {/* Progress Bar */}
                     <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
                       <div
-                        className={`h-2 rounded-full transition-all ${dimColors.bg.replace('100', '500')}`}
+                        className={`h-2 rounded-full transition-all ${dimColors.progress}`}
                         style={{ width: `${dimension.score}%` }}
                       />
                     </div>
 
                     {/* Feedback */}
-                    {dimension.feedback.correct.length > 0 && (
+                    {correctFeedback.length > 0 && (
                       <div className="mb-2">
                         <span className="text-xs font-medium text-green-700">✓ Correct:</span>
                         <ul className="text-xs text-gray-600 mt-1 space-y-1">
-                          {dimension.feedback.correct.map((item, idx) => (
+                          {correctFeedback.map((item, idx) => (
                             <li key={idx}>• {item}</li>
                           ))}
                         </ul>
                       </div>
                     )}
                     
-                    {dimension.feedback.incorrect.length > 0 && (
+                    {needsFeedback.length > 0 && (
                       <div className="mb-2">
                         <span className="text-xs font-medium text-red-700">✗ Needs Improvement:</span>
                         <ul className="text-xs text-gray-600 mt-1 space-y-1">
-                          {dimension.feedback.incorrect.map((item, idx) => (
+                          {needsFeedback.map((item, idx) => (
                             <li key={idx}>• {item}</li>
                           ))}
                         </ul>
                       </div>
                     )}
                     
-                    {dimension.feedback.improvement.length > 0 && (
+                    {improvementFeedback.length > 0 && (
                       <div>
                         <span className="text-xs font-medium text-blue-700">💡 How to Improve:</span>
                         <ul className="text-xs text-gray-600 mt-1 space-y-1">
-                          {dimension.feedback.improvement.map((item, idx) => (
+                          {improvementFeedback.map((item, idx) => (
                             <li key={idx}>• {item}</li>
                           ))}
                         </ul>
@@ -209,6 +311,11 @@ const WordDetails: React.FC<WordDetailsProps> = ({
                           <span>Analyse</span>
                         </button>
                       )}
+                      {isReadyForAnalysis && (
+                        <div className="text-xs text-gray-500">
+                          Recording saved. Click Analyse to update this word’s score.
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -254,15 +361,6 @@ const SentenceDetails: React.FC<SentenceDetailsProps> = ({ pronunciationData, on
   
   const colors = getRAGColor(overallScore);
 
-  const dimensionNames = {
-    soundAccuracy: 'Sound Accuracy',
-    stressEmphasis: 'Stress & Emphasis',
-    smoothness: 'Smoothness (Fluency)',
-    correctSpeed: 'Correct Speed',
-    intonationRhythm: 'Intonation & Rhythm',
-    understandability: 'Understandability'
-  };
-
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-lg max-w-2xl">
       <div className="flex items-center justify-between mb-4">
@@ -299,12 +397,13 @@ const SentenceDetails: React.FC<SentenceDetailsProps> = ({ pronunciationData, on
           {showDimensions && (
             <div className="space-y-3">
               {Object.entries(pronunciationData.sentenceDimensions).map(([key, dimension]) => {
+                const dimKey = key as DimensionKey;
                 const dimColors = getRAGColor(dimension.score);
                 return (
                   <div key={key} className="border border-gray-200 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-medium text-gray-700">
-                        {dimensionNames[key as keyof typeof dimensionNames]}
+                        {dimensionNames[dimKey]}
                       </span>
                       <div className={`px-2 py-1 rounded text-xs font-medium ${dimColors.bg} ${dimColors.text}`}>
                         {dimension.score}/100
@@ -314,7 +413,7 @@ const SentenceDetails: React.FC<SentenceDetailsProps> = ({ pronunciationData, on
                     {/* Progress Bar */}
                     <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
                       <div
-                        className={`h-2 rounded-full transition-all ${dimColors.bg.replace('100', '500')}`}
+                        className={`h-2 rounded-full transition-all ${dimColors.progress}`}
                         style={{ width: `${dimension.score}%` }}
                       />
                     </div>

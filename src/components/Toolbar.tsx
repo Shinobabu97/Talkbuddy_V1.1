@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { BookOpen, Lightbulb, Volume2, Star, X, Mic, MicOff, Loader2, AlertCircle, CheckCircle, Target, ChevronUp, ChevronDown, TrendingUp, ArrowRight } from 'lucide-react';
 import { germanTTS } from '../lib/tts';
 import PronunciationSentenceView from './PronunciationSentenceView';
@@ -642,9 +642,9 @@ export default function Toolbar({
   const [sentenceReadyForAnalysis, setSentenceReadyForAnalysis] = useState<boolean>(false);
   const [sentenceAnalysisComplete, setSentenceAnalysisComplete] = useState<boolean>(false);
   const isStoppingRef = useRef(false);
+  const [lastAnalyzedSentenceId, setLastAnalyzedSentenceId] = useState<string | null>(null);
   
   // Sentence recording state for pronunciation practice
-  const [isRecordingSentence, setIsRecordingSentence] = useState(false);
   const [sentenceAudioBlob, setSentenceAudioBlob] = useState<Blob | null>(null);
   const [sentenceRecorder, setSentenceRecorder] = useState<MediaRecorder | null>(null);
   const [sentenceStream, setSentenceStream] = useState<MediaStream | null>(null);
@@ -669,6 +669,42 @@ export default function Toolbar({
     }>;
   } | null>(null);
   const [sentenceAnalyzed, setSentenceAnalyzed] = useState(false);
+  const pendingWordForAnalysis = useMemo(() => {
+    for (const word of Array.from(wordsReadyForAnalysis)) {
+      if (!wordsAnalysisComplete.has(word)) {
+        return word;
+      }
+    }
+    return null;
+  }, [wordsReadyForAnalysis, wordsAnalysisComplete]);
+  const hasFreshSentencePending =
+    !!pendingPronunciationAnalysis &&
+    pendingPronunciationAnalysis.responseId !== lastAnalyzedSentenceId;
+  const isAnyAnalyzing = isAnalyzingPronunciation || isAnalyzing;
+  const canAnalyzePronunciation =
+    !isAnyAnalyzing &&
+    (Boolean(hasFreshSentencePending && pendingPronunciationAnalysis?.audioBlob) ||
+      Boolean(pendingWordForAnalysis));
+  const analyzeButtonLabel = isAnyAnalyzing
+    ? 'Analyzing...'
+    : pendingWordForAnalysis
+    ? 'Analyze Word'
+    : 'Analyze Pronunciation';
+  const handleAnalyzeButtonClick = async () => {
+    if (isAnyAnalyzing) {
+      return;
+    }
+
+    if (hasFreshSentencePending && pendingPronunciationAnalysis) {
+      await analyzePronunciation();
+      return;
+    }
+
+    if (pendingWordForAnalysis) {
+      await handleAnalyzeWord(pendingWordForAnalysis);
+    }
+  };
+
   const [userPoints, setUserPoints] = useState(() => {
     const saved = localStorage.getItem('pronunciation_points');
     return saved ? parseInt(saved) : 0;
@@ -1032,6 +1068,7 @@ export default function Toolbar({
             }
             
             setPronunciationAnalysis(data);
+            setLastAnalyzedSentenceId(pendingPronunciationAnalysis.responseId);
             if (onPronunciationComplete && data.overallScore) {
               const practicedText = pendingPronunciationAnalysis?.text
                 || currentMessage
@@ -1646,7 +1683,7 @@ export default function Toolbar({
         
         // Recording state already set to false in stopSentenceRecording
         // Just ensure it's false here as well
-        setIsRecordingSentence(false);
+        setIsSentenceRecording(false);
         
         // Mark sentence as ready for analysis (don't auto-analyze, let user click Analyze button)
         setSentenceRecordingCompleted(true);
@@ -1679,8 +1716,8 @@ export default function Toolbar({
       console.log('✅ Recorder stored in ref and state');
       
       // NOW set recording state to true AFTER everything is initialized
-      setIsRecordingSentence(true);
-      console.log('✅ isRecordingSentence set to true');
+      setIsSentenceRecording(true);
+      console.log('✅ isSentenceRecording set to true');
       console.log('✅ Sentence recording started successfully, recorder and stream stored in refs and state');
       console.log('🎤 ===== START SENTENCE RECORDING END =====');
       
@@ -1693,7 +1730,7 @@ export default function Toolbar({
       });
       
       // Clean up on error
-      setIsRecordingSentence(false);
+      setIsSentenceRecording(false);
       setPracticingWord(null);
       sentenceStreamRef.current = null;
       sentenceRecorderRef.current = null;
@@ -1710,11 +1747,11 @@ export default function Toolbar({
     console.log('🛑 Recorder ref:', !!sentenceRecorderRef.current);
     console.log('🛑 Recorder state:', sentenceRecorderRef.current?.state);
     console.log('🛑 Stream ref:', !!sentenceStreamRef.current);
-    console.log('🛑 isRecordingSentence state:', isRecordingSentence);
+    console.log('🛑 isSentenceRecording state:', isSentenceRecording);
     console.log('🛑 practicingWord:', practicingWord);
     
     // IMMEDIATELY set recording state to false for instant UI feedback
-    setIsRecordingSentence(false);
+    setIsSentenceRecording(false);
     
     // Use refs for immediate access (avoid closure issues with state)
     const recorder = sentenceRecorderRef.current;
@@ -2216,6 +2253,143 @@ export default function Toolbar({
     }
   };
 
+  const handleAnalyzeWord = async (word: string) => {
+    console.log('🔍 ===== ANALYZE WORD BUTTON CLICKED =====');
+    console.log('🔍 Analyze word from view:', word);
+    console.log('🔍 Current pronunciationWords:', pronunciationWords);
+    console.log('🔍 Current wordsAnalysisComplete:', Array.from(wordsAnalysisComplete));
+
+    const audioBlob = wordAudioBlobs.get(word);
+    if (!audioBlob) {
+      console.log('❌ No audio blob found for word:', word);
+      alert('Please record the word first before analyzing.');
+      return;
+    }
+
+    if (!wordsReadyForAnalysis.has(word)) {
+      console.log('❌ Word not ready for analysis yet:', word);
+      alert('Please finish recording the word first.');
+      return;
+    }
+
+    const previousPracticingWord = practicingWord;
+    if (practicingWord !== word) {
+      setPracticingWord(word);
+    }
+
+    setIsAnalyzing(true);
+
+    try {
+      console.log('🔍 Starting word pronunciation analysis...');
+      await analyzeWordPronunciation(audioBlob);
+
+      const wordResult = pronunciationWords.find(
+        (w) => w.word.toLowerCase() === word.toLowerCase()
+      );
+
+      if (wordResult) {
+        console.log('📊 Found word result after analysis:', wordResult);
+        console.log('📊 Word result has dimensions:', !!wordResult.dimensions);
+
+        if (pronunciationAnalysis) {
+          const updatedWords = pronunciationAnalysis.words.map((w) =>
+            w.word.toLowerCase() === word.toLowerCase() ? wordResult : w
+          );
+          const wordExists = updatedWords.some(
+            (w) => w.word.toLowerCase() === word.toLowerCase()
+          );
+          if (!wordExists) {
+            updatedWords.push(wordResult);
+          }
+          const updatedAnalysis = {
+            ...pronunciationAnalysis,
+            words: updatedWords,
+          };
+          setPronunciationAnalysis(updatedAnalysis);
+          console.log(
+            '✅ Updated pronunciationAnalysis with word:',
+            word,
+            'with dimensions:',
+            !!wordResult.dimensions
+          );
+
+          setTimeout(() => {
+            setPronunciationAnalysis({
+              ...updatedAnalysis,
+              timestamp: Date.now(),
+            });
+          }, 100);
+        } else {
+          const wordList = [wordResult];
+          let overallScore = wordResult.score;
+          let sentenceScore = wordResult.score;
+          let sentenceDimensions:
+            | {
+                soundAccuracy?: PronunciationWord['dimensions']['soundAccuracy'];
+                stressEmphasis?: PronunciationWord['dimensions']['stressEmphasis'];
+                smoothness?: PronunciationWord['dimensions']['smoothness'];
+                correctSpeed?: PronunciationWord['dimensions']['correctSpeed'];
+                intonationRhythm?: PronunciationWord['dimensions']['intonationRhythm'];
+                understandability?: PronunciationWord['dimensions']['understandability'];
+              }
+            | undefined;
+
+          if (wordResult.dimensions) {
+            const dimensionScores = [
+              wordResult.dimensions.soundAccuracy?.score || 0,
+              wordResult.dimensions.stressEmphasis?.score || 0,
+              wordResult.dimensions.smoothness?.score || 0,
+              wordResult.dimensions.correctSpeed?.score || 0,
+              wordResult.dimensions.intonationRhythm?.score || 0,
+              wordResult.dimensions.understandability?.score || 0,
+            ];
+            overallScore = Math.round(
+              dimensionScores.reduce((sum, score) => sum + score, 0) /
+                dimensionScores.length
+            );
+            sentenceScore = overallScore;
+            sentenceDimensions = {
+              soundAccuracy: wordResult.dimensions.soundAccuracy,
+              stressEmphasis: wordResult.dimensions.stressEmphasis,
+              smoothness: wordResult.dimensions.smoothness,
+              correctSpeed: wordResult.dimensions.correctSpeed,
+              intonationRhythm: wordResult.dimensions.intonationRhythm,
+              understandability: wordResult.dimensions.understandability,
+            };
+          }
+
+          setPronunciationAnalysis({
+            overallScore,
+            sentenceScore,
+            words: wordList,
+            hasPronunciationErrors: overallScore < 75,
+            suggestions: [],
+            sentenceDimensions,
+          });
+          console.log('✅ Created new pronunciationAnalysis with word:', word);
+        }
+
+        setWordsAnalysisComplete((prev) => {
+          const newSet = new Set([...prev, word]);
+          console.log('✅ Word marked as analysis complete:', word);
+          return newSet;
+        });
+      } else {
+        console.log('⚠️ Word result not found after analysis');
+        alert('Analysis completed but word data not found. Please try again.');
+      }
+    } catch (error) {
+      console.error('❌ Error analyzing word:', error);
+      alert('Failed to analyze word pronunciation. Please try again.');
+    } finally {
+      setIsAnalyzing(false);
+      if (previousPracticingWord !== word) {
+        setPracticingWord(previousPracticingWord ?? null);
+      }
+      console.log('🔍 ===== ANALYZE WORD BUTTON CLICK END =====');
+    }
+  };
+
 
   // Helper function to break word into individual sounds/syllables
   const breakWordIntoSounds = (word: string): string[] => {
@@ -2543,6 +2717,7 @@ export default function Toolbar({
     setSentenceRecordingCompleted(false);
     setSentenceReadyForAnalysis(false);
     setSentenceAnalysisComplete(false);
+    setSentenceAudioBlob(null);
     
     // Reset individual word states when starting sentence practice
     setWordsRecordingCompleted(new Set());
@@ -2551,6 +2726,9 @@ export default function Toolbar({
     setWordsAnalysisComplete(new Set());
     setIndividualWordAnalysis({});
     
+    // Optimistically flip recording state so UI shows Stop immediately
+    setIsSentenceRecording(true);
+    
     // Use the sentence-specific recording function
     try {
       await startSentenceRecording();
@@ -2558,7 +2736,7 @@ export default function Toolbar({
     } catch (error) {
       console.error('❌ Error in startSentenceRecording:', error);
       // Reset state on error
-      setIsRecordingSentence(false);
+      setIsSentenceRecording(false);
       setPracticingWord(null);
       alert('Failed to start recording. Please check microphone permissions and try again.');
     }
@@ -2601,6 +2779,14 @@ export default function Toolbar({
       // Mark as complete after analysis
       setSentenceAnalysisComplete(true);
       console.log('✅ Sentence analysis completed and marked as complete');
+      
+      // Reset recording readiness so user can practice again
+      setSentenceReadyForAnalysis(false);
+      setSentenceRecordingCompleted(false);
+      setSentenceAudioBlob(null);
+      setSentenceAnalyzed(true);
+      setPracticingWord(null);
+      setIsSentenceRecording(false);
       
     } catch (error) {
       console.error('❌ Error analyzing sentence:', error);
@@ -3458,19 +3644,19 @@ export default function Toolbar({
                       )}
                     </div>
                     <button
-                      onClick={analyzePronunciation}
-                      disabled={isAnalyzingPronunciation}
-                      className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:bg-primary-300"
+                      onClick={handleAnalyzeButtonClick}
+                      disabled={!canAnalyzePronunciation}
+                      className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:bg-primary-300 disabled:cursor-not-allowed disabled:opacity-70"
                     >
-                      {isAnalyzingPronunciation ? (
+                      {isAnyAnalyzing ? (
                         <>
                           <Loader2 className="h-4 w-4 animate-spin" />
-                          <span>Analyzing...</span>
+                          <span>{analyzeButtonLabel}</span>
                         </>
                       ) : (
                         <>
                           <Volume2 className="h-4 w-4" />
-                          <span>Analyze Pronunciation</span>
+                          <span>{analyzeButtonLabel}</span>
                         </>
                       )}
                     </button>
@@ -3491,19 +3677,19 @@ export default function Toolbar({
                       <p className="text-sm text-gray-600">"{lastGermanVoiceMessage.transcription}"</p>
                     </div>
                     <button
-                      onClick={analyzePronunciation}
-                      disabled={isAnalyzingPronunciation}
-                      className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:bg-primary-300"
+                      onClick={handleAnalyzeButtonClick}
+                      disabled={!canAnalyzePronunciation}
+                      className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:bg-primary-300 disabled:cursor-not-allowed disabled:opacity-70"
                     >
-                      {isAnalyzingPronunciation ? (
+                      {isAnyAnalyzing ? (
                         <>
                           <Loader2 className="h-4 w-4 animate-spin" />
-                          <span>Analyzing...</span>
+                          <span>{analyzeButtonLabel}</span>
                         </>
                       ) : (
                         <>
                           <Volume2 className="h-4 w-4" />
-                          <span>Analyze Pronunciation</span>
+                          <span>{analyzeButtonLabel}</span>
                         </>
                       )}
                     </button>
@@ -3564,129 +3750,7 @@ export default function Toolbar({
                         }
                       }
                     }}
-                    onAnalyzeWord={async (word) => {
-                      console.log('🔍 ===== ANALYZE WORD BUTTON CLICKED =====');
-                      console.log('🔍 Analyze word from view:', word);
-                      console.log('🔍 Current pronunciationWords:', pronunciationWords);
-                      console.log('🔍 Current wordsAnalysisComplete:', Array.from(wordsAnalysisComplete));
-                      
-                      // Check if we have audio blob for this word
-                      const audioBlob = wordAudioBlobs.get(word);
-                      if (!audioBlob) {
-                        console.log('❌ No audio blob found for word:', word);
-                        alert('Please record the word first before analyzing.');
-                        return;
-                      }
-                      
-                      // Check if word is ready for analysis
-                      if (!wordsReadyForAnalysis.has(word)) {
-                        console.log('❌ Word not ready for analysis yet:', word);
-                        alert('Please finish recording the word first.');
-                        return;
-                      }
-                      
-                      setIsAnalyzing(true);
-                      
-                      try {
-                        // Analyze the recorded word audio
-                        console.log('🔍 Starting word pronunciation analysis...');
-                        await analyzeWordPronunciation(audioBlob);
-                        
-                        // After analysis, find the word result and update pronunciationAnalysis
-                        const wordResult = pronunciationWords.find(w => 
-                          w.word.toLowerCase() === word.toLowerCase()
-                        );
-                        
-                        if (wordResult) {
-                          console.log('📊 Found word result after analysis:', wordResult);
-                          console.log('📊 Word result has dimensions:', !!wordResult.dimensions);
-                          console.log('📊 Dimensions:', wordResult.dimensions);
-                          
-                          // Update pronunciationAnalysis with word-level results including dimensions
-                          if (pronunciationAnalysis) {
-                            const updatedWords = pronunciationAnalysis.words.map(w => 
-                              w.word.toLowerCase() === word.toLowerCase() ? wordResult : w
-                            );
-                            // If word not in analysis, add it
-                            const wordExists = updatedWords.some(w => w.word.toLowerCase() === word.toLowerCase());
-                            if (!wordExists) {
-                              updatedWords.push(wordResult);
-                            }
-                            const updatedAnalysis = {
-                              ...pronunciationAnalysis,
-                              words: updatedWords
-                            };
-                            setPronunciationAnalysis(updatedAnalysis);
-                            console.log('✅ Updated pronunciationAnalysis with word:', word, 'with dimensions:', !!wordResult.dimensions);
-                            
-                            // Force a re-render by updating with timestamp
-                            setTimeout(() => {
-                              setPronunciationAnalysis({
-                                ...updatedAnalysis,
-                                timestamp: Date.now()
-                              });
-                            }, 100);
-                          } else {
-                            // Create new pronunciationAnalysis if it doesn't exist
-                            const wordList = [wordResult];
-                            // Calculate sentence score from word dimensions if available
-                            let overallScore = 0;
-                            let sentenceScore = 0;
-                            if (wordResult.dimensions) {
-                              const dimensionScores = [
-                                wordResult.dimensions.soundAccuracy?.score || 0,
-                                wordResult.dimensions.stressEmphasis?.score || 0,
-                                wordResult.dimensions.smoothness?.score || 0,
-                                wordResult.dimensions.correctSpeed?.score || 0,
-                                wordResult.dimensions.intonationRhythm?.score || 0,
-                                wordResult.dimensions.understandability?.score || 0
-                              ];
-                              overallScore = Math.round(
-                                dimensionScores.reduce((sum, score) => sum + score, 0) / dimensionScores.length
-                              );
-                              sentenceScore = overallScore;
-                            } else {
-                              // Fallback to word score if no dimensions
-                              overallScore = wordResult.score;
-                              sentenceScore = wordResult.score;
-                            }
-                            
-                            setPronunciationAnalysis({
-                              overallScore,
-                              sentenceScore,
-                              words: wordList,
-                              hasPronunciationErrors: overallScore < 75,
-                              suggestions: [],
-                              sentenceDimensions: wordResult.dimensions ? {
-                                soundAccuracy: wordResult.dimensions.soundAccuracy,
-                                stressEmphasis: wordResult.dimensions.stressEmphasis,
-                                smoothness: wordResult.dimensions.smoothness,
-                                correctSpeed: wordResult.dimensions.correctSpeed,
-                                intonationRhythm: wordResult.dimensions.intonationRhythm,
-                                understandability: wordResult.dimensions.understandability
-                              } : undefined
-                            });
-                            console.log('✅ Created new pronunciationAnalysis with word:', word);
-                          }
-                          
-                          // Mark word as analyzed
-                          setWordsAnalysisComplete(prev => {
-                            const newSet = new Set([...prev, word]);
-                            console.log('✅ Word marked as analysis complete:', word);
-                            return newSet;
-                          });
-                        } else {
-                          console.log('⚠️ Word result not found after analysis');
-                          alert('Analysis completed but word data not found. Please try again.');
-                        }
-                      } catch (error) {
-                        console.error('❌ Error analyzing word:', error);
-                        alert('Failed to analyze word pronunciation. Please try again.');
-                      } finally {
-                        setIsAnalyzing(false);
-                        console.log('🔍 ===== ANALYZE WORD BUTTON CLICK END =====');
-                      }
-                    }}
+                    onAnalyzeWord={handleAnalyzeWord}
                     onAnalyzeSentence={() => {
                       console.log('Analyze sentence from view');
                       // Update pronunciationAnalysis with sentence-level results if available
