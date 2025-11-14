@@ -281,10 +281,16 @@ function generatePronunciationScoresFromComparison(
     pauseScore = Math.max(60, 100 - (pauses.length * 10))
   }
   
-  // Generate word-level scores
+  // Generate word-level scores for ALL expected words
+  // Ensure every word in the expected sentence gets word-level data, even if not detected
   const words = expectedWords.map((word, index) => {
-    const isCorrect = wordMatches[index] || false
-    const baseScore = isCorrect ? 85 : 65
+    // Check if word was matched (wordMatches array may be shorter than expectedWords)
+    const isCorrect = index < wordMatches.length ? wordMatches[index] : false
+    
+    // For words not detected in actual transcription, assign lower base score
+    // but still provide complete word-level data
+    const wasDetected = index < actualWords.length
+    const baseScore = isCorrect ? 85 : (wasDetected ? 65 : 50) // Lower score for undetected words
     
     // Add variation based on word characteristics
     const hasUmlauts = /[äöü]/.test(word)
@@ -357,61 +363,110 @@ function generatePronunciationScoresFromComparison(
         soundAccuracy: {
           score: soundAccuracy,
           feedback: {
-            correct: soundAccuracy >= 70 ? [`Correct pronunciation of sounds in "${word}"`] : [],
-            incorrect: soundAccuracy < 70 ? [`Some sounds need improvement in "${word}"`] : [],
-            improvement: soundAccuracy < 80 ? soundAccuracy < 60 
-              ? [`Practice individual sounds more slowly`, `Listen to native pronunciation`, `Focus on correct articulation`]
-              : [`Practice individual sounds more slowly`, `Listen to native pronunciation`] : []
+            // For scores 0-9: NO positive feedback, only incorrect and improvement
+            correct: soundAccuracy >= 10 ? (soundAccuracy >= 70 ? [`Correct pronunciation of sounds in "${word}"`] : []) : [],
+            incorrect: soundAccuracy < 10 
+              ? [`Sounds in "${word}" were not pronounced correctly`, `Pronunciation needs significant improvement`, `Focus on articulating each sound clearly`]
+              : soundAccuracy < 70 
+                ? [`Some sounds need improvement in "${word}"`] 
+                : [],
+            improvement: soundAccuracy < 10
+              ? [`Practice individual sounds very slowly`, `Listen to native pronunciation multiple times`, `Focus on correct articulation`, `Break down the word into individual sounds`, `Record yourself and compare with native speakers`]
+              : soundAccuracy < 60
+                ? [`Practice individual sounds more slowly`, `Listen to native pronunciation`, `Focus on correct articulation`]
+                : soundAccuracy < 80
+                  ? [`Practice individual sounds more slowly`, `Listen to native pronunciation`]
+                  : []
           }
         },
         stressEmphasis: {
           score: stressEmphasis,
           feedback: {
-            correct: stressEmphasis >= 70 ? [`Good stress placement`] : [],
-            incorrect: stressEmphasis < 70 ? [`Stress on wrong syllable`] : [],
-            improvement: stressEmphasis < 80 ? stressEmphasis < 60
-              ? [`Focus on correct syllable stress`, `Practice word stress patterns`, `Listen carefully to native speakers`]
-              : [`Focus on correct syllable stress`, `Practice word stress patterns`] : []
+            correct: stressEmphasis >= 10 ? (stressEmphasis >= 70 ? [`Good stress placement`] : []) : [],
+            incorrect: stressEmphasis < 10
+              ? [`Stress placement on "${word}" is incorrect`, `Syllable stress needs significant improvement`, `Focus on identifying the correct stressed syllable`]
+              : stressEmphasis < 70
+                ? [`Stress on wrong syllable`]
+                : [],
+            improvement: stressEmphasis < 10
+              ? [`Focus on correct syllable stress`, `Practice word stress patterns repeatedly`, `Listen carefully to native speakers`, `Tap out the rhythm to identify stressed syllables`, `Practice with emphasis on the correct syllable`]
+              : stressEmphasis < 60
+                ? [`Focus on correct syllable stress`, `Practice word stress patterns`, `Listen carefully to native speakers`]
+                : stressEmphasis < 80
+                  ? [`Focus on correct syllable stress`, `Practice word stress patterns`]
+                  : []
           }
         },
         smoothness: {
           score: smoothness,
           feedback: {
-            correct: smoothness >= 70 ? [`Smooth flow without hesitations`] : [],
-            incorrect: smoothness < 70 ? [`Unnatural pauses detected`] : [],
-            improvement: smoothness < 80 ? smoothness < 60
-              ? [`Practice speaking more fluidly`, `Reduce hesitations`, `Work on connecting words smoothly`]
-              : [`Practice speaking more fluidly`, `Reduce hesitations`] : []
+            correct: smoothness >= 10 ? (smoothness >= 70 ? [`Smooth flow without hesitations`] : []) : [],
+            incorrect: smoothness < 10
+              ? [`Flow in "${word}" is not smooth`, `Multiple hesitations and pauses detected`, `Pronunciation lacks fluency`]
+              : smoothness < 70
+                ? [`Unnatural pauses detected`]
+                : [],
+            improvement: smoothness < 10
+              ? [`Practice speaking more fluidly`, `Reduce hesitations significantly`, `Work on connecting sounds smoothly`, `Practice linking sounds together`, `Record yourself and focus on eliminating pauses`]
+              : smoothness < 60
+                ? [`Practice speaking more fluidly`, `Reduce hesitations`, `Work on connecting words smoothly`]
+                : smoothness < 80
+                  ? [`Practice speaking more fluidly`, `Reduce hesitations`]
+                  : []
           }
         },
         correctSpeed: {
           score: correctSpeed,
           feedback: {
-            correct: correctSpeed >= 70 ? [`Appropriate speaking pace`] : [],
-            incorrect: correctSpeed < 70 ? [`Speaking too fast or too slow`] : [],
-            improvement: correctSpeed < 80 ? correctSpeed < 60
-              ? [`Match natural German speaking pace`, `Practice with timing`, `Record yourself and compare`]
-              : [`Match natural German speaking pace`, `Practice with timing`] : []
+            correct: correctSpeed >= 10 ? (correctSpeed >= 70 ? [`Appropriate speaking pace`] : []) : [],
+            incorrect: correctSpeed < 10
+              ? [`Speaking pace for "${word}" is inappropriate`, `Speed needs significant adjustment`, `Too fast or too slow compared to natural pace`]
+              : correctSpeed < 70
+                ? [`Speaking too fast or too slow`]
+                : [],
+            improvement: correctSpeed < 10
+              ? [`Match natural German speaking pace`, `Practice with timing`, `Record yourself and compare`, `Use a metronome to practice consistent pace`, `Slow down and focus on clarity first`]
+              : correctSpeed < 60
+                ? [`Match natural German speaking pace`, `Practice with timing`, `Record yourself and compare`]
+                : correctSpeed < 80
+                  ? [`Match natural German speaking pace`, `Practice with timing`]
+                  : []
           }
         },
         intonationRhythm: {
           score: intonationRhythm,
           feedback: {
-            correct: intonationRhythm >= 70 ? [`Good speech melody`] : [],
-            incorrect: intonationRhythm < 70 ? [`Intonation needs work`] : [],
-            improvement: intonationRhythm < 80 ? intonationRhythm < 60
-              ? [`Practice rising and falling tones`, `Match German rhythm patterns`, `Focus on natural speech flow`]
-              : [`Practice rising and falling tones`, `Match German rhythm patterns`] : []
+            correct: intonationRhythm >= 10 ? (intonationRhythm >= 70 ? [`Good speech melody`] : []) : [],
+            incorrect: intonationRhythm < 10
+              ? [`Intonation and rhythm for "${word}" need significant work`, `Speech melody is incorrect`, `Rhythm patterns are not matching natural German speech`]
+              : intonationRhythm < 70
+                ? [`Intonation needs work`]
+                : [],
+            improvement: intonationRhythm < 10
+              ? [`Practice rising and falling tones`, `Match German rhythm patterns`, `Focus on natural speech flow`, `Listen to native speakers and mimic their intonation`, `Practice with emphasis on correct pitch patterns`]
+              : intonationRhythm < 60
+                ? [`Practice rising and falling tones`, `Match German rhythm patterns`, `Focus on natural speech flow`]
+                : intonationRhythm < 80
+                  ? [`Practice rising and falling tones`, `Match German rhythm patterns`]
+                  : []
           }
         },
         understandability: {
           score: understandability,
           feedback: {
-            correct: understandability >= 70 ? [`Clear and understandable`] : [],
-            incorrect: understandability < 70 ? [`Could be clearer`] : [],
-            improvement: understandability < 80 ? understandability < 60
-              ? [`Focus on clarity`, `Practice articulation`, `Speak more clearly and distinctly`]
-              : [`Focus on clarity`, `Practice articulation`] : []
+            correct: understandability >= 10 ? (understandability >= 70 ? [`Clear and understandable`] : []) : [],
+            incorrect: understandability < 10
+              ? [`"${word}" is not clear or understandable`, `Pronunciation needs significant improvement for clarity`, `Focus on making each sound distinct and clear`]
+              : understandability < 70
+                ? [`Could be clearer`]
+                : [],
+            improvement: understandability < 10
+              ? [`Focus on clarity`, `Practice articulation`, `Speak more clearly and distinctly`, `Open your mouth more when speaking`, `Slow down and enunciate each sound clearly`, `Record yourself and compare with native speakers`]
+              : understandability < 60
+                ? [`Focus on clarity`, `Practice articulation`, `Speak more clearly and distinctly`]
+                : understandability < 80
+                  ? [`Focus on clarity`, `Practice articulation`]
+                  : []
           }
         }
       }
@@ -431,65 +486,178 @@ function generatePronunciationScoresFromComparison(
   const understandabilityScore = Math.round(accuracy)
   
   // Calculate sentence-level dimensions with feedback based on calculated scores
+  // Green (>=90): Show only correct feedback
+  // Amber (70-89): Show correct AND incorrect AND improvement feedback
+  // Red (<70): Show incorrect AND improvement feedback (may show some correct if >= 10)
+  // Scores 0-9: NO positive feedback, only incorrect and improvement feedback
   const sentenceDimensions = {
     soundAccuracy: {
       score: soundAccuracyScore,
       feedback: {
-        correct: soundAccuracyScore >= 75 ? [`Overall sound accuracy is good`] : [],
-        incorrect: soundAccuracyScore < 75 ? [`Some sounds need improvement throughout the sentence`] : [],
-        improvement: soundAccuracyScore < 80 ? soundAccuracyScore < 60
-          ? [`Practice difficult sounds individually`, `Focus on clarity`, `Work on articulation throughout the sentence`]
-          : [`Practice difficult sounds individually`, `Focus on clarity`] : []
+        // For scores 0-9: NO positive feedback
+        correct: soundAccuracyScore >= 10
+          ? (soundAccuracyScore >= 90 
+              ? [`Overall sound accuracy is excellent`]
+              : soundAccuracyScore >= 70 
+                ? [`Some sounds were articulated clearly`]
+                : soundAccuracyScore >= 60
+                  ? [`A few sounds were pronounced correctly`]
+                  : [])
+          : [],
+        incorrect: soundAccuracyScore < 10
+          ? [`Sounds throughout the sentence were not pronounced correctly`, `Pronunciation needs significant improvement`, `Focus on articulating each sound clearly throughout the sentence`]
+          : soundAccuracyScore < 90
+            ? soundAccuracyScore >= 70
+              ? [`Some sounds need improvement throughout the sentence`]
+              : [`Many sounds need improvement throughout the sentence`]
+            : [],
+        improvement: soundAccuracyScore < 10
+          ? [`Practice difficult sounds individually`, `Focus on clarity`, `Work on articulation throughout the sentence`, `Listen to native pronunciation and mimic the mouth shape`, `Break down difficult words into individual sounds`, `Record yourself and compare with native speakers`]
+          : soundAccuracyScore < 70
+            ? [`Practice difficult sounds individually`, `Focus on clarity`, `Work on articulation throughout the sentence`, `Listen to native pronunciation and mimic the mouth shape`]
+            : soundAccuracyScore < 90
+              ? [`Practice difficult sounds individually`, `Focus on clarity`, `Work on articulation throughout the sentence`]
+              : []
       }
     },
     stressEmphasis: {
       score: stressEmphasisScore,
       feedback: {
-        correct: stressEmphasisScore >= 75 ? [`Stress patterns are correct`] : [],
-        incorrect: stressEmphasisScore < 75 ? [`Work on syllable stress`] : [],
-        improvement: stressEmphasisScore < 80 ? stressEmphasisScore < 60
-          ? [`Practice word stress patterns`, `Listen to native speakers`, `Focus on correct syllable emphasis`]
-          : [`Practice word stress patterns`, `Listen to native speakers`] : []
+        correct: stressEmphasisScore >= 10
+          ? (stressEmphasisScore >= 90
+              ? [`Stress patterns are excellent`]
+              : stressEmphasisScore >= 70
+                ? [`Stress patterns are mostly correct`]
+                : stressEmphasisScore >= 60
+                  ? [`Some stress patterns were correct`]
+                  : [])
+          : [],
+        incorrect: stressEmphasisScore < 10
+          ? [`Syllable stress throughout the sentence needs significant improvement`, `Stress placement is incorrect`, `Focus on identifying and using correct stressed syllables`]
+          : stressEmphasisScore < 90
+            ? stressEmphasisScore >= 70
+              ? [`Some syllable stress needs work`]
+              : [`Syllable stress needs significant improvement`]
+            : [],
+        improvement: stressEmphasisScore < 10
+          ? [`Practice word stress patterns`, `Listen to native speakers`, `Focus on correct syllable emphasis`, `Tap the beat while speaking to lock in stressed syllables`, `Practice with emphasis on the correct syllables`, `Record yourself and compare stress patterns`]
+          : stressEmphasisScore < 70
+            ? [`Practice word stress patterns`, `Listen to native speakers`, `Focus on correct syllable emphasis`, `Tap the beat while speaking to lock in stressed syllables`]
+            : stressEmphasisScore < 90
+              ? [`Practice word stress patterns`, `Listen to native speakers`, `Focus on correct syllable emphasis`]
+              : []
       }
     },
     smoothness: {
       score: smoothnessScore,
       feedback: {
-        correct: smoothnessScore >= 70 ? [`Speech flows smoothly`] : [],
-        incorrect: smoothnessScore < 70 ? [`Too many pauses`] : [],
-        improvement: smoothnessScore < 80 ? smoothnessScore < 60
-          ? [`Practice speaking without hesitations`, `Increase fluency`, `Work on connecting words smoothly`]
-          : [`Practice speaking without hesitations`, `Increase fluency`] : []
+        correct: smoothnessScore >= 10
+          ? (smoothnessScore >= 90
+              ? [`Speech flows very smoothly`]
+              : smoothnessScore >= 70
+                ? [`Speech flows smoothly in most parts`]
+                : smoothnessScore >= 60
+                  ? [`Some segments flowed smoothly`]
+                  : [])
+          : [],
+        incorrect: smoothnessScore < 10
+          ? [`Too many pauses interrupt the flow throughout the sentence`, `Speech lacks fluency`, `Multiple hesitations detected`]
+          : smoothnessScore < 90
+            ? smoothnessScore >= 70
+              ? [`There are some brief pauses that interrupt the flow`]
+              : [`Too many pauses interrupt the flow`]
+            : [],
+        improvement: smoothnessScore < 10
+          ? [`Practice speaking without hesitations`, `Increase fluency`, `Work on connecting words smoothly`, `Record yourself and focus on reducing pauses`, `Practice linking words together`, `Focus on eliminating breaks between words`]
+          : smoothnessScore < 70
+            ? [`Practice speaking without hesitations`, `Increase fluency`, `Work on connecting words smoothly`, `Record yourself and focus on reducing pauses`]
+            : smoothnessScore < 90
+              ? [`Practice speaking without hesitations`, `Increase fluency`, `Work on connecting words smoothly`]
+              : []
       }
     },
     correctSpeed: {
       score: correctSpeedScore,
       feedback: {
-        correct: correctSpeedScore >= 70 ? [`Pace is appropriate`] : [],
-        incorrect: correctSpeedScore < 70 ? [`Adjust speaking speed`] : [],
-        improvement: correctSpeedScore < 80 ? correctSpeedScore < 60
-          ? [`Match natural German pace`, `Practice timing`, `Record yourself and compare with native speakers`]
-          : [`Match natural German pace`, `Practice timing`] : []
+        correct: correctSpeedScore >= 10
+          ? (correctSpeedScore >= 90
+              ? [`Pace is excellent`]
+              : correctSpeedScore >= 70
+                ? [`Pace is mostly appropriate`]
+                : correctSpeedScore >= 60
+                  ? [`Some parts match a natural pace`]
+                  : [])
+          : [],
+        incorrect: correctSpeedScore < 10
+          ? [`Speaking speed throughout the sentence needs significant adjustment`, `Pace is too fast or too slow`, `Speed does not match natural German speaking pace`]
+          : correctSpeedScore < 90
+            ? correctSpeedScore >= 70
+              ? [`The speed drifts slightly faster or slower in places`]
+              : [`Speaking speed needs adjustment`]
+            : [],
+        improvement: correctSpeedScore < 10
+          ? [`Match natural German pace`, `Practice timing`, `Record yourself and compare with native speakers`, `Count a steady beat to keep pace consistent`, `Use a metronome to practice consistent pace`, `Slow down and focus on clarity first`]
+          : correctSpeedScore < 70
+            ? [`Match natural German pace`, `Practice timing`, `Record yourself and compare with native speakers`, `Count a steady beat to keep pace consistent`]
+            : correctSpeedScore < 90
+              ? [`Match natural German pace`, `Practice timing`, `Record yourself and compare with native speakers`]
+              : []
       }
     },
     intonationRhythm: {
       score: intonationRhythmScore,
       feedback: {
-        correct: intonationRhythmScore >= 70 ? [`Good intonation`] : [],
-        incorrect: intonationRhythmScore < 70 ? [`Intonation needs work`] : [],
-        improvement: intonationRhythmScore < 80 ? intonationRhythmScore < 60
-          ? [`Practice speech melody`, `Focus on rhythm`, `Work on natural speech flow`]
-          : [`Practice speech melody`, `Focus on rhythm`] : []
+        correct: intonationRhythmScore >= 10
+          ? (intonationRhythmScore >= 90
+              ? [`Intonation and rhythm are excellent`]
+              : intonationRhythmScore >= 70
+                ? [`Good intonation in most parts`]
+                : intonationRhythmScore >= 60
+                  ? [`You followed the German melody in some phrases`]
+                  : [])
+          : [],
+        incorrect: intonationRhythmScore < 10
+          ? [`Intonation and rhythm throughout the sentence need significant work`, `Speech melody is incorrect`, `Rhythm patterns are not matching natural German speech`]
+          : intonationRhythmScore < 90
+            ? intonationRhythmScore >= 70
+              ? [`The pitch contour flattens in parts of the sentence`]
+              : [`Intonation and rhythm need significant work`]
+            : [],
+        improvement: intonationRhythmScore < 10
+          ? [`Practice speech melody`, `Focus on rhythm`, `Work on natural speech flow`, `Exaggerate rises and falls as you practice`, `Shadow a native recording to copy rhythm and pitch`, `Listen to native speakers and mimic their intonation patterns`]
+          : intonationRhythmScore < 70
+            ? [`Practice speech melody`, `Focus on rhythm`, `Work on natural speech flow`, `Exaggerate rises and falls as you practice`, `Shadow a native recording to copy rhythm and pitch`]
+            : intonationRhythmScore < 90
+              ? [`Practice speech melody`, `Focus on rhythm`, `Work on natural speech flow`]
+              : []
       }
     },
     understandability: {
       score: understandabilityScore,
       feedback: {
-        correct: understandabilityScore >= 75 ? [`Speech is clear and understandable`] : [],
-        incorrect: understandabilityScore < 75 ? [`Could be clearer`] : [],
-        improvement: understandabilityScore < 80 ? understandabilityScore < 60
-          ? [`Focus on clarity`, `Practice articulation`, `Speak more clearly and distinctly`]
-          : [`Focus on clarity`, `Practice articulation`] : []
+        correct: understandabilityScore >= 10
+          ? (understandabilityScore >= 90
+              ? [`Speech is very clear and understandable`]
+              : understandabilityScore >= 70
+                ? [`Speech is mostly clear and understandable`]
+                : understandabilityScore >= 60
+                  ? [`Most of the sentence remains understandable`]
+                  : [])
+          : [],
+        incorrect: understandabilityScore < 10
+          ? [`Several parts of the sentence are hard to understand`, `Pronunciation needs significant improvement for clarity`, `Focus on making each sound distinct and clear`]
+          : understandabilityScore < 90
+            ? understandabilityScore >= 70
+              ? [`Some parts could be clearer`]
+              : [`Several parts are hard to understand`]
+            : [],
+        improvement: understandabilityScore < 10
+          ? [`Focus on clarity`, `Practice articulation`, `Speak more clearly and distinctly`, `Enunciate syllables more clearly`, `Open your mouth a bit more and slow down difficult parts`, `Record yourself and compare with native speakers`]
+          : understandabilityScore < 70
+            ? [`Focus on clarity`, `Practice articulation`, `Speak more clearly and distinctly`, `Enunciate syllables more clearly`, `Open your mouth a bit more and slow down difficult parts`]
+            : understandabilityScore < 90
+              ? [`Focus on clarity`, `Practice articulation`, `Speak more clearly and distinctly`]
+              : []
       }
     }
   }
@@ -606,49 +774,98 @@ function generateMockResponse(words: string[], transcription: string) {
         soundAccuracy: {
           score: soundAccuracy,
           feedback: {
-            correct: soundAccuracy >= 70 ? [`Correct pronunciation of sounds in "${word}"`] : [],
-            incorrect: soundAccuracy < 70 ? [`Some sounds need improvement in "${word}"`] : [],
-            improvement: soundAccuracy < 70 ? [`Practice individual sounds more slowly`, `Listen to native pronunciation`] : []
+            // For scores 0-9: NO positive feedback
+            correct: soundAccuracy >= 10 ? (soundAccuracy >= 70 ? [`Correct pronunciation of sounds in "${word}"`] : []) : [],
+            incorrect: soundAccuracy < 10 
+              ? [`Sounds in "${word}" were not pronounced correctly`, `Pronunciation needs significant improvement`]
+              : soundAccuracy < 70 
+                ? [`Some sounds need improvement in "${word}"`] 
+                : [],
+            improvement: soundAccuracy < 10
+              ? [`Practice individual sounds very slowly`, `Listen to native pronunciation multiple times`, `Focus on correct articulation`]
+              : soundAccuracy < 70
+                ? [`Practice individual sounds more slowly`, `Listen to native pronunciation`]
+                : []
           }
         },
         stressEmphasis: {
           score: stressEmphasis,
           feedback: {
-            correct: stressEmphasis >= 70 ? [`Good stress placement`] : [],
-            incorrect: stressEmphasis < 70 ? [`Stress on wrong syllable`] : [],
-            improvement: stressEmphasis < 70 ? [`Focus on correct syllable stress`, `Practice word stress patterns`] : []
+            correct: stressEmphasis >= 10 ? (stressEmphasis >= 70 ? [`Good stress placement`] : []) : [],
+            incorrect: stressEmphasis < 10
+              ? [`Stress placement on "${word}" is incorrect`, `Syllable stress needs significant improvement`]
+              : stressEmphasis < 70
+                ? [`Stress on wrong syllable`]
+                : [],
+            improvement: stressEmphasis < 10
+              ? [`Focus on correct syllable stress`, `Practice word stress patterns repeatedly`, `Listen carefully to native speakers`]
+              : stressEmphasis < 70
+                ? [`Focus on correct syllable stress`, `Practice word stress patterns`]
+                : []
           }
         },
         smoothness: {
           score: smoothness,
           feedback: {
-            correct: smoothness >= 70 ? [`Smooth flow without hesitations`] : [],
-            incorrect: smoothness < 70 ? [`Unnatural pauses detected`] : [],
-            improvement: smoothness < 70 ? [`Practice speaking more fluidly`, `Reduce hesitations`] : []
+            correct: smoothness >= 10 ? (smoothness >= 70 ? [`Smooth flow without hesitations`] : []) : [],
+            incorrect: smoothness < 10
+              ? [`Flow in "${word}" is not smooth`, `Multiple hesitations and pauses detected`]
+              : smoothness < 70
+                ? [`Unnatural pauses detected`]
+                : [],
+            improvement: smoothness < 10
+              ? [`Practice speaking more fluidly`, `Reduce hesitations significantly`, `Work on connecting sounds smoothly`]
+              : smoothness < 70
+                ? [`Practice speaking more fluidly`, `Reduce hesitations`]
+                : []
           }
         },
         correctSpeed: {
           score: correctSpeed,
           feedback: {
-            correct: correctSpeed >= 70 ? [`Appropriate speaking pace`] : [],
-            incorrect: correctSpeed < 70 ? [`Speaking too fast or too slow`] : [],
-            improvement: correctSpeed < 70 ? [`Match natural German speaking pace`, `Practice with timing`] : []
+            correct: correctSpeed >= 10 ? (correctSpeed >= 70 ? [`Appropriate speaking pace`] : []) : [],
+            incorrect: correctSpeed < 10
+              ? [`Speaking pace for "${word}" is inappropriate`, `Speed needs significant adjustment`]
+              : correctSpeed < 70
+                ? [`Speaking too fast or too slow`]
+                : [],
+            improvement: correctSpeed < 10
+              ? [`Match natural German speaking pace`, `Practice with timing`, `Record yourself and compare`]
+              : correctSpeed < 70
+                ? [`Match natural German speaking pace`, `Practice with timing`]
+                : []
           }
         },
         intonationRhythm: {
           score: intonationRhythm,
           feedback: {
-            correct: intonationRhythm >= 70 ? [`Good speech melody`] : [],
-            incorrect: intonationRhythm < 70 ? [`Intonation needs work`] : [],
-            improvement: intonationRhythm < 70 ? [`Practice rising and falling tones`, `Match German rhythm patterns`] : []
+            correct: intonationRhythm >= 10 ? (intonationRhythm >= 70 ? [`Good speech melody`] : []) : [],
+            incorrect: intonationRhythm < 10
+              ? [`Intonation and rhythm for "${word}" need significant work`, `Speech melody is incorrect`]
+              : intonationRhythm < 70
+                ? [`Intonation needs work`]
+                : [],
+            improvement: intonationRhythm < 10
+              ? [`Practice rising and falling tones`, `Match German rhythm patterns`, `Focus on natural speech flow`]
+              : intonationRhythm < 70
+                ? [`Practice rising and falling tones`, `Match German rhythm patterns`]
+                : []
           }
         },
         understandability: {
           score: understandability,
           feedback: {
-            correct: understandability >= 70 ? [`Clear and understandable`] : [],
-            incorrect: understandability < 70 ? [`Could be clearer`] : [],
-            improvement: understandability < 70 ? [`Focus on clarity`, `Practice articulation`] : []
+            correct: understandability >= 10 ? (understandability >= 70 ? [`Clear and understandable`] : []) : [],
+            incorrect: understandability < 10
+              ? [`"${word}" is not clear or understandable`, `Pronunciation needs significant improvement for clarity`]
+              : understandability < 70
+                ? [`Could be clearer`]
+                : [],
+            improvement: understandability < 10
+              ? [`Focus on clarity`, `Practice articulation`, `Speak more clearly and distinctly`]
+              : understandability < 70
+                ? [`Focus on clarity`, `Practice articulation`]
+                : []
           }
         }
       }
@@ -661,65 +878,194 @@ function generateMockResponse(words: string[], transcription: string) {
   );
 
   // Calculate sentence-level dimension scores (averages of word scores)
+  // Use same comprehensive feedback logic as main API
+  const soundAccuracyScore = Math.round(
+    wordAnalyses.reduce((sum, w) => sum + w.dimensions.soundAccuracy.score, 0) / wordAnalyses.length
+  );
+  const stressEmphasisScore = Math.round(
+    wordAnalyses.reduce((sum, w) => sum + w.dimensions.stressEmphasis.score, 0) / wordAnalyses.length
+  );
+  const smoothnessScore = Math.round(
+    wordAnalyses.reduce((sum, w) => sum + w.dimensions.smoothness.score, 0) / wordAnalyses.length
+  );
+  const correctSpeedScore = Math.round(
+    wordAnalyses.reduce((sum, w) => sum + w.dimensions.correctSpeed.score, 0) / wordAnalyses.length
+  );
+  const intonationRhythmScore = Math.round(
+    wordAnalyses.reduce((sum, w) => sum + w.dimensions.intonationRhythm.score, 0) / wordAnalyses.length
+  );
+  const understandabilityScore = Math.round(
+    wordAnalyses.reduce((sum, w) => sum + w.dimensions.understandability.score, 0) / wordAnalyses.length
+  );
+
   const sentenceDimensions = {
     soundAccuracy: {
-      score: Math.round(
-        wordAnalyses.reduce((sum, w) => sum + w.dimensions.soundAccuracy.score, 0) / wordAnalyses.length
-      ),
+      score: soundAccuracyScore,
       feedback: {
-        correct: overallScore >= 75 ? [`Overall sound accuracy is good`] : [],
-        incorrect: overallScore < 75 ? [`Some sounds need improvement throughout the sentence`] : [],
-        improvement: overallScore < 75 ? [`Practice difficult sounds individually`, `Focus on clarity`] : []
+        // For scores 0-9: NO positive feedback
+        correct: soundAccuracyScore >= 10
+          ? (soundAccuracyScore >= 90 
+              ? [`Overall sound accuracy is excellent`]
+              : soundAccuracyScore >= 70 
+                ? [`Some sounds were articulated clearly`]
+                : soundAccuracyScore >= 60
+                  ? [`A few sounds were pronounced correctly`]
+                  : [])
+          : [],
+        incorrect: soundAccuracyScore < 10
+          ? [`Sounds throughout the sentence were not pronounced correctly`, `Pronunciation needs significant improvement`, `Focus on articulating each sound clearly throughout the sentence`]
+          : soundAccuracyScore < 90
+            ? soundAccuracyScore >= 70
+              ? [`Some sounds need improvement throughout the sentence`]
+              : [`Many sounds need improvement throughout the sentence`]
+            : [],
+        improvement: soundAccuracyScore < 10
+          ? [`Practice difficult sounds individually`, `Focus on clarity`, `Work on articulation throughout the sentence`, `Listen to native pronunciation and mimic the mouth shape`, `Break down difficult words into individual sounds`, `Record yourself and compare with native speakers`]
+          : soundAccuracyScore < 70
+            ? [`Practice difficult sounds individually`, `Focus on clarity`, `Work on articulation throughout the sentence`, `Listen to native pronunciation and mimic the mouth shape`]
+            : soundAccuracyScore < 90
+              ? [`Practice difficult sounds individually`, `Focus on clarity`, `Work on articulation throughout the sentence`]
+              : []
       }
     },
     stressEmphasis: {
-      score: Math.round(
-        wordAnalyses.reduce((sum, w) => sum + w.dimensions.stressEmphasis.score, 0) / wordAnalyses.length
-      ),
+      score: stressEmphasisScore,
       feedback: {
-        correct: overallScore >= 75 ? [`Stress patterns are correct`] : [],
-        incorrect: overallScore < 75 ? [`Work on syllable stress`] : [],
-        improvement: overallScore < 75 ? [`Practice word stress patterns`, `Listen to native speakers`] : []
+        correct: stressEmphasisScore >= 10
+          ? (stressEmphasisScore >= 90
+              ? [`Stress patterns are excellent`]
+              : stressEmphasisScore >= 70
+                ? [`Stress patterns are mostly correct`]
+                : stressEmphasisScore >= 60
+                  ? [`Some stress patterns were correct`]
+                  : [])
+          : [],
+        incorrect: stressEmphasisScore < 10
+          ? [`Syllable stress throughout the sentence needs significant improvement`, `Stress placement is incorrect`, `Focus on identifying and using correct stressed syllables`]
+          : stressEmphasisScore < 90
+            ? stressEmphasisScore >= 70
+              ? [`Some syllable stress needs work`]
+              : [`Syllable stress needs significant improvement`]
+            : [],
+        improvement: stressEmphasisScore < 10
+          ? [`Practice word stress patterns`, `Listen to native speakers`, `Focus on correct syllable emphasis`, `Tap the beat while speaking to lock in stressed syllables`, `Practice with emphasis on the correct syllables`, `Record yourself and compare stress patterns`]
+          : stressEmphasisScore < 70
+            ? [`Practice word stress patterns`, `Listen to native speakers`, `Focus on correct syllable emphasis`, `Tap the beat while speaking to lock in stressed syllables`]
+            : stressEmphasisScore < 90
+              ? [`Practice word stress patterns`, `Listen to native speakers`, `Focus on correct syllable emphasis`]
+              : []
       }
     },
     smoothness: {
-      score: Math.round(
-        wordAnalyses.reduce((sum, w) => sum + w.dimensions.smoothness.score, 0) / wordAnalyses.length
-      ),
+      score: smoothnessScore,
       feedback: {
-        correct: overallScore >= 75 ? [`Speech flows smoothly`] : [],
-        incorrect: overallScore < 75 ? [`Too many pauses`] : [],
-        improvement: overallScore < 75 ? [`Practice speaking without hesitations`, `Increase fluency`] : []
+        correct: smoothnessScore >= 10
+          ? (smoothnessScore >= 90
+              ? [`Speech flows very smoothly`]
+              : smoothnessScore >= 70
+                ? [`Speech flows smoothly in most parts`]
+                : smoothnessScore >= 60
+                  ? [`Some segments flowed smoothly`]
+                  : [])
+          : [],
+        incorrect: smoothnessScore < 10
+          ? [`Too many pauses interrupt the flow throughout the sentence`, `Speech lacks fluency`, `Multiple hesitations detected`]
+          : smoothnessScore < 90
+            ? smoothnessScore >= 70
+              ? [`There are some brief pauses that interrupt the flow`]
+              : [`Too many pauses interrupt the flow`]
+            : [],
+        improvement: smoothnessScore < 10
+          ? [`Practice speaking without hesitations`, `Increase fluency`, `Work on connecting words smoothly`, `Record yourself and focus on reducing pauses`, `Practice linking words together`, `Focus on eliminating breaks between words`]
+          : smoothnessScore < 70
+            ? [`Practice speaking without hesitations`, `Increase fluency`, `Work on connecting words smoothly`, `Record yourself and focus on reducing pauses`]
+            : smoothnessScore < 90
+              ? [`Practice speaking without hesitations`, `Increase fluency`, `Work on connecting words smoothly`]
+              : []
       }
     },
     correctSpeed: {
-      score: Math.round(
-        wordAnalyses.reduce((sum, w) => sum + w.dimensions.correctSpeed.score, 0) / wordAnalyses.length
-      ),
+      score: correctSpeedScore,
       feedback: {
-        correct: overallScore >= 75 ? [`Pace is appropriate`] : [],
-        incorrect: overallScore < 75 ? [`Adjust speaking speed`] : [],
-        improvement: overallScore < 75 ? [`Match natural German pace`, `Practice timing`] : []
+        correct: correctSpeedScore >= 10
+          ? (correctSpeedScore >= 90
+              ? [`Pace is excellent`]
+              : correctSpeedScore >= 70
+                ? [`Pace is mostly appropriate`]
+                : correctSpeedScore >= 60
+                  ? [`Some parts match a natural pace`]
+                  : [])
+          : [],
+        incorrect: correctSpeedScore < 10
+          ? [`Speaking speed throughout the sentence needs significant adjustment`, `Pace is too fast or too slow`, `Speed does not match natural German speaking pace`]
+          : correctSpeedScore < 90
+            ? correctSpeedScore >= 70
+              ? [`The speed drifts slightly faster or slower in places`]
+              : [`Speaking speed needs adjustment`]
+            : [],
+        improvement: correctSpeedScore < 10
+          ? [`Match natural German pace`, `Practice timing`, `Record yourself and compare with native speakers`, `Count a steady beat to keep pace consistent`, `Use a metronome to practice consistent pace`, `Slow down and focus on clarity first`]
+          : correctSpeedScore < 70
+            ? [`Match natural German pace`, `Practice timing`, `Record yourself and compare with native speakers`, `Count a steady beat to keep pace consistent`]
+            : correctSpeedScore < 90
+              ? [`Match natural German pace`, `Practice timing`, `Record yourself and compare with native speakers`]
+              : []
       }
     },
     intonationRhythm: {
-      score: Math.round(
-        wordAnalyses.reduce((sum, w) => sum + w.dimensions.intonationRhythm.score, 0) / wordAnalyses.length
-      ),
+      score: intonationRhythmScore,
       feedback: {
-        correct: overallScore >= 75 ? [`Good intonation`] : [],
-        incorrect: overallScore < 75 ? [`Intonation needs work`] : [],
-        improvement: overallScore < 75 ? [`Practice speech melody`, `Focus on rhythm`] : []
+        correct: intonationRhythmScore >= 10
+          ? (intonationRhythmScore >= 90
+              ? [`Intonation and rhythm are excellent`]
+              : intonationRhythmScore >= 70
+                ? [`Good intonation in most parts`]
+                : intonationRhythmScore >= 60
+                  ? [`You followed the German melody in some phrases`]
+                  : [])
+          : [],
+        incorrect: intonationRhythmScore < 10
+          ? [`Intonation and rhythm throughout the sentence need significant work`, `Speech melody is incorrect`, `Rhythm patterns are not matching natural German speech`]
+          : intonationRhythmScore < 90
+            ? intonationRhythmScore >= 70
+              ? [`The pitch contour flattens in parts of the sentence`]
+              : [`Intonation and rhythm need significant work`]
+            : [],
+        improvement: intonationRhythmScore < 10
+          ? [`Practice speech melody`, `Focus on rhythm`, `Work on natural speech flow`, `Exaggerate rises and falls as you practice`, `Shadow a native recording to copy rhythm and pitch`, `Listen to native speakers and mimic their intonation patterns`]
+          : intonationRhythmScore < 70
+            ? [`Practice speech melody`, `Focus on rhythm`, `Work on natural speech flow`, `Exaggerate rises and falls as you practice`, `Shadow a native recording to copy rhythm and pitch`]
+            : intonationRhythmScore < 90
+              ? [`Practice speech melody`, `Focus on rhythm`, `Work on natural speech flow`]
+              : []
       }
     },
     understandability: {
-      score: Math.round(
-        wordAnalyses.reduce((sum, w) => sum + w.dimensions.understandability.score, 0) / wordAnalyses.length
-      ),
+      score: understandabilityScore,
       feedback: {
-        correct: overallScore >= 75 ? [`Speech is clear and understandable`] : [],
-        incorrect: overallScore < 75 ? [`Could be clearer`] : [],
-        improvement: overallScore < 75 ? [`Focus on clarity`, `Practice articulation`] : []
+        correct: understandabilityScore >= 10
+          ? (understandabilityScore >= 90
+              ? [`Speech is very clear and understandable`]
+              : understandabilityScore >= 70
+                ? [`Speech is mostly clear and understandable`]
+                : understandabilityScore >= 60
+                  ? [`Most of the sentence remains understandable`]
+                  : [])
+          : [],
+        incorrect: understandabilityScore < 10
+          ? [`Several parts of the sentence are hard to understand`, `Pronunciation needs significant improvement for clarity`, `Focus on making each sound distinct and clear`]
+          : understandabilityScore < 90
+            ? understandabilityScore >= 70
+              ? [`Some parts could be clearer`]
+              : [`Several parts are hard to understand`]
+            : [],
+        improvement: understandabilityScore < 10
+          ? [`Focus on clarity`, `Practice articulation`, `Speak more clearly and distinctly`, `Enunciate syllables more clearly`, `Open your mouth a bit more and slow down difficult parts`, `Record yourself and compare with native speakers`]
+          : understandabilityScore < 70
+            ? [`Focus on clarity`, `Practice articulation`, `Speak more clearly and distinctly`, `Enunciate syllables more clearly`, `Open your mouth a bit more and slow down difficult parts`]
+            : understandabilityScore < 90
+              ? [`Focus on clarity`, `Practice articulation`, `Speak more clearly and distinctly`]
+              : []
       }
     }
   };

@@ -1883,6 +1883,117 @@ export default function Toolbar({
       
       const analysisData = await analysisResponse.json();
       console.log('📊 Analysis result:', analysisData);
+      console.log('📊 Words in analysis result:', analysisData.words?.length || 0);
+      
+      // Ensure word-level scores are properly calculated from dimensions if missing or 0
+      if (analysisData.words && Array.isArray(analysisData.words)) {
+        console.log('🔍 Processing word-level scores...');
+        analysisData.words = analysisData.words.map((word: any) => {
+          let wordScore = word.score || 0;
+          
+          // Calculate score from dimensions if score is missing, 0, or dimensions exist
+          if (word.dimensions && (wordScore === 0 || !wordScore)) {
+            const dimensionScores = [
+              word.dimensions.soundAccuracy?.score || 0,
+              word.dimensions.stressEmphasis?.score || 0,
+              word.dimensions.smoothness?.score || 0,
+              word.dimensions.correctSpeed?.score || 0,
+              word.dimensions.intonationRhythm?.score || 0,
+              word.dimensions.understandability?.score || 0
+            ];
+            
+            // Calculate average of dimension scores
+            const calculatedScore = Math.round(
+              dimensionScores.reduce((sum: number, score: number) => sum + score, 0) / dimensionScores.length
+            );
+            
+            wordScore = calculatedScore;
+            console.log(`✅ Calculated word score for "${word.word}" from dimensions:`, calculatedScore);
+            console.log(`📊 Dimension scores for "${word.word}":`, dimensionScores);
+          } else if (word.dimensions && wordScore > 0) {
+            // Verify score matches dimensions (recalculate to ensure accuracy)
+            const dimensionScores = [
+              word.dimensions.soundAccuracy?.score || 0,
+              word.dimensions.stressEmphasis?.score || 0,
+              word.dimensions.smoothness?.score || 0,
+              word.dimensions.correctSpeed?.score || 0,
+              word.dimensions.intonationRhythm?.score || 0,
+              word.dimensions.understandability?.score || 0
+            ];
+            
+            const calculatedScore = Math.round(
+              dimensionScores.reduce((sum: number, score: number) => sum + score, 0) / dimensionScores.length
+            );
+            
+            // Use calculated score to ensure accuracy
+            wordScore = calculatedScore;
+            console.log(`✅ Verified/recalculated word score for "${word.word}":`, calculatedScore);
+          }
+          
+          // Ensure word has proper structure with score
+          return {
+            ...word,
+            score: wordScore,
+            needsPractice: wordScore < 75,
+            // Ensure dimensions exist
+            dimensions: word.dimensions || {
+              soundAccuracy: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } },
+              stressEmphasis: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } },
+              smoothness: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } },
+              correctSpeed: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } },
+              intonationRhythm: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } },
+              understandability: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } }
+            }
+          };
+        });
+        
+        console.log('✅ Processed all word-level scores');
+        console.log('📊 Word scores:', analysisData.words.map((w: any) => ({ word: w.word, score: w.score })));
+        
+        // Ensure ALL words from the expected sentence are included
+        // If some words are missing from the API response, create placeholder entries for them
+        const expectedText = currentMessage || lastGermanVoiceMessage?.transcription || pendingPronunciationAnalysis?.text || '';
+        if (expectedText) {
+          const expectedWordsList = expectedText.split(' ').filter(w => w.length > 0).map(w => 
+            w.toLowerCase().replace(/[.,!?;:]/g, '').trim()
+          );
+          
+          // Normalize API word list for comparison
+          const apiWordsSet = new Set(analysisData.words.map((w: any) => 
+            w.word.toLowerCase().replace(/[.,!?;:]/g, '').trim()
+          ));
+          
+          // Find missing words and create placeholder entries for them
+          expectedWordsList.forEach((expectedWord, index) => {
+            if (!apiWordsSet.has(expectedWord)) {
+              // Create placeholder word entry with low score (Red rating)
+              // This ensures all words are clickable and show scores
+              const placeholderWord: any = {
+                word: expectedText.split(' ')[index] || expectedWord, // Use original word with punctuation
+                score: 45, // Low score (Red rating) for undetected words
+                needsPractice: true,
+                feedback: `"${expectedWord}" was not detected in the recording. Please speak clearly and try again.`,
+                dimensions: {
+                  soundAccuracy: { score: 45, feedback: { correct: [], incorrect: [`Word "${expectedWord}" was not clearly pronounced`], improvement: ['Practice speaking this word more clearly', 'Ensure all words are spoken'] } },
+                  stressEmphasis: { score: 50, feedback: { correct: [], incorrect: ['Word not detected'], improvement: ['Focus on clear pronunciation'] } },
+                  smoothness: { score: 50, feedback: { correct: [], incorrect: ['Word not detected'], improvement: ['Ensure smooth flow'] } },
+                  correctSpeed: { score: 50, feedback: { correct: [], incorrect: ['Word not detected'], improvement: ['Practice timing'] } },
+                  intonationRhythm: { score: 50, feedback: { correct: [], incorrect: ['Word not detected'], improvement: ['Practice rhythm'] } },
+                  understandability: { score: 40, feedback: { correct: [], incorrect: [`Word "${expectedWord}" was not understandable`], improvement: ['Speak more clearly', 'Practice pronunciation'] } }
+                }
+              };
+              
+              analysisData.words.push(placeholderWord);
+              console.log(`⚠️ Created placeholder word entry for missing word: "${expectedWord}"`);
+            }
+          });
+          
+          console.log('✅ Verified all expected words are included in analysis');
+          console.log('📊 Total words in analysis:', analysisData.words.length);
+        }
+      } else {
+        console.warn('⚠️ No words array found in analysis result');
+      }
       
       // Ensure sentence score is calculated from dimensions if missing or 0 or incorrect
       if (analysisData.sentenceDimensions) {

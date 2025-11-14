@@ -90,6 +90,71 @@ const dimensionFeedbackFallbacks: Record<
   }
 };
 
+// Sentence-level dimension feedback fallbacks (similar structure but for sentence-level)
+const sentenceDimensionFeedbackFallbacks: Record<
+  DimensionKey,
+  {
+    positive: string;
+    needs: string;
+    tips: string[];
+  }
+> = {
+  soundAccuracy: {
+    positive: 'Some sounds were articulated clearly throughout the sentence.',
+    needs: 'Some sounds need improvement throughout the sentence.',
+    tips: [
+      'Practice difficult sounds individually',
+      'Focus on clarity',
+      'Work on articulation throughout the sentence'
+    ]
+  },
+  stressEmphasis: {
+    positive: 'Stress patterns are mostly correct.',
+    needs: 'Some syllable stress needs work.',
+    tips: [
+      'Practice word stress patterns',
+      'Listen to native speakers',
+      'Focus on correct syllable emphasis'
+    ]
+  },
+  smoothness: {
+    positive: 'Speech flows smoothly in most parts.',
+    needs: 'There are some brief pauses that interrupt the flow.',
+    tips: [
+      'Practice speaking without hesitations',
+      'Increase fluency',
+      'Work on connecting words smoothly'
+    ]
+  },
+  correctSpeed: {
+    positive: 'Pace is mostly appropriate.',
+    needs: 'The speed drifts slightly faster or slower in places.',
+    tips: [
+      'Match natural German pace',
+      'Practice timing',
+      'Record yourself and compare with native speakers'
+    ]
+  },
+  intonationRhythm: {
+    positive: 'Good intonation in most parts.',
+    needs: 'The pitch contour flattens in parts of the sentence.',
+    tips: [
+      'Practice speech melody',
+      'Focus on rhythm',
+      'Work on natural speech flow'
+    ]
+  },
+  understandability: {
+    positive: 'Speech is mostly clear and understandable.',
+    needs: 'Some parts could be clearer.',
+    tips: [
+      'Focus on clarity',
+      'Practice articulation',
+      'Speak more clearly and distinctly'
+    ]
+  }
+};
+
 interface WordDetailsProps {
   word: PronunciationWord;
   onRepractice: () => void;
@@ -197,12 +262,16 @@ const WordDetails: React.FC<WordDetailsProps> = ({
                 const fallback = dimensionFeedbackFallbacks[dimKey];
                 const needsAttention = dimension.score < 90;
 
+                // For scores 0-9: NO positive feedback
+                const isZeroToNine = dimension.score >= 0 && dimension.score <= 9;
                 const correctFeedback =
-                  dimension.feedback.correct.length > 0
-                    ? dimension.feedback.correct
-                    : needsAttention
-                    ? [fallback.positive]
-                    : [];
+                  isZeroToNine
+                    ? [] // No positive feedback for scores 0-9
+                    : dimension.feedback.correct.length > 0
+                      ? dimension.feedback.correct
+                      : needsAttention && dimension.score >= 10
+                        ? [fallback.positive]
+                        : [];
 
                 const needsFeedback = [...dimension.feedback.incorrect];
                 if (needsAttention && needsFeedback.length === 0) {
@@ -399,6 +468,33 @@ const SentenceDetails: React.FC<SentenceDetailsProps> = ({ pronunciationData, on
               {Object.entries(pronunciationData.sentenceDimensions).map(([key, dimension]) => {
                 const dimKey = key as DimensionKey;
                 const dimColors = getRAGColor(dimension.score);
+                const fallback = sentenceDimensionFeedbackFallbacks[dimKey];
+                const needsAttention = dimension.score < 90;
+                
+                // For Amber/Red dimensions, ensure comprehensive feedback is shown
+                // Use API feedback if available, otherwise use fallbacks
+                // For scores 0-9: NO positive feedback
+                const isZeroToNine = dimension.score >= 0 && dimension.score <= 9;
+                const correctFeedback = isZeroToNine
+                  ? [] // No positive feedback for scores 0-9
+                  : dimension.feedback.correct.length > 0
+                    ? dimension.feedback.correct
+                    : needsAttention && dimension.score >= 10 && dimension.score >= 60
+                      ? [fallback.positive]
+                      : [];
+                
+                const needsFeedback = dimension.feedback.incorrect.length > 0
+                  ? dimension.feedback.incorrect
+                  : needsAttention
+                    ? [fallback.needs]
+                    : [];
+
+                const improvementFeedback = dimension.feedback.improvement.length > 0
+                  ? dimension.feedback.improvement
+                  : needsAttention
+                    ? fallback.tips
+                    : [];
+                
                 return (
                   <div key={key} className="border border-gray-200 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
@@ -418,34 +514,34 @@ const SentenceDetails: React.FC<SentenceDetailsProps> = ({ pronunciationData, on
                       />
                     </div>
 
-                    {/* Feedback */}
-                    {dimension.feedback.correct.length > 0 && (
+                    {/* Feedback - Show all three types for Amber/Red dimensions */}
+                    {correctFeedback.length > 0 && (
                       <div className="mb-2">
                         <span className="text-xs font-medium text-green-700">✓ Correct:</span>
                         <ul className="text-xs text-gray-600 mt-1 space-y-1">
-                          {dimension.feedback.correct.map((item, idx) => (
+                          {correctFeedback.map((item, idx) => (
                             <li key={idx}>• {item}</li>
                           ))}
                         </ul>
                       </div>
                     )}
                     
-                    {dimension.feedback.incorrect.length > 0 && (
+                    {needsFeedback.length > 0 && (
                       <div className="mb-2">
                         <span className="text-xs font-medium text-red-700">✗ Needs Improvement:</span>
                         <ul className="text-xs text-gray-600 mt-1 space-y-1">
-                          {dimension.feedback.incorrect.map((item, idx) => (
+                          {needsFeedback.map((item, idx) => (
                             <li key={idx}>• {item}</li>
                           ))}
                         </ul>
                       </div>
                     )}
                     
-                    {dimension.feedback.improvement.length > 0 && (
+                    {improvementFeedback.length > 0 && (
                       <div>
                         <span className="text-xs font-medium text-blue-700">💡 How to Improve:</span>
                         <ul className="text-xs text-gray-600 mt-1 space-y-1">
-                          {dimension.feedback.improvement.map((item, idx) => (
+                          {improvementFeedback.map((item, idx) => (
                             <li key={idx}>• {item}</li>
                           ))}
                         </ul>
@@ -504,23 +600,80 @@ const PronunciationSentenceView: React.FC<PronunciationSentenceViewProps> = ({
   const words = sentence.split(' ').filter(word => word.length > 0);
 
   const getWordScore = (wordText: string): number => {
-    const wordData = pronunciationData.words.find(w => 
-      w.word.toLowerCase() === wordText.toLowerCase().replace(/[.,!?;:]/, '')
+    // Clean the word text for comparison (remove punctuation, lowercase)
+    const cleanWordText = wordText.toLowerCase().replace(/[.,!?;:]/g, '').trim();
+    
+    // Try to find exact match first
+    let wordData = pronunciationData.words.find(w => 
+      w.word.toLowerCase().replace(/[.,!?;:]/g, '').trim() === cleanWordText
     );
-    return wordData?.score || 0;
+    
+    // If no exact match, try partial match (handles cases where API might return slightly different word forms)
+    if (!wordData) {
+      wordData = pronunciationData.words.find(w => {
+        const cleanWord = w.word.toLowerCase().replace(/[.,!?;:]/g, '').trim();
+        return cleanWord === cleanWordText || 
+               cleanWordText.includes(cleanWord) || 
+               cleanWord.includes(cleanWordText);
+      });
+    }
+    
+    // Return score if found, otherwise 0
+    // Always return a number (0 if not found) to ensure scores are displayed
+    const score = wordData?.score ?? 0;
+    
+    // Log if word not found for debugging (only in development or if words exist)
+    if (!wordData && pronunciationData.words.length > 0 && process.env.NODE_ENV === 'development') {
+      console.log(`⚠️ Word "${wordText}" (cleaned: "${cleanWordText}") not found in analysis. Available words:`, 
+        pronunciationData.words.map(w => w.word));
+    }
+    
+    return score;
   };
 
   const handleWordClick = (wordText: string) => {
-    const cleanWord = wordText.replace(/[.,!?;:]/, '');
-    const wordData = pronunciationData.words.find(w => 
-      w.word.toLowerCase() === cleanWord.toLowerCase()
+    // Clean the word text for comparison (remove punctuation, lowercase)
+    const cleanWordText = wordText.toLowerCase().replace(/[.,!?;:]/g, '').trim();
+    
+    // Try to find exact match first
+    let wordData = pronunciationData.words.find(w => 
+      w.word.toLowerCase().replace(/[.,!?;:]/g, '').trim() === cleanWordText
     );
+    
+    // If no exact match, try partial match
+    if (!wordData) {
+      wordData = pronunciationData.words.find(w => {
+        const cleanWord = w.word.toLowerCase().replace(/[.,!?;:]/g, '').trim();
+        return cleanWord === cleanWordText || 
+               cleanWordText.includes(cleanWord) || 
+               cleanWord.includes(cleanWordText);
+      });
+    }
+    
     if (wordData) {
       setSelectedWord(wordData);
       // If dimensions section is collapsed, keep it collapsed but ensure word is visible
     } else {
-      // If word not found in current data, clear selection
-      setSelectedWord(null);
+      // If word not found, create placeholder word data so user can still see details
+      // This ensures all words are clickable and show information
+      const placeholderWord: PronunciationWord = {
+        word: wordText,
+        score: 0, // No score available
+        needsPractice: true,
+        feedback: `Analysis data for "${wordText}" is not yet available. Please ensure this word is included in the sentence when recording.`,
+        dimensions: {
+          soundAccuracy: { score: 0, feedback: { correct: [], incorrect: ['Word not analyzed'], improvement: ['Ensure word is included in recording'] } },
+          stressEmphasis: { score: 0, feedback: { correct: [], incorrect: ['Word not analyzed'], improvement: ['Include word in practice'] } },
+          smoothness: { score: 0, feedback: { correct: [], incorrect: ['Word not analyzed'], improvement: ['Include word in practice'] } },
+          correctSpeed: { score: 0, feedback: { correct: [], incorrect: ['Word not analyzed'], improvement: ['Include word in practice'] } },
+          intonationRhythm: { score: 0, feedback: { correct: [], incorrect: ['Word not analyzed'], improvement: ['Include word in practice'] } },
+          understandability: { score: 0, feedback: { correct: [], incorrect: ['Word not analyzed'], improvement: ['Include word in practice'] } }
+        }
+      };
+      
+      console.log(`⚠️ Word "${wordText}" not found in analysis data. Creating placeholder. Available words:`, 
+        pronunciationData.words.map(w => w.word));
+      setSelectedWord(placeholderWord);
     }
   };
 
@@ -614,22 +767,38 @@ const PronunciationSentenceView: React.FC<PronunciationSentenceViewProps> = ({
             <p className="text-sm text-gray-600 mb-2">Click on any word to see detailed analysis:</p>
             <div className="flex flex-wrap gap-1">
               {words.map((word, index) => {
-                const cleanWord = word.replace(/[.,!?;:]/, '');
+                const cleanWord = word.replace(/[.,!?;:]/g, '');
                 const score = getWordScore(cleanWord);
                 const colors = getRAGColor(score);
+                
+                // Check if word data exists in pronunciationData.words
+                const cleanWordText = cleanWord.toLowerCase().replace(/[.,!?;:]/g, '').trim();
+                const wordData = pronunciationData.words.find(w => {
+                  const cleanApiWord = w.word.toLowerCase().replace(/[.,!?;:]/g, '').trim();
+                  return cleanApiWord === cleanWordText || 
+                         cleanWordText.includes(cleanApiWord) || 
+                         cleanApiWord.includes(cleanWordText);
+                });
+                
+                // Always make words clickable, even if no data exists
+                // If word data doesn't exist, clicking will just not show details (but button is still clickable)
+                const isClickable = true; // All words are clickable
                 
                 return (
                   <div key={index} className="flex items-center gap-1">
                     <button
                       onClick={() => handleWordClick(cleanWord)}
-                      className={`px-3 py-1 rounded-lg border text-sm font-medium hover:shadow-md transition-all ${colors.bg} ${colors.text} ${colors.border}`}
+                      className={`px-3 py-1 rounded-lg border text-sm font-medium hover:shadow-md transition-all ${colors.bg} ${colors.text} ${colors.border} ${
+                        !wordData ? 'opacity-80' : ''
+                      }`}
+                      disabled={false} // Never disable - all words should be clickable
+                      title={wordData ? `Click to see detailed analysis for "${cleanWord}"` : `Word "${cleanWord}" - No analysis data available`}
                     >
                       {word}
-                      {score > 0 && (
-                        <span className="ml-1 text-xs">
-                          ({score})
-                        </span>
-                      )}
+                      {/* Always display score, even if 0 */}
+                      <span className="ml-1 text-xs">
+                        ({score || 0})
+                      </span>
                     </button>
                   </div>
                 );
