@@ -443,7 +443,7 @@ export default function Dashboard({ user }: DashboardProps) {
       setMessageStatus({});
       console.log('✅ === STATES CLEARED FOR NEW CONVERSATION ===');
     }
-  }, [selectedConversation]);
+}, [selectedConversation]);
   const [isSending, setIsSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [translatedMessages, setTranslatedMessages] = useState<{[key: string]: string}>({});
@@ -456,6 +456,15 @@ export default function Dashboard({ user }: DashboardProps) {
   const [showSuggestionTranslation, setShowSuggestionTranslation] = useState<{[key: string]: boolean}>({});
   const [showSuggestions, setShowSuggestions] = useState<{[key: string]: boolean}>({});
   const [showSuggestionsButtonClicked, setShowSuggestionsButtonClicked] = useState<{[key: string]: boolean}>({});
+  React.useEffect(() => {
+    if (selectedConversation) {
+      console.log('🧹 Clearing cached suggested responses for new conversation:', selectedConversation);
+    }
+    setSuggestedResponses({});
+    setShowSuggestions({});
+    setShowSuggestionTranslation({});
+    setShowSuggestionsButtonClicked({});
+  }, [selectedConversation]);
   const [hoveredConversation, setHoveredConversation] = useState<string | null>(null);
   const [showToolbar, setShowToolbar] = useState(false);
   const [currentAIMessage, setCurrentAIMessage] = useState<string>('');
@@ -1141,65 +1150,90 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('Message ID:', messageId);
     
     // Auto-detect most recent bot message if not provided
-    let aiMessage: string;
     const messages = messagesOverride ?? chatMessages;
     const suggestionKey = getSuggestionKey(conversationIdParam, messageId);
+
+    // Locate the assistant message that matches the provided messageId
+    const targetAssistantIndex = messages.findIndex(
+      (msg) => msg.role === 'assistant' && msg.id === messageId
+    );
+    const targetAssistantMessage =
+      targetAssistantIndex >= 0 ? messages[targetAssistantIndex] : undefined;
+
+    let resolvedAssistantIndex = targetAssistantIndex;
+    let aiMessage: string;
 
     if (botMessage) {
       aiMessage = botMessage;
       console.log('Using provided bot message:', aiMessage);
+    } else if (targetAssistantMessage) {
+      aiMessage = targetAssistantMessage.content;
+      console.log('Matched bot message by ID:', { messageId, aiMessage });
     } else {
-      // Find most recent assistant message from chatMessages
-      const assistantMessages = messages.filter(msg => msg.role === 'assistant');
+      // Fall back to most recent assistant message if the specific ID cannot be found
+      const assistantMessages = messages.filter((msg) => msg.role === 'assistant');
       const mostRecentBotMessage = assistantMessages[assistantMessages.length - 1];
-      
+
       if (!mostRecentBotMessage) {
         console.error('❌ No bot message found in chatMessages');
         // Fallback: use generateContextualFallbacks
         const contextualFallbacks = generateContextualFallbacks('');
-        setSuggestedResponses(prev => ({
+        setSuggestedResponses((prev) => ({
           ...prev,
-          [suggestionKey]: contextualFallbacks
+          [suggestionKey]: contextualFallbacks,
         }));
         return;
       }
-      
+
       aiMessage = mostRecentBotMessage.content;
-      console.log('Auto-detected bot message:', aiMessage);
+      resolvedAssistantIndex = messages.findIndex(
+        (msg) => msg === mostRecentBotMessage
+      );
+      console.warn('⚠️ Falling back to most recent bot message due to missing ID match:', {
+        requestedId: messageId,
+        fallbackId: mostRecentBotMessage.id,
+      });
     }
-    
+
     // Enhanced conversation context extraction: Get last 2-3 messages for better context
     let conversationContext: string = userContext || '';
     let conversationHistory: string = '';
-    
-    // Find the current bot message index
-    const currentBotMessageIndex = messages.findIndex(msg => 
-      msg.id === messageId && msg.role === 'assistant'
-    );
-    
-    // Get last 2-3 messages (including current bot message and previous messages)
-    if (currentBotMessageIndex >= 0) {
-      const startIndex = Math.max(0, currentBotMessageIndex - 2);
-      const recentMessages = messages.slice(startIndex, currentBotMessageIndex + 1);
-      conversationHistory = recentMessages.map(msg => 
-        `${msg.role === 'user' ? 'User' : 'Bot'}: ${msg.content}`
-      ).join(' -> ');
+
+    if (resolvedAssistantIndex >= 0) {
+      const startIndex = Math.max(0, resolvedAssistantIndex - 2);
+      const recentMessages = messages.slice(startIndex, resolvedAssistantIndex + 1);
+      conversationHistory = recentMessages
+        .map((msg) => `${msg.role === 'user' ? 'User' : 'Bot'}: ${msg.content}`)
+        .join(' -> ');
       console.log('📜 Conversation history (last 2-3 messages):', conversationHistory);
     }
-    
+
     // Also get initial user context if available (for first message)
     if (!conversationContext) {
-      const firstUserMessage = messages.find(msg => msg.role === 'user');
+      const firstUserMessage = messages.find((msg) => msg.role === 'user');
       if (firstUserMessage) {
         conversationContext = firstUserMessage.content;
         console.log('Using first user message as context:', conversationContext);
       }
     }
-    
+
     // Determine if this is 2nd+ bot message (not the first one)
-    const assistantMessages = messages.filter(msg => msg.role === 'assistant');
-    const isSecondOrSubsequentMessage = assistantMessages.length > 1;
-    console.log('📊 Is 2nd+ bot message:', isSecondOrSubsequentMessage, 'Total assistant messages:', assistantMessages.length);
+    const assistantMessages = messages.filter((msg) => msg.role === 'assistant');
+    let isSecondOrSubsequentMessage = false;
+    if (resolvedAssistantIndex >= 0) {
+      const assistantMessagesUpToTarget = messages
+        .slice(0, resolvedAssistantIndex + 1)
+        .filter((msg) => msg.role === 'assistant');
+      isSecondOrSubsequentMessage = assistantMessagesUpToTarget.length > 1;
+    } else {
+      isSecondOrSubsequentMessage = assistantMessages.length > 1;
+    }
+    console.log(
+      '📊 Is 2nd+ bot message:',
+      isSecondOrSubsequentMessage,
+      'Total assistant messages:',
+      assistantMessages.length
+    );
     
     // Detect question type - expanded readiness detection
     const isReadinessQuestion = /sind.*bereit|bist.*bereit|ready|bereit.*beginnen|bereit.*starten|bereit.*mit|mit.*rollenspiel|rollenspiel.*beginnen|rollenspiel.*starten|möchten.*starten|können.*beginnen|kann.*anfangen|starten.*wir/i.test(aiMessage);
