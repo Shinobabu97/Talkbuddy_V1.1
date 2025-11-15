@@ -1153,59 +1153,97 @@ export default function Dashboard({ user }: DashboardProps) {
     const messages = messagesOverride ?? chatMessages;
     const suggestionKey = getSuggestionKey(conversationIdParam, messageId);
 
-    // Locate the assistant message that matches the provided messageId
-    const targetAssistantIndex = messages.findIndex(
-      (msg) => msg.role === 'assistant' && msg.id === messageId
-    );
-    const targetAssistantMessage =
-      targetAssistantIndex >= 0 ? messages[targetAssistantIndex] : undefined;
-
-    let resolvedAssistantIndex = targetAssistantIndex;
+    // CRITICAL FIX: Always prioritize provided botMessage - it's the most recent bot response
+    let resolvedAssistantIndex = -1;
     let aiMessage: string;
 
     if (botMessage) {
+      // Use provided bot message directly - this ensures we're using the correct, most recent bot response
       aiMessage = botMessage;
-      console.log('Using provided bot message:', aiMessage);
-    } else if (targetAssistantMessage) {
-      aiMessage = targetAssistantMessage.content;
-      console.log('Matched bot message by ID:', { messageId, aiMessage });
-    } else {
-      // Fall back to most recent assistant message if the specific ID cannot be found
-      const assistantMessages = messages.filter((msg) => msg.role === 'assistant');
-      const mostRecentBotMessage = assistantMessages[assistantMessages.length - 1];
-
-      if (!mostRecentBotMessage) {
-        console.error('❌ No bot message found in chatMessages');
-        // Fallback: use generateContextualFallbacks
-        const contextualFallbacks = generateContextualFallbacks('');
-        setSuggestedResponses((prev) => ({
-          ...prev,
-          [suggestionKey]: contextualFallbacks,
-        }));
-        return;
-      }
-
-      aiMessage = mostRecentBotMessage.content;
-      resolvedAssistantIndex = messages.findIndex(
-        (msg) => msg === mostRecentBotMessage
+      console.log('✅ Using provided bot message directly:', aiMessage);
+      
+      // Try to find the message in the array to get its index for conversation history
+      const targetAssistantIndex = messages.findIndex(
+        (msg) => msg.role === 'assistant' && msg.id === messageId
       );
-      console.warn('⚠️ Falling back to most recent bot message due to missing ID match:', {
-        requestedId: messageId,
-        fallbackId: mostRecentBotMessage.id,
-      });
+      if (targetAssistantIndex >= 0) {
+        resolvedAssistantIndex = targetAssistantIndex;
+        console.log('✅ Found bot message in messages array at index:', resolvedAssistantIndex);
+      } else {
+        // If not found, use the last assistant message index as fallback
+        const assistantMessages = messages.filter((msg) => msg.role === 'assistant');
+        if (assistantMessages.length > 0) {
+          const lastAssistantIndex = messages.findIndex(
+            (msg) => msg === assistantMessages[assistantMessages.length - 1]
+          );
+          resolvedAssistantIndex = lastAssistantIndex >= 0 ? lastAssistantIndex : messages.length - 1;
+          console.log('⚠️ Bot message not found by ID, using last assistant message index:', resolvedAssistantIndex);
+        } else {
+          resolvedAssistantIndex = messages.length; // Will be used as end index for history
+          console.log('⚠️ No assistant messages found, using messages.length as index');
+        }
+      }
+    } else {
+      // Fallback: Try to find by messageId
+      const targetAssistantIndex = messages.findIndex(
+        (msg) => msg.role === 'assistant' && msg.id === messageId
+      );
+      const targetAssistantMessage =
+        targetAssistantIndex >= 0 ? messages[targetAssistantIndex] : undefined;
+
+      if (targetAssistantMessage) {
+        aiMessage = targetAssistantMessage.content;
+        resolvedAssistantIndex = targetAssistantIndex;
+        console.log('✅ Matched bot message by ID:', { messageId, aiMessage, index: resolvedAssistantIndex });
+      } else {
+        // Fall back to most recent assistant message if the specific ID cannot be found
+        const assistantMessages = messages.filter((msg) => msg.role === 'assistant');
+        const mostRecentBotMessage = assistantMessages[assistantMessages.length - 1];
+
+        if (!mostRecentBotMessage) {
+          console.error('❌ No bot message found in chatMessages');
+          // Fallback: use generateContextualFallbacks
+          const contextualFallbacks = generateContextualFallbacks('', conversationContext);
+          setSuggestedResponses((prev) => ({
+            ...prev,
+            [suggestionKey]: contextualFallbacks,
+          }));
+          return;
+        }
+
+        aiMessage = mostRecentBotMessage.content;
+        resolvedAssistantIndex = messages.findIndex(
+          (msg) => msg === mostRecentBotMessage
+        );
+        console.warn('⚠️ Falling back to most recent bot message due to missing ID match:', {
+          requestedId: messageId,
+          fallbackId: mostRecentBotMessage.id,
+          index: resolvedAssistantIndex,
+        });
+      }
     }
 
-    // Enhanced conversation context extraction: Get last 2-3 messages for better context
+    // Enhanced conversation context extraction: Get last 4-6 messages for better context (increased from 2-3)
     let conversationContext: string = userContext || '';
     let conversationHistory: string = '';
 
     if (resolvedAssistantIndex >= 0) {
-      const startIndex = Math.max(0, resolvedAssistantIndex - 2);
+      // Include more messages for better context (4-6 messages instead of 2-3)
+      const startIndex = Math.max(0, resolvedAssistantIndex - 4);
       const recentMessages = messages.slice(startIndex, resolvedAssistantIndex + 1);
       conversationHistory = recentMessages
         .map((msg) => `${msg.role === 'user' ? 'User' : 'Bot'}: ${msg.content}`)
         .join(' -> ');
-      console.log('📜 Conversation history (last 2-3 messages):', conversationHistory);
+      console.log('📜 Conversation history (last 4-6 messages):', conversationHistory);
+      console.log('📜 Message count in history:', recentMessages.length);
+    } else if (messages.length > 0) {
+      // Fallback: use last 4-6 messages if index not found
+      const startIndex = Math.max(0, messages.length - 5);
+      const recentMessages = messages.slice(startIndex);
+      conversationHistory = recentMessages
+        .map((msg) => `${msg.role === 'user' ? 'User' : 'Bot'}: ${msg.content}`)
+        .join(' -> ');
+      console.log('📜 Conversation history (fallback, last messages):', conversationHistory);
     }
 
     // Also get initial user context if available (for first message)
@@ -1235,17 +1273,87 @@ export default function Dashboard({ user }: DashboardProps) {
       assistantMessages.length
     );
     
+    // Extract and parse all questions from bot message
+    const extractQuestions = (message: string): { questions: string[], types: string[], topics: string[] } => {
+      const questions: string[] = [];
+      const types: string[] = [];
+      const topics: string[] = [];
+      
+      // Split by question marks to find individual questions
+      const sentences = message.split(/(?<=[?!.])/);
+      
+      sentences.forEach(sentence => {
+        const trimmed = sentence.trim();
+        if (trimmed.includes('?')) {
+          questions.push(trimmed);
+          
+          // Determine question type
+          const lower = trimmed.toLowerCase();
+          if (/was führt|was bringt|was möchten|was willst|was will|worüber|wovon|womit/i.test(lower)) {
+            types.push('what-brings');
+            // Extract topic after "zu mir", "zu Ihnen", etc.
+            const topicMatch = trimmed.match(/(?:zu (?:mir|ihnen|uns)|über|von|mit)\s+([^?]+)/i);
+            if (topicMatch) topics.push(topicMatch[1].trim());
+          } else if (/gibt es|haben sie|hast du|gibt es.*die|gibt es.*die/i.test(lower)) {
+            types.push('yes-no-existence');
+            // Extract what exists/is being asked about
+            const topicMatch = trimmed.match(/gibt es\s+([^?]+)|haben sie\s+([^?]+)|hast du\s+([^?]+)/i);
+            if (topicMatch) {
+              const topic = topicMatch[1] || topicMatch[2] || topicMatch[3];
+              if (topic) topics.push(topic.trim());
+            }
+          } else if (/^was\b/i.test(trimmed)) {
+            types.push('what');
+          } else if (/^wie\b/i.test(trimmed)) {
+            // Check if it's a feeling/emotion question FIRST before generic "how"
+            if (/wie fühl|wie geht es|wie empfind|wie fühlt|geht es dir|geht es ihnen|geht es ihnen|wie gehts/i.test(lower)) {
+              types.push('feeling-emotion');
+              // Extract context (in diesem Moment, jetzt, etc.)
+              const contextMatch = trimmed.match(/(?:in (?:diesem|dem)|jetzt|gerade|momentan|aktuell)/i);
+              if (contextMatch) topics.push(contextMatch[0]);
+            } else {
+              types.push('how');
+            }
+          } else if (/^wo\b/i.test(trimmed)) {
+            types.push('where');
+          } else if (/^wann\b/i.test(trimmed)) {
+            types.push('when');
+          } else if (/^warum\b/i.test(trimmed)) {
+            types.push('why');
+          } else if (/^wer\b/i.test(trimmed)) {
+            types.push('who');
+          } else if (/welche|welcher|welches/i.test(trimmed)) {
+            types.push('which');
+          } else if (/sind sie|bist du|können sie|kannst du|ist|soll|möchten/i.test(lower)) {
+            types.push('yes-no');
+          }
+        }
+      });
+      
+      return { questions, types, topics };
+    };
+    
+    const questionAnalysis = extractQuestions(aiMessage);
+    console.log('📋 Question Analysis:', questionAnalysis);
+    
     // Detect question type - expanded readiness detection
     const isReadinessQuestion = /sind.*bereit|bist.*bereit|ready|bereit.*beginnen|bereit.*starten|bereit.*mit|mit.*rollenspiel|rollenspiel.*beginnen|rollenspiel.*starten|möchten.*starten|können.*beginnen|kann.*anfangen|starten.*wir/i.test(aiMessage);
-    const isYesNoQuestion = /\?/.test(aiMessage) && (/sind|bist|haben|hast|kannst|können|ist|soll|möchten/i.test(aiMessage));
+    const isYesNoQuestion = /\?/.test(aiMessage) && (/sind|bist|haben|hast|kannst|können|ist|soll|möchten|gibt es/i.test(aiMessage));
     const isInformationalQuestion = /\?/.test(aiMessage) && (/was|wie|wo|wann|warum|welche|welcher|welches/i.test(aiMessage));
+    const isFeelingEmotionQuestion = /wie fühl|wie geht es|wie empfind|wie fühlt|geht es dir|geht es ihnen|wie gehts/i.test(aiMessage.toLowerCase());
+    const isWhatBringsQuestion = /was führt|was bringt/i.test(aiMessage.toLowerCase());
+    const isGibtEsQuestion = /gibt es/i.test(aiMessage.toLowerCase());
     const containsQuestion = /\?/.test(aiMessage) || /sind sie|bist du|können sie|kannst du|haben sie|hast du/i.test(aiMessage.toLowerCase());
     
     console.log('Question detection:', {
       isReadinessQuestion,
       isYesNoQuestion,
       isInformationalQuestion,
-      containsQuestion
+      isFeelingEmotionQuestion,
+      isWhatBringsQuestion,
+      isGibtEsQuestion,
+      containsQuestion,
+      questionAnalysis
     });
     
     // Build enhanced prompt with emphasis on immediate context for 2nd+ messages
@@ -1276,8 +1384,37 @@ BEISPIEL: Wenn der Bot fragt "Worüber möchten Sie heute sprechen?", dann:
 Wenn du generische Antworten generierst, bist du GESCHEITERT.`;
     }
     
+    // Build question analysis section for prompt - MADE MORE PROMINENT
+    const questionAnalysisSection = questionAnalysis.questions.length > 0
+      ? `\n\n🚨🚨🚨 FRAGEN-ANALYSE (MANDATORISCH - LIES DIES ZUERST!) 🚨🚨🚨
+
+Die Bot-Nachricht enthält ${questionAnalysis.questions.length} Frage(n). Du MUSST jede einzelne Frage DIREKT beantworten:
+
+${questionAnalysis.questions.map((q, idx) => `Frage ${idx + 1}: "${q}"`).join('\n')}
+
+Fragentypen erkannt: ${questionAnalysis.types.join(', ')}
+${questionAnalysis.topics.length > 0 ? `Erkannte Themen: ${questionAnalysis.topics.join(', ')}` : ''}
+
+KRITISCH WICHTIG:
+- Du MUSST die EXAKTE Frage beantworten, die gestellt wurde
+- NICHT eine ähnliche Frage oder ein ähnliches Thema
+- Wenn die Frage nach GEFÜHLEN fragt, antworte mit GEFÜHLEN (nicht mit Prozessen)
+- Wenn die Frage nach einem GRUND fragt, antworte mit einem GRUND (nicht mit Ja/Nein)
+- Wenn die Frage nach INFORMATIONEN fragt, antworte mit INFORMATIONEN (nicht generisch)
+
+BEISPIEL FALSCH:
+Bot fragt: "Wie fühlen Sie sich?"
+❌ "Ich würde gern Schritt für Schritt vorgehen." ← FALSCH! Das beantwortet nicht die Frage nach Gefühlen.
+
+BEISPIEL RICHTIG:
+Bot fragt: "Wie fühlen Sie sich?"
+✅ "Ich fühle mich etwas nervös." ← RICHTIG! Das beantwortet die Frage nach Gefühlen.
+
+Die Antworten müssen spezifisch auf diese Fragen eingehen, nicht generisch sein.`
+      : '';
+
     // Build enhanced prompt based on question type
-    // Check readiness questions FIRST, then informational, then yes/no
+    // Check readiness questions FIRST, then specific patterns, then informational, then yes/no
     let questionInstruction = '';
     if (containsQuestion) {
       if (isReadinessQuestion) {
@@ -1302,27 +1439,146 @@ KORREKTE BEISPIELE für "Sind Sie bereit, mit dem Rollenspiel zu beginnen?":
 ✅ "Nein, können Sie bitte erklären?"
 
 Wenn du generische Antworten generierst, bist du GESCHEITERT. Generiere NUR direkte Ja/Nein-Varianten.`;
+      } else if (isFeelingEmotionQuestion) {
+        // "Wie fühlen Sie sich?" type questions
+        questionInstruction = `🚨🚨🚨 KRITISCH: Die Bot-Nachricht fragt nach GEFÜHLEN/EMOTIONEN (z.B. "Wie fühlen Sie sich?" oder "Wie geht es Ihnen?").
+
+MANDATORISCH - Die Antworten MÜSSEN:
+- TATSÄCHLICHE GEFÜHLE/EMOTIONEN beschreiben (nervös, aufgeregt, ruhig, unsicher, etc.)
+- Zum Gesprächskontext passen: "${conversationContext}"
+- Spezifisch sein, nicht generisch
+- DIREKT die Frage nach Gefühlen beantworten
+
+ABSOLUT VERBOTEN - Diese Antworten sind FALSCH (sie beantworten die Frage NICHT):
+❌ "Ich würde gern Schritt für Schritt vorgehen." (Prozess, keine Gefühle)
+❌ "Vielleicht beginnen wir mit einer kurzen Zusammenfassung." (Prozess, keine Gefühle)
+❌ "Lassen Sie uns zuerst die wichtigsten Punkte priorisieren." (Prozess, keine Gefühle)
+❌ "Das ist sehr interessant." (keine Gefühle)
+❌ Jede Antwort, die nicht über Gefühle/Emotionen spricht
+
+BEISPIEL RICHTIG (medizinisches Szenario, Bot fragt "Wie fühlen Sie sich in diesem Moment?"):
+✅ "Ich fühle mich etwas nervös." (I feel a bit nervous.)
+✅ "Ich bin etwas aufgeregt, aber auch neugierig." (I'm a bit excited, but also curious.)
+✅ "Ich fühle mich unsicher, was mich erwartet." (I feel uncertain about what to expect.)
+
+BEISPIEL RICHTIG (Geschäftsszenario, Bot fragt "Wie fühlen Sie sich?"):
+✅ "Ich fühle mich gut vorbereitet." (I feel well prepared.)
+✅ "Ich bin zuversichtlich, dass wir eine Lösung finden." (I'm confident we'll find a solution.)
+✅ "Ich fühle mich etwas angespannt, aber bereit." (I feel a bit tense, but ready.)
+
+BEISPIEL FALSCH (generisch - VERBOTEN):
+❌ "Ich würde gern Schritt für Schritt vorgehen."
+❌ "Vielleicht beginnen wir mit einer kurzen Zusammenfassung."
+❌ "Das ist sehr interessant."
+
+KRITISCH: Wenn der Kontext medizinisch ist, antworte mit medizinisch-relevanten Gefühlen (nervös, besorgt, unsicher, erleichtert).
+Wenn der Kontext geschäftlich ist, antworte mit geschäftlich-relevanten Gefühlen (zuversichtlich, vorbereitet, gespannt).
+Die Antworten MÜSSEN über GEFÜHLE sprechen, nicht über Prozesse oder Methoden.`;
+      } else if (isWhatBringsQuestion) {
+        // "Was führt Sie heute zu mir?" type questions
+        questionInstruction = `🚨 KRITISCH: Die Bot-Nachricht fragt "Was führt Sie zu mir?" oder "Was bringt Sie hierher?" - eine Frage nach dem GRUND/ZWECK.
+
+MANDATORISCH - Die Antworten MÜSSEN:
+- Einen KONKRETEN GRUND oder ZWECK nennen (warum der Benutzer hier ist)
+- Zum Gesprächskontext passen: "${conversationContext}"
+- Spezifisch sein, nicht generisch
+
+BEISPIEL RICHTIG (medizinisches Szenario):
+Bot fragt: "Was führt Sie heute zu mir?"
+✅ "Ich habe Schmerzen im Rücken."
+✅ "Ich brauche eine Kontrolluntersuchung."
+✅ "Ich möchte über meine Symptome sprechen."
+
+BEISPIEL RICHTIG (Geschäftsszenario):
+Bot fragt: "Was führt Sie heute zu mir?"
+✅ "Ich möchte über unser neues Projekt sprechen."
+✅ "Ich brauche Ihre Beratung zu einem Vertrag."
+✅ "Ich habe Fragen zu unseren Geschäftsbedingungen."
+
+BEISPIEL FALSCH (generisch - VERBOTEN):
+❌ "Ja, ich habe eine Frage dazu."
+❌ "Nein, momentan nicht."
+❌ "Könnten Sie das bitte genauer erklären?"
+
+Wenn der Kontext medizinisch ist, antworte mit medizinischen Gründen (Schmerzen, Symptome, Untersuchung).
+Wenn der Kontext geschäftlich ist, antworte mit geschäftlichen Gründen (Projekt, Vertrag, Beratung).`;
+      } else if (isGibtEsQuestion) {
+        // "Gibt es bestimmte Beschwerden oder Fragen?" type questions
+        questionInstruction = `🚨 KRITISCH: Die Bot-Nachricht fragt "Gibt es..." - eine Frage nach der EXISTENZ/VORHANDENSEIN von etwas.
+
+MANDATORISCH - Die Antworten MÜSSEN:
+- DIREKT beantworten, ob es das Gefragte gibt oder nicht
+- Wenn "Ja", dann SPEZIFISCHE Details nennen
+- Zum Gesprächskontext passen: "${conversationContext}"
+
+BEISPIEL RICHTIG (Bot fragt: "Gibt es bestimmte Beschwerden oder Fragen?"):
+✅ "Ja, ich habe Schmerzen im Rücken." (spezifische Beschwerde)
+✅ "Ja, ich möchte über meine Symptome sprechen." (spezifisches Thema)
+✅ "Nein, es ist nur eine Routineuntersuchung." (klare Antwort mit Kontext)
+
+BEISPIEL FALSCH (generisch - VERBOTEN):
+❌ "Ja, ich habe eine Frage dazu." (zu generisch, keine Details)
+❌ "Nein, momentan nicht." (kein Kontext)
+❌ "Könnten Sie das bitte genauer erklären?" (beantwortet die Frage nicht)
+
+Die Antworten müssen SPEZIFISCH sein und Details zum Kontext enthalten.`;
       } else if (isInformationalQuestion) {
-        questionInstruction = `WICHTIG: Die KI-Nachricht ist eine Informationsfrage. Generiere Antworten, die:
-- DIREKT Informationen zur Frage geben
+        questionInstruction = `WICHTIG: Die KI-Nachricht ist eine Informationsfrage (Was/Wie/Wo/Wann/Warum/Wer/Welche).
+
+MANDATORISCH - Die Antworten MÜSSEN:
+- DIREKT spezifische Informationen zur Frage geben
 - Zum Kontext passen: "${conversationContext}"
-- Praktisch und rollenspielgerecht sind`;
+- Praktisch und rollenspielgerecht sein
+- NICHT generisch sein
+
+BEISPIEL RICHTIG (Bot fragt: "Worüber möchten Sie sprechen?"):
+✅ "Ich möchte über Musik sprechen."
+✅ "Können wir über Reisen sprechen?"
+✅ "Lass uns über Filme reden."
+
+BEISPIEL FALSCH:
+❌ "Das ist sehr interessant!"
+❌ "Können Sie das genauer erklären?"
+❌ "Ich verstehe."`;
       } else if (isYesNoQuestion) {
-        questionInstruction = `WICHTIG: Die KI-Nachricht ist eine Ja/Nein-Frage. Generiere Antworten, die DIREKT die Frage beantworten:
-- Mindestens eine "Ja" Antwort
-- Mindestens eine "Nein" oder alternative Antwort
-- Antworten müssen die Frage direkt beantworten, nicht umschweifen`;
+        questionInstruction = `WICHTIG: Die KI-Nachricht ist eine Ja/Nein-Frage.
+
+MANDATORISCH - Die Antworten MÜSSEN:
+- DIREKT die Frage mit Ja/Nein beantworten
+- Wenn Ja, dann SPEZIFISCHE Details hinzufügen
+- Wenn Nein, dann eine ALTERNATIVE oder BEGRÜNDUNG geben
+- Zum Kontext passen: "${conversationContext}"
+
+BEISPIEL RICHTIG (Bot fragt: "Haben Sie Schmerzen?"):
+✅ "Ja, ich habe Schmerzen im Rücken."
+✅ "Nein, aber ich fühle mich müde."
+✅ "Ja, leichte Kopfschmerzen."
+
+BEISPIEL FALSCH:
+❌ "Ja, ich habe eine Frage dazu."
+❌ "Nein, momentan nicht."
+❌ "Das ist interessant."`;
       } else {
-        questionInstruction = `WICHTIG: Die KI-Nachricht enthält eine Frage. Generiere Antworten, die:
+        questionInstruction = `WICHTIG: Die KI-Nachricht enthält eine Frage.
+
+MANDATORISCH - Die Antworten MÜSSEN:
 - DIREKT auf die Frage antworten
-- Nicht generisch sind (keine "Das ist interessant" Antworten)
-- Die Frage beantworten, nicht umschweifen`;
+- Spezifisch sein, nicht generisch
+- Die Frage beantworten, nicht umschweifen
+- Zum Kontext passen: "${conversationContext}"
+
+ABSOLUT VERBOTEN:
+❌ "Das ist sehr interessant!"
+❌ "Das ist eine sehr gute Frage."
+❌ "Können Sie das genauer erklären?" (wenn nicht direkt relevant)
+❌ "Ich verstehe, danke für die Erklärung."`;
       }
     } else {
       questionInstruction = `Die KI-Nachricht ist eine Aussage oder Anweisung. Generiere Antworten, die:
 - Kontextuell zur Aussage passen: "${conversationContext}"
 - Für das Rollenspiel geeignet sind
-- Natürlich auf die Aussage reagieren`;
+- Natürlich auf die Aussage reagieren
+- Spezifisch sind, nicht generisch`;
     }
     
     try {
@@ -1336,26 +1592,41 @@ Wenn du generische Antworten generierst, bist du GESCHEITERT. Generiere NUR dire
         body: JSON.stringify({
           messages: [{
             role: 'user',
-            content: `Analyziere die KI-Nachricht: "${aiMessage}"
+            content: `SCHRITT 1: ANALYSIERE die Bot-Nachricht: "${aiMessage}"
+
+${questionAnalysisSection}
 
 ${contextEmphasis}
 
-${conversationHistory ? `Gesprächsverlauf (letzte 2-3 Nachrichten): ${conversationHistory}` : ''}
+${conversationHistory ? `Gesprächsverlauf (letzte 4-6 Nachrichten): ${conversationHistory}` : ''}
 
 ${conversationContext ? `Anfänglicher Kontext: Der Benutzer möchte dieses Szenario üben: "${conversationContext}"` : ''}
 
+SCHRITT 2: VERSTEHE den Kontext:
+- Gesprächskontext: ${conversationContext || 'Allgemein'}
+- Formellitätsgrad: ${contextLevel === 'Professional' ? 'Formell (Sie)' : 'Informell (Du)'}
+- Schwierigkeitsgrad: ${difficultyLevel}
+
+SCHRITT 3: GENERIERE Antworten basierend auf der Frage-Analyse:
+
 ${questionInstruction}
 
-WICHTIG: Die Vorschläge MÜSSEN direkt auf diese SOFORTIGE VORHERIGE Bot-Nachricht antworten: "${aiMessage}"
+🚨🚨🚨 KRITISCH - Die Vorschläge MÜSSEN: 🚨🚨🚨
+1. DIREKT die EXAKTE Frage beantworten, die in der Bot-Nachricht gestellt wurde: "${aiMessage}"
+   - NICHT eine ähnliche Frage
+   - NICHT ein ähnliches Thema
+   - Die EXAKTE Frage, die gestellt wurde
+2. Spezifisch sein - KEINE generischen Antworten
+3. Zum Gesprächskontext passen: ${conversationContext || 'Allgemein'}
+4. Für das Rollenspiel geeignet sein
+5. Den Formellitätsgrad berücksichtigen: ${contextLevel === 'Professional' ? 'Formell (Sie)' : 'Informell (Du)'}
+${isSecondOrSubsequentMessage ? '6. NICHT generisch sein - sie müssen spezifisch auf die Bot-Nachricht antworten' : ''}
 
-Generiere genau 3 kurze deutsche Antworten (maximal 8 Wörter), die:
-1. ${containsQuestion ? 'DIREKT die Frage beantworten' : 'Kontextuell zur Nachricht passen'} - ENGE KOPPLUNG ZUR BOT-NACHRICHT ERFORDERLICH
-2. ${conversationHistory ? `Zum Gesprächsverlauf passen: "${conversationHistory}"` : conversationContext ? `Zum Szenario passen: "${conversationContext}"` : 'Zum Gesprächskontext passen'}
-3. Für ein Rollenspiel geeignet sind
-4. Den Formellitätsgrad berücksichtigen: ${contextLevel === 'Professional' ? 'Formell (Sie)' : 'Informell (Du)'}
-5. ${isSecondOrSubsequentMessage ? 'NICHT generisch sind - sie müssen spezifisch auf die Bot-Nachricht antworten' : 'Zum Kontext passen'}
+${isSecondOrSubsequentMessage ? 'VERBOTEN für 2.+ Nachrichten: Generische Antworten wie "Das ist interessant", "Ja, ich habe eine Frage dazu", "Nein, momentan nicht", "Ich würde gern Schritt für Schritt vorgehen" - diese sind FALSCH' : ''}
 
-${isSecondOrSubsequentMessage ? 'VERBOTEN: Generische Antworten wie "Das ist interessant" - diese sind FALSCH für 2.+ Nachrichten' : ''}
+WICHTIG: Überprüfe, ob deine Antworten die EXAKTE Frage beantworten. Wenn die Frage nach Gefühlen fragt, müssen die Antworten über Gefühle sprechen. Wenn die Frage nach einem Grund fragt, müssen die Antworten einen Grund nennen.
+
+Generiere genau 3 kurze deutsche Antworten (maximal 8 Wörter), die DIREKT die EXAKTE Frage(n) beantworten.
 
 Format: TRANSLATION: [English translation of AI message] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Antwort 3] ENGLISH: [Answer 1] | [Answer 2] | [Answer 3]`
           }],
@@ -1363,7 +1634,12 @@ Format: TRANSLATION: [English translation of AI message] SUGGESTIONS: [Antwort 1
           contextLevel,
           difficultyLevel,
           conversationContext: conversationContext,
-          systemInstruction: `Du bist ein Experte für deutsche Rollenspiele. Deine Aufgabe: Generiere 3 passende deutsche Antworten.
+          systemInstruction: `Du bist ein Experte für deutsche Rollenspiele. Deine Aufgabe: Generiere 3 passende deutsche Antworten, die DIREKT die Fragen in der Bot-Nachricht beantworten.
+
+MANDATORISCHER PROZESS:
+1. ANALYSIERE die Bot-Nachricht und identifiziere ALLE Fragen
+2. VERSTEHE den Gesprächskontext (medizinisch, geschäftlich, etc.)
+3. GENERIERE spezifische Antworten, die jede Frage direkt beantworten
 
 ${isSecondOrSubsequentMessage ? `🚨🚨🚨 KRITISCH FÜR 2.+ NACHRICHT 🚨🚨🚨
 
@@ -1372,36 +1648,50 @@ Diese Vorschläge sind für die 2. oder spätere Bot-Nachricht. Sie MÜSSEN eng 
 ABSOLUT VERBOTEN für 2.+ Nachrichten:
 ❌ Generische Antworten wie "Das ist sehr interessant!"
 ❌ "Das ist eine sehr gute Frage."
+❌ "Ja, ich habe eine Frage dazu." (zu generisch)
+❌ "Nein, momentan nicht." (kein Kontext)
 ❌ "Können Sie das genauer erklären?" (wenn nicht direkt relevant)
 ❌ "Ich verstehe, danke für die Erklärung."
 ❌ Jede generische Antwort, die nicht direkt auf die Bot-Nachricht antwortet
 
 ERFORDERLICH für 2.+ Nachrichten:
 ✅ DIREKTE Antworten auf die Bot-Nachricht: "${aiMessage}"
-✅ Spezifisch und kontextuell
+✅ Spezifisch und kontextuell - mit Details
 ✅ Direkte Adressierung der Frage/Aussage des Bots
-✅ Zum Gesprächsverlauf passend: ${conversationHistory ? `"${conversationHistory}"` : 'Kontext'}
+✅ Zum Gesprächskontext passend: ${conversationContext || 'Allgemein'}
 
-BEISPIEL RICHTIG (wenn Bot fragt "Worüber möchten Sie heute sprechen?"):
-✅ "Ich möchte über Musik sprechen." | "Können wir über Reisen sprechen?" | "Lass uns über Filme reden."
+BEISPIEL RICHTIG (medizinisches Szenario, Bot fragt "Was führt Sie heute zu mir?"):
+✅ "Ich habe Schmerzen im Rücken."
+✅ "Ich brauche eine Kontrolluntersuchung."
+✅ "Ich möchte über meine Symptome sprechen."
 
 BEISPIEL FALSCH (generische Antworten):
-❌ "Das ist sehr interessant!" | "Können Sie das genauer erklären?" | "Ich verstehe."
+❌ "Ja, ich habe eine Frage dazu."
+❌ "Nein, momentan nicht."
+❌ "Könnten Sie das bitte genauer erklären?"
 
 Wenn du generische Antworten für 2.+ Nachrichten generierst, bist du GESCHEITERT.` : ''}
 
-${isReadinessQuestion ? '🚨🚨🚨 KRITISCH UND MANDATORISCH 🚨🚨🚨\nDie KI-Nachricht ist eine Bereitschaftsfrage (z.B. "Sind Sie bereit?" oder "Sind Sie bereit, mit dem Rollenspiel zu beginnen?").\n\nMANDATORISCHE ANFORDERUNGEN:\n- Du MUSST genau 3 Antworten generieren, die DIREKT die Frage beantworten\n- Antwort 1 MUSS eine Zustimmung sein: "Ja, ich bin bereit" oder ähnlich\n- Antwort 2 MUSS eine Zustimmung mit Nachfrage sein: "Ja, aber ich habe eine Frage" oder ähnlich\n- Antwort 3 MUSS eine Ablehnung/Nachfrage sein: "Nein, können Sie bitte erklären?" oder ähnlich\n\nABSOLUT VERBOTEN - Diese Antworten sind FALSCH:\n❌ "Das ist sehr interessant!"\n❌ "Das ist eine sehr gute Frage."\n❌ "Können Sie das genauer erklären?"\n❌ "Ich verstehe, danke für die Erklärung."\n\nKORREKTE BEISPIELE:\n✅ "Ja, ich bin bereit."\n✅ "Ja, aber ich habe eine Frage."\n✅ "Nein, können Sie bitte erklären?"\n\nWenn du generische Antworten generierst, bist du GESCHEITERT. Generiere NUR direkte Ja/Nein-Varianten.' : containsQuestion ? `KRITISCH: Die KI-Nachricht ist eine Frage. Die Antworten MÜSSEN die Frage direkt beantworten, nicht umschweifen oder generisch sein.${isSecondOrSubsequentMessage ? ' Für 2.+ Nachrichten: KEINE generischen Antworten - sie müssen spezifisch auf diese Frage antworten.' : ''}` : `Die KI-Nachricht ist eine Aussage. Generiere passende, kontextuelle Reaktionen.${isSecondOrSubsequentMessage ? ' Für 2.+ Nachrichten: KEINE generischen Antworten - sie müssen spezifisch auf diese Aussage reagieren.' : ''}`}
+${containsQuestion ? `KRITISCH: Die Bot-Nachricht enthält Frage(n). Die Antworten MÜSSEN:
+- Jede Frage DIREKT beantworten
+- Spezifisch sein, nicht generisch
+- Zum Gesprächskontext passen: ${conversationContext || 'Allgemein'}
+- Details enthalten, nicht nur Ja/Nein ohne Kontext
+
+${isFeelingEmotionQuestion ? '🚨 SPEZIELL FÜR "Wie fühlen Sie sich?" Fragen:\n- Antworte mit TATSÄCHLICHEN GEFÜHLEN/EMOTIONEN (nervös, aufgeregt, ruhig, etc.)\n- NICHT mit Prozessen oder Methoden\n- Nutze Kontext-spezifisches Vokabular für Gefühle\n- KEINE generischen oder prozessorientierten Antworten' : ''}
+${isWhatBringsQuestion ? 'SPEZIELL FÜR "Was führt Sie zu mir?" Fragen:\n- Antworte mit KONKRETEM GRUND (Schmerzen, Untersuchung, Projekt, etc.)\n- Nutze Kontext-spezifisches Vokabular\n- KEINE generischen Antworten' : ''}
+${isGibtEsQuestion ? 'SPEZIELL FÜR "Gibt es..." Fragen:\n- Beantworte mit Ja/Nein + SPEZIFISCHE Details\n- Wenn Ja: Nenne konkrete Beispiele\n- Wenn Nein: Gib Kontext oder Alternative' : ''}` : `Die Bot-Nachricht ist eine Aussage. Generiere passende, kontextuelle Reaktionen, die spezifisch auf die Aussage eingehen.`}
 
 ${conversationHistory ? `Gesprächsverlauf: "${conversationHistory}"` : ''}
-${conversationContext ? `Anfänglicher Kontext: "${conversationContext}"` : ''}
-KI-Nachricht: "${aiMessage}"
+${conversationContext ? `Gesprächskontext: "${conversationContext}"` : ''}
+Bot-Nachricht: "${aiMessage}"
 Formellitätsgrad: ${contextLevel}
 
-Regeln:
-- Antworten müssen zur Frage/Aussage passen
+WICHTIGE REGELN:
+- Antworten müssen DIREKT die Frage(n) beantworten
+- Spezifisch sein - KEINE generischen Phrasen
+- Kontext-spezifisches Vokabular verwenden
 - ${isSecondOrSubsequentMessage ? 'FÜR 2.+ NACHRICHTEN: KEINE generischen Antworten - sie müssen DIREKT auf die Bot-Nachricht antworten' : 'Keine generischen Antworten wie "Das ist interessant" wenn eine Frage gestellt wird'}
-${isReadinessQuestion ? '- Für Bereitschaftsfragen: IMMER Ja/Nein-Varianten mit direkten Antworten\n- Beispiel RICHTIG: "Ja, ich bin bereit" | "Ja, aber ich habe eine Frage" | "Nein, können Sie bitte erklären"\n- Beispiel FALSCH: "Das ist sehr interessant" | "Können Sie das genauer erklären?" | "Ich verstehe, danke"\n- Wenn die Antworten generisch sind, bist du GESCHEITERT' : containsQuestion ? '- Für Fragen: Direkte, hilfreiche Antworten generieren - DIREKT auf die Frage antworten' : '- Für Aussagen: Natürliche, kontextuelle Reaktionen - DIREKT auf die Aussage reagieren'}
-${isSecondOrSubsequentMessage ? '- VERBOTEN für 2.+ Nachrichten: Generische Phrasen wie "Das ist interessant" - diese zeigen, dass du die Aufgabe nicht verstanden hast' : ''}
 
 Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1] | [e2] | [e3]`
         })
@@ -1454,13 +1744,67 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
             /^ich verstehe, danke/i,
             /^danke.*erklärung/i,
             /^das hört.*gut/i,
-            /^das klingt.*gut/i
+            /^das klingt.*gut/i,
+            /^ja, ich habe eine frage dazu/i,
+            /^nein, momentan nicht/i,
+            /^ja, ich habe eine frage/i,
+            /^nein, nicht wirklich/i,
+            /^könnten sie das bitte genauer erklären/i
+          ];
+          
+          // Process-oriented patterns that shouldn't be used for feeling questions
+          const processPatterns = [
+            /schritt für schritt/i,
+            /zusammenfassung/i,
+            /priorisieren/i,
+            /vorgehen/i,
+            /beginnen wir/i,
+            /lassen sie uns/i,
+            /als nächstes/i
+          ];
+          
+          // Feeling/emotion patterns that should be present for feeling questions
+          const feelingPatterns = [
+            /fühle mich/i,
+            /fühle/i,
+            /geht es/i,
+            /nervös/i,
+            /aufgeregt/i,
+            /ruhig/i,
+            /unsicher/i,
+            /besorgt/i,
+            /zuversichtlich/i,
+            /angst/i,
+            /sorgen/i,
+            /erleichtert/i,
+            /gespannt/i,
+            /vorbereitet/i,
+            /müde/i,
+            /gut/i,
+            /schlecht/i,
+            /bin.*nervös/i,
+            /bin.*aufgeregt/i,
+            /bin.*unsicher/i,
+            /bin.*besorgt/i,
+            /bin.*zuversichtlich/i
           ];
           
           // Check if suggestions are generic (not contextually relevant)
           const hasGenericResponses = pairedSuggestions.some(suggestion => {
             const germanText = suggestion.german.toLowerCase().trim();
             return genericPatterns.some(pattern => pattern.test(germanText));
+          });
+          
+          // Check if feeling questions are answered with processes instead of feelings
+          const hasProcessResponsesForFeelingQuestion = isFeelingEmotionQuestion && pairedSuggestions.some(suggestion => {
+            const germanText = suggestion.german.toLowerCase().trim();
+            return processPatterns.some(pattern => pattern.test(germanText));
+          });
+          
+          // Check if feeling questions actually contain feeling words
+          const hasFeelingWords = isFeelingEmotionQuestion && pairedSuggestions.some(suggestion => {
+            const germanText = suggestion.german.toLowerCase().trim();
+            return feelingPatterns.some(pattern => pattern.test(germanText));
           });
           
           // For readiness questions, check for direct responses
@@ -1472,7 +1816,32 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
             
             if (hasGenericResponses || !hasDirectResponses) {
               console.warn('⚠️ OpenAI returned generic responses for readiness question, using fallback');
-              const contextualFallbacks = generateContextualFallbacks(aiMessage);
+              const contextualFallbacks = generateContextualFallbacks(aiMessage, conversationContext);
+              setSuggestedResponses(prev => ({
+                ...prev,
+                [suggestionKey]: contextualFallbacks
+              }));
+              return;
+            }
+          }
+          
+          // For feeling/emotion questions, reject if answers are process-oriented or don't contain feelings
+          if (isFeelingEmotionQuestion) {
+            if (hasProcessResponsesForFeelingQuestion) {
+              console.warn('⚠️ OpenAI returned process-oriented responses for feeling question, using fallback');
+              console.warn('⚠️ Process responses detected for feeling question');
+              const contextualFallbacks = generateContextualFallbacks(aiMessage, conversationContext);
+              setSuggestedResponses(prev => ({
+                ...prev,
+                [suggestionKey]: contextualFallbacks
+              }));
+              return;
+            }
+            
+            if (!hasFeelingWords) {
+              console.warn('⚠️ OpenAI returned responses without feeling words for feeling question, using fallback');
+              console.warn('⚠️ No feeling words detected in responses');
+              const contextualFallbacks = generateContextualFallbacks(aiMessage, conversationContext);
               setSuggestedResponses(prev => ({
                 ...prev,
                 [suggestionKey]: contextualFallbacks
@@ -1492,7 +1861,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
             if (genericCount >= 2) {
               console.warn('⚠️ OpenAI returned generic responses for 2nd+ message, using fallback');
               console.warn('⚠️ Generic count:', genericCount, 'out of', pairedSuggestions.length);
-              const contextualFallbacks = generateContextualFallbacks(aiMessage);
+              const contextualFallbacks = generateContextualFallbacks(aiMessage, conversationContext);
               setSuggestedResponses(prev => ({
                 ...prev,
                 [suggestionKey]: contextualFallbacks
@@ -1510,7 +1879,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
         } else {
           console.log('⚠️ Could not parse suggestions from API response, using fallback');
           // Fallback to contextual suggestions
-          const contextualFallbacks = generateContextualFallbacks(aiMessage);
+          const contextualFallbacks = generateContextualFallbacks(aiMessage, conversationContext);
           setSuggestedResponses(prev => ({
             ...prev,
             [suggestionKey]: contextualFallbacks
@@ -1521,7 +1890,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
         const errorText = await response.text();
         console.error('❌ API call failed:', response.status, errorText);
         // Fallback to contextual suggestions
-        const contextualFallbacks = generateContextualFallbacks(aiMessage);
+        const contextualFallbacks = generateContextualFallbacks(aiMessage, conversationContext);
         setSuggestedResponses(prev => ({
           ...prev,
           [suggestionKey]: contextualFallbacks
@@ -1531,7 +1900,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
     } catch (error) {
       console.error('❌ Error generating suggestions:', error);
       // Fallback to contextual suggestions
-      const contextualFallbacks = generateContextualFallbacks(aiMessage);
+      const contextualFallbacks = generateContextualFallbacks(aiMessage, conversationContext);
       setSuggestedResponses(prev => ({
         ...prev,
         [suggestionKey]: contextualFallbacks
@@ -1558,8 +1927,11 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
   };
 
   // Generate contextual fallback suggestions based on AI message content
-  const generateContextualFallbacks = (germanText: string) => {
+  const generateContextualFallbacks = (germanText: string, conversationContextParam?: string) => {
     const text = germanText.toLowerCase();
+    // Use provided conversation context or try to get from current conversation
+    const contextToUse = conversationContextParam || (selectedConversation ? conversations.find(c => c.id === selectedConversation)?.conversation_context : undefined);
+    const contextText = contextToUse ? contextToUse.toLowerCase() : '';
     
     // Check for readiness questions FIRST - this is critical!
     if (text.includes('bereit') && (text.includes('rollenspiel') || text.includes('beginnen') || text.includes('starten') || text.includes('mit dem'))) {
@@ -1569,6 +1941,119 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
         { german: 'Ja, aber ich habe eine Frage.', english: 'Yes, but I have a question.' },
         { german: 'Nein, können Sie bitte erklären?', english: 'No, can you please explain?' }
       ];
+    }
+    
+    // Check for "Wie fühlen Sie sich?" type questions
+    if (/wie fühl|wie geht es|wie empfind|wie fühlt|geht es dir|geht es ihnen|wie gehts/i.test(germanText)) {
+      console.log('✅ Fallback: Detected "Wie fühlen" question');
+      // Check context from conversation context if available - use both message text and conversation context
+      const isMedical = text.includes('arzt') || text.includes('ärztin') || text.includes('praxis') || text.includes('untersuchung') || text.includes('symptom') || text.includes('schmerz') || text.includes('wartezimmer') || text.includes('krank') || text.includes('patient') || contextText.includes('arzt') || contextText.includes('ärztin') || contextText.includes('praxis') || contextText.includes('untersuchung') || contextText.includes('krank') || contextText.includes('patient');
+      const isBusiness = text.includes('geschäft') || text.includes('projekt') || text.includes('vertrag') || text.includes('meeting') || text.includes('beratung') || text.includes('geschäftspartner') || contextText.includes('geschäft') || contextText.includes('projekt') || contextText.includes('vertrag') || contextText.includes('meeting');
+      
+      if (isMedical) {
+        return [
+          { german: 'Ich fühle mich etwas nervös.', english: 'I feel a bit nervous.' },
+          { german: 'Ich bin etwas aufgeregt, aber auch neugierig.', english: 'I am a bit excited, but also curious.' },
+          { german: 'Ich fühle mich unsicher, was mich erwartet.', english: 'I feel uncertain about what to expect.' }
+        ];
+      } else if (isBusiness) {
+        return [
+          { german: 'Ich fühle mich gut vorbereitet.', english: 'I feel well prepared.' },
+          { german: 'Ich bin zuversichtlich, dass wir eine Lösung finden.', english: 'I am confident we will find a solution.' },
+          { german: 'Ich fühle mich etwas angespannt, aber bereit.', english: 'I feel a bit tense, but ready.' }
+        ];
+      } else {
+        // Generic context
+        return [
+          { german: 'Ich fühle mich gut.', english: 'I feel good.' },
+          { german: 'Ich bin etwas aufgeregt.', english: 'I am a bit excited.' },
+          { german: 'Ich fühle mich etwas unsicher.', english: 'I feel a bit uncertain.' }
+        ];
+      }
+    }
+    
+    // Check for "Was führt Sie zu mir?" type questions
+    if (/was führt|was bringt/i.test(germanText)) {
+      console.log('✅ Fallback: Detected "Was führt" question');
+      // Check context from conversation context if available - use both message text and conversation context
+      const isMedical = text.includes('arzt') || text.includes('ärztin') || text.includes('praxis') || text.includes('untersuchung') || text.includes('symptom') || text.includes('schmerz') || contextText.includes('arzt') || contextText.includes('ärztin') || contextText.includes('praxis') || contextText.includes('untersuchung') || contextText.includes('krank') || contextText.includes('patient');
+      const isBusiness = text.includes('geschäft') || text.includes('projekt') || text.includes('vertrag') || text.includes('meeting') || text.includes('beratung') || contextText.includes('geschäft') || contextText.includes('projekt') || contextText.includes('vertrag') || contextText.includes('meeting');
+      
+      if (isMedical) {
+        return [
+          { german: 'Ich habe Schmerzen im Rücken.', english: 'I have back pain.' },
+          { german: 'Ich brauche eine Kontrolluntersuchung.', english: 'I need a check-up.' },
+          { german: 'Ich möchte über meine Symptome sprechen.', english: 'I would like to talk about my symptoms.' }
+        ];
+      } else if (isBusiness) {
+        return [
+          { german: 'Ich möchte über unser neues Projekt sprechen.', english: 'I would like to talk about our new project.' },
+          { german: 'Ich brauche Ihre Beratung zu einem Vertrag.', english: 'I need your advice on a contract.' },
+          { german: 'Ich habe Fragen zu unseren Geschäftsbedingungen.', english: 'I have questions about our business terms.' }
+        ];
+      } else {
+        // Generic context
+        return [
+          { german: 'Ich habe eine wichtige Angelegenheit zu besprechen.', english: 'I have an important matter to discuss.' },
+          { german: 'Ich brauche Ihre Hilfe bei etwas.', english: 'I need your help with something.' },
+          { german: 'Ich möchte mit Ihnen über ein Thema sprechen.', english: 'I would like to talk with you about a topic.' }
+        ];
+      }
+    }
+    
+    // Check for "Gibt es..." questions
+    if (/gibt es/i.test(germanText)) {
+      console.log('✅ Fallback: Detected "Gibt es" question');
+      if (text.includes('beschwerden') || text.includes('symptom') || text.includes('schmerz')) {
+        return [
+          { german: 'Ja, ich habe Schmerzen im Rücken.', english: 'Yes, I have back pain.' },
+          { german: 'Ja, ich möchte über meine Symptome sprechen.', english: 'Yes, I would like to talk about my symptoms.' },
+          { german: 'Nein, es ist nur eine Routineuntersuchung.', english: 'No, it is just a routine check-up.' }
+        ];
+      } else if (text.includes('frage') || text.includes('fragen')) {
+        return [
+          { german: 'Ja, ich habe Fragen zu meiner Behandlung.', english: 'Yes, I have questions about my treatment.' },
+          { german: 'Ja, ich möchte etwas Genaueres wissen.', english: 'Yes, I would like to know something more specific.' },
+          { german: 'Nein, momentan nicht.', english: 'No, not at the moment.' }
+        ];
+      } else {
+        return [
+          { german: 'Ja, ich habe einige Fragen dazu.', english: 'Yes, I have some questions about that.' },
+          { german: 'Ja, ich möchte mehr Informationen.', english: 'Yes, I would like more information.' },
+          { german: 'Nein, momentan nicht.', english: 'No, not at the moment.' }
+        ];
+      }
+    }
+    
+    // Enhanced detection for common question patterns that need direct answers
+    if (text.includes('möchten sie') || text.includes('möchtest du') || text.includes('wollen sie') || text.includes('willst du')) {
+      const topicMatch = text.match(/(?:möchten|wollen).*?(?:über|von|mit)\s+([^?]+)/i);
+      if (topicMatch) {
+        const topic = topicMatch[1].trim();
+        return [
+          { german: `Ja, gerne. Lassen Sie uns über ${topic} sprechen.`, english: `Yes, please. Let's talk about ${topic}.` },
+          { german: `Das klingt interessant. Erzählen Sie mir mehr über ${topic}.`, english: `That sounds interesting. Tell me more about ${topic}.` },
+          { german: `Gerne, aber zuerst habe ich eine Frage zu ${topic}.`, english: `Gladly, but first I have a question about ${topic}.` }
+        ];
+      }
+    }
+    
+    // Detection for "haben sie" / "hast du" questions
+    if ((text.includes('haben sie') || text.includes('hast du')) && text.includes('?')) {
+      if (text.includes('frage') || text.includes('fragen')) {
+        return [
+          { german: 'Ja, ich habe eine Frage dazu.', english: 'Yes, I have a question about that.' },
+          { german: 'Nein, momentan nicht, aber vielleicht später.', english: 'No, not at the moment, but maybe later.' },
+          { german: 'Ja, könnten Sie das bitte genauer erklären?', english: 'Yes, could you please explain that in more detail?' }
+        ];
+      }
+      if (text.includes('erfahrung') || text.includes('erlebt')) {
+        return [
+          { german: 'Ja, ich habe bereits Erfahrung damit.', english: 'Yes, I already have experience with that.' },
+          { german: 'Nein, das wäre für mich neu.', english: 'No, that would be new for me.' },
+          { german: 'Ich habe etwas Erfahrung, aber nicht viel.', english: 'I have some experience, but not much.' }
+        ];
+      }
     }
     
     // Specific question patterns and their direct answers
@@ -1631,12 +2116,20 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
       ];
     }
     
-    // General conversation context
-    if (text.includes('frage') || text.includes('denken') || text.includes('meinung') || text.includes('glauben')) {
+    // General conversation context - enhanced to be more specific
+    if (text.includes('frage') && text.includes('?')) {
+      // If it's asking if user has a question
       return [
-        { german: 'Das ist eine sehr gute Frage.', english: 'That is a very good question.' },
-        { german: 'Ich denke, dass...', english: 'I think that...' },
-        { german: 'Meine Meinung dazu ist...', english: 'My opinion on this is...' }
+        { german: 'Ja, ich habe eine Frage dazu.', english: 'Yes, I have a question about that.' },
+        { german: 'Nein, momentan nicht.', english: 'No, not at the moment.' },
+        { german: 'Könnten Sie das bitte genauer erklären?', english: 'Could you please explain that in more detail?' }
+      ];
+    }
+    if (text.includes('denken') || text.includes('meinung') || text.includes('glauben')) {
+      return [
+        { german: 'Ich denke, dass wir das Schritt für Schritt angehen sollten.', english: 'I think we should approach this step by step.' },
+        { german: 'Meine Meinung dazu ist, dass wir mehr Informationen brauchen.', english: 'My opinion is that we need more information.' },
+        { german: 'Ich glaube, das ist ein guter Ansatz.', english: 'I believe that is a good approach.' }
       ];
     }
     const questionWordMatch = text.match(/\b(welche|welcher|welches|was|wie|wo|wann|warum|wer)\b/);
@@ -1732,11 +2225,25 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
     console.log('🎯 === AUTO-GENERATING SUGGESTIONS ===');
     console.log('Message ID:', messageId);
     console.log('German text:', germanText);
+    console.log('Messages override provided:', !!messagesOverride);
+    console.log('Messages override length:', messagesOverride?.length || 0);
+    console.log('Conversation ID param:', conversationIdParam);
     console.log('🚨 FUNCTION CALLED - Starting suggestion generation...');
     
-    // Use unified function with provided bot message
-    // It will auto-detect conversation context from chatMessages
-    await generateSuggestionsUsingOpenAI(messageId, germanText, undefined, messagesOverride, conversationIdParam);
+    // Get conversation context from current conversation if available
+    let userContext: string | undefined = undefined;
+    if (conversationIdParam || selectedConversation) {
+      const convId = conversationIdParam || selectedConversation;
+      const currentConversation = conversations.find(conv => conv.id === convId);
+      if (currentConversation && currentConversation.conversation_context) {
+        userContext = currentConversation.conversation_context;
+        console.log('📝 Using conversation context for suggestions:', userContext);
+      }
+    }
+    
+    // Use unified function with provided bot message and conversation context
+    // Pass messagesOverride to ensure we use the most recent messages including the new bot response
+    await generateSuggestionsUsingOpenAI(messageId, germanText, userContext, messagesOverride, conversationIdParam);
   };
 
   // Audio cache is now handled by the centralized TTS service
@@ -2535,10 +3042,12 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
         console.log('🤖 AI message content:', data.message);
         console.log('🤖 Calling generateTranslationAndSuggestions...');
         
+        // CRITICAL FIX: Pass the bot message content directly and ensure updatedMessages includes the new bot message
+        // This ensures suggestions are generated with the correct, most recent bot response
         await generateTranslationAndSuggestions(
           messageId,
-          data.message,
-          updatedMessages.length ? updatedMessages : chatMessages,
+          data.message, // Pass bot message content directly
+          updatedMessages, // Use updatedMessages which includes the new bot message
           selectedConversation
         );
         
