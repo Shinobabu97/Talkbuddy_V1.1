@@ -1473,7 +1473,8 @@ export default function Toolbar({
     
     setPracticingWord(word);
     setCurrentAttempt(0);
-    await startRecording();
+    // Pass word directly to startRecording to avoid closure/state timing issues
+    await startRecording(word);
   };
 
   const startWordPractice = async () => {
@@ -1532,9 +1533,15 @@ export default function Toolbar({
     return sessionId;
   };
 
-  const startRecording = async () => {
+  const startRecording = async (wordOverride?: string) => {
     console.log('🎤 startRecording called');
     console.log('🎤 Current practicing word:', practicingWord);
+    console.log('🎤 Word override parameter:', wordOverride);
+    
+    // Use wordOverride if provided (to avoid state timing issues), otherwise use practicingWord
+    // This ensures we use the correct word when onstop handler fires
+    const currentWord = wordOverride || practicingWord;
+    console.log('🎤 Using word for recording:', currentWord);
     
     try {
       console.log('🎤 Requesting microphone access...');
@@ -1551,43 +1558,53 @@ export default function Toolbar({
 
       recorder.onstop = async () => {
         console.log('🎤 Recording stopped (onstop handler)');
-        console.log('🎤 PracticingWord at onstop:', practicingWord);
+        console.log('🎤 Captured word at onstop:', currentWord);
+        console.log('🎤 Current practicingWord state:', practicingWord);
         const audioBlob = new Blob(chunks, { type: 'audio/webm' });
         console.log('🎤 Audio blob created, size:', audioBlob.size);
+        console.log('🎤 Chunks array length:', chunks.length);
         
         // Store audio blob for word practice (similar to sentence practice)
-        if (practicingWord && practicingWord !== 'sentence') {
+        // Use captured currentWord instead of practicingWord from closure
+        if (currentWord && currentWord !== 'sentence') {
+          console.log('🎤 Storing audio blob for word:', currentWord);
           setWordAudioBlobs(prev => {
             const newMap = new Map(prev);
-            newMap.set(practicingWord, audioBlob);
+            newMap.set(currentWord, audioBlob);
+            console.log('✅ Audio blob stored in wordAudioBlobs for word:', currentWord);
             return newMap;
           });
           
           // Mark word as ready for analysis (don't auto-analyze, let user click Analyze button)
+          // Note: wordsReadyForAnalysis is already set in stopRecording(), but set it here too as backup
           setWordsRecordingCompleted(prev => {
-            const newSet = new Set([...prev, practicingWord]);
-            console.log('✅ Word marked as recording completed:', practicingWord);
+            const newSet = new Set([...prev, currentWord]);
+            console.log('✅ Word marked as recording completed (onstop):', currentWord);
             return newSet;
           });
           setWordsReadyForAnalysis(prev => {
-            const newSet = new Set([...prev, practicingWord]);
-            console.log('✅ Word marked as ready for analysis:', practicingWord);
+            const newSet = new Set([...prev, currentWord]);
+            console.log('✅ Word marked as ready for analysis (onstop backup):', currentWord);
             return newSet;
           });
           // Don't mark as complete yet - wait for user to click Analyze button
           console.log('✅ Word recording completed and ready for analysis - waiting for user to click Analyze');
+        } else {
+          console.log('⚠️ No word to store audio blob for (currentWord:', currentWord, ')');
         }
         
         // Stop all tracks
         stream.getTracks().forEach(track => track.stop());
       };
 
-      // Start recording immediately
-      recorder.start();
+      // Start recording immediately with timeslice to ensure data chunks are collected
+      // Timeslice of 100ms ensures data is available even for short recordings
+      recorder.start(100);
       setMediaRecorder(recorder);
       
       // Set appropriate recording state based on what's being practiced
-      if (practicingWord === 'sentence') {
+      // Use currentWord for consistency (should be 'sentence' for sentence practice, word string for word practice)
+      if (currentWord === 'sentence') {
         setIsSentenceRecording(true);
         setIsWordRecording(false);
       } else {
@@ -1618,6 +1635,10 @@ export default function Toolbar({
     if (mediaRecorder && isRecording && !isStoppingRef.current) {
       console.log('🛑 Stopping recording...');
       isStoppingRef.current = true;
+      
+      // Store practicingWord value to avoid closure issues
+      const currentPracticingWord = practicingWord;
+      
       mediaRecorder.stop();
       
       // Set recording states to false immediately when user clicks stop
@@ -1626,17 +1647,30 @@ export default function Toolbar({
       setIsWordRecording(false);
       
       // Mark sentence as recording completed (word will be handled in recorder.onstop)
-      if (practicingWord === 'sentence') {
+      if (currentPracticingWord === 'sentence') {
         // For sentence practice, use separate sentence states
         // Don't mark as complete immediately - wait for user to click Analyze button
         setSentenceRecordingCompleted(true);
         setSentenceReadyForAnalysis(true);
         setSentenceAnalysisComplete(false); // Don't enable Analyze button yet - wait for recording to fully stop
         console.log('✅ Sentence marked as recording completed and ready for analysis (will enable Analyze after recorder.onstop)');
+      } else if (currentPracticingWord && currentPracticingWord !== 'sentence') {
+        // For word practice, immediately mark as ready for analysis (similar to sentence practice)
+        // The audio blob will be stored in recorder.onstop handler, but we mark ready now so Analyze button appears
+        setWordsRecordingCompleted(prev => {
+          const newSet = new Set([...prev, currentPracticingWord]);
+          console.log('✅ Word marked as recording completed (immediate):', currentPracticingWord);
+          return newSet;
+        });
+        setWordsReadyForAnalysis(prev => {
+          const newSet = new Set([...prev, currentPracticingWord]);
+          console.log('✅ Word marked as ready for analysis (immediate):', currentPracticingWord);
+          return newSet;
+        });
+        console.log('✅ Word recording stopped - marked as ready for analysis immediately');
       }
-      // For word practice, states will be set in recorder.onstop handler
       
-      console.log('🎤 Recording stopped, waiting for audio analysis to confirm content');
+      console.log('🎤 Recording stopped, waiting for audio blob to be created in onstop handler');
       
       // Reset the stopping flag after a short delay
       setTimeout(() => {
@@ -2047,18 +2081,28 @@ export default function Toolbar({
     }
   };
 
-  const analyzeWordPronunciation = async (audioBlob: Blob) => {
+  const analyzeWordPronunciation = async (audioBlob: Blob, wordOverride?: string) => {
     try {
+      // Use wordOverride if provided, otherwise fall back to practicingWord
+      const wordToAnalyze = wordOverride || practicingWord;
       console.log('📊 ===== ANALYZE PRONUNCIATION START =====');
-      console.log('📊 Analyzing pronunciation for word:', practicingWord);
+      console.log('📊 Analyzing pronunciation for word:', wordToAnalyze);
+      console.log('📊 Word override provided:', !!wordOverride, wordOverride);
+      console.log('📊 PracticingWord from state:', practicingWord);
       console.log('📊 Audio blob size:', audioBlob.size, 'bytes');
       console.log('📊 Current pronunciationWords before analysis:', pronunciationWords);
       console.log('📊 Current wordsAnalysisComplete before analysis:', Array.from(wordsAnalysisComplete));
       
       // Handle sentence practice differently
-      if (practicingWord === 'sentence') {
+      if (wordToAnalyze === 'sentence') {
         console.log('📊 Handling sentence practice - calling analyzeSentencePronunciation');
         await analyzeSentencePronunciation(audioBlob);
+        return;
+      }
+      
+      // Validate word to analyze
+      if (!wordToAnalyze || wordToAnalyze === 'sentence') {
+        console.error('❌ No valid word to analyze');
         return;
       }
       
@@ -2070,7 +2114,7 @@ export default function Toolbar({
         // Show specific error message for no audio
         const errorMessage = 'No analysis can be done because no word pronunciation was spoken and recorded. Please speak the word clearly and try again.';
         const errorData: PronunciationWord = {
-          word: practicingWord || 'Unknown',
+          word: wordToAnalyze || 'Unknown',
           score: 0,
           needsPractice: true,
           feedback: errorMessage,
@@ -2079,9 +2123,9 @@ export default function Toolbar({
         };
         
         setPronunciationWords(prev => {
-          const existing = prev.find(w => w.word === practicingWord);
+          const existing = prev.find(w => w.word.toLowerCase() === wordToAnalyze?.toLowerCase());
           if (existing) {
-            return prev.map(w => w.word === practicingWord ? errorData : w);
+            return prev.map(w => w.word.toLowerCase() === wordToAnalyze?.toLowerCase() ? errorData : w);
           } else {
             return [...prev, errorData];
           }
@@ -2104,7 +2148,7 @@ export default function Toolbar({
         },
         body: JSON.stringify({
           audioData: base64,
-          transcription: practicingWord || 'Test pronunciation'
+          transcription: wordToAnalyze || 'Test pronunciation'
         })
       });
 
@@ -2121,8 +2165,8 @@ export default function Toolbar({
           const wordAnalysis = data.words[0]; // Get first word analysis
           console.log('📊 Word analysis dimensions:', wordAnalysis.dimensions);
           
-          // Enhanced word validation
-          const expectedWord = practicingWord?.toLowerCase().trim();
+          // Enhanced word validation - use wordToAnalyze instead of practicingWord
+          const expectedWord = wordToAnalyze?.toLowerCase().trim();
           const recordedWord = wordAnalysis.word?.toLowerCase().trim();
           
           console.log('🔍 Word validation:', { expected: expectedWord, recorded: recordedWord });
@@ -2133,7 +2177,7 @@ export default function Toolbar({
             
             const errorMessage = 'No analysis can be done because no word pronunciation was spoken and recorded. Please speak the word clearly and try again.';
             const errorData: PronunciationWord = {
-              word: practicingWord || 'Unknown',
+              word: wordToAnalyze || 'Unknown',
               score: 0,
               needsPractice: true,
               feedback: errorMessage,
@@ -2142,19 +2186,19 @@ export default function Toolbar({
             };
             
             setPronunciationWords(prev => {
-              const existing = prev.find(w => w.word === practicingWord);
+              const existing = prev.find(w => w.word.toLowerCase() === wordToAnalyze?.toLowerCase());
               if (existing) {
-                return prev.map(w => w.word === practicingWord ? errorData : w);
+                return prev.map(w => w.word.toLowerCase() === wordToAnalyze?.toLowerCase() ? errorData : w);
               } else {
                 return [...prev, errorData];
               }
             });
             
             // Keep analysis as complete even for errors (button should remain enabled)
-            if (practicingWord) {
-              console.log('✅ Word analysis remains complete (no word detected):', practicingWord);
+            if (wordToAnalyze) {
+              console.log('✅ Word analysis remains complete (no word detected):', wordToAnalyze);
             } else {
-              console.log('❌ No practicingWord set when trying to mark analysis complete (no word detected)');
+              console.log('❌ No wordToAnalyze set when trying to mark analysis complete (no word detected)');
             }
             
             console.log('📊 ===== ANALYZE PRONUNCIATION END (NO WORD DETECTED) =====');
@@ -2177,30 +2221,30 @@ export default function Toolbar({
           if (!isRelevantWord) {
             console.log('❌ Irrelevant/incorrect word recorded:', { expected: expectedWord, recorded: recordedWord });
             
-            const errorMessage = `No analysis can be done because irrelevant/incorrect word pronunciation was spoken and recorded. Expected "${practicingWord}" but recorded "${wordAnalysis.word}". Please practice the correct word.`;
+            const errorMessage = `No analysis can be done because irrelevant/incorrect word pronunciation was spoken and recorded. Expected "${wordToAnalyze}" but recorded "${wordAnalysis.word}". Please practice the correct word.`;
             const errorData: PronunciationWord = {
-              word: practicingWord || 'Unknown',
+              word: wordToAnalyze || 'Unknown',
               score: 0,
               needsPractice: true,
               feedback: errorMessage,
-              commonMistakes: [`Recorded "${wordAnalysis.word}" instead of "${practicingWord}"`],
+              commonMistakes: [`Recorded "${wordAnalysis.word}" instead of "${wordToAnalyze}"`],
               syllableAnalysis: []
             };
             
             setPronunciationWords(prev => {
-              const existing = prev.find(w => w.word === practicingWord);
+              const existing = prev.find(w => w.word.toLowerCase() === wordToAnalyze?.toLowerCase());
               if (existing) {
-                return prev.map(w => w.word === practicingWord ? errorData : w);
+                return prev.map(w => w.word.toLowerCase() === wordToAnalyze?.toLowerCase() ? errorData : w);
               } else {
                 return [...prev, errorData];
               }
             });
             
             // Keep analysis as complete even for errors (button should remain enabled)
-            if (practicingWord) {
-              console.log('✅ Word analysis remains complete (irrelevant word):', practicingWord);
+            if (wordToAnalyze) {
+              console.log('✅ Word analysis remains complete (irrelevant word):', wordToAnalyze);
             } else {
-              console.log('❌ No practicingWord set when trying to mark analysis complete (irrelevant word)');
+              console.log('❌ No wordToAnalyze set when trying to mark analysis complete (irrelevant word)');
             }
             
             console.log('📊 ===== ANALYZE PRONUNCIATION END (IRRELEVANT WORD) =====');
@@ -2241,8 +2285,10 @@ export default function Toolbar({
             `Good pronunciation of "${wordAnalysis.word}". Minor improvements possible.` :
             `"${wordAnalysis.word}" requires more practice. Focus on pronunciation fundamentals.`;
           
+          // Use wordToAnalyze for storage to ensure it matches what we search for in handleAnalyzeWord
+          // This ensures the word stored matches the word being analyzed, not the API response word
           const pronunciationData: PronunciationWord = {
-            word: wordAnalysis.word,
+            word: wordToAnalyze || wordAnalysis.word, // Use wordToAnalyze first, fallback to API word
             score: wordScore,
             needsPractice: wordAnalysis.needsPractice,
             feedback: feedback,
@@ -2258,30 +2304,31 @@ export default function Toolbar({
             }
           };
           
-          // Update pronunciation words
+          // Update pronunciation words - use wordToAnalyze for matching to ensure consistency
           setPronunciationWords(prev => {
-            const existing = prev.find(w => w.word === wordAnalysis.word);
+            const wordToMatch = wordToAnalyze?.toLowerCase();
+            const existing = prev.find(w => w.word.toLowerCase() === wordToMatch);
             if (existing) {
-              return prev.map(w => w.word === wordAnalysis.word ? pronunciationData : w);
+              return prev.map(w => w.word.toLowerCase() === wordToMatch ? pronunciationData : w);
             } else {
               return [...prev, pronunciationData];
             }
           });
           
-          console.log('✅ Pronunciation analysis completed for:', wordAnalysis.word, 'Score:', wordScore, 'RAG:', ragStatus);
+          console.log('✅ Pronunciation analysis completed for:', wordToAnalyze, 'Score:', wordScore, 'RAG:', ragStatus);
           
           // Mark analysis as complete for this word (only if not already set)
-          if (practicingWord && !wordsAnalysisComplete.has(practicingWord)) {
+          if (wordToAnalyze && !wordsAnalysisComplete.has(wordToAnalyze)) {
             setWordsAnalysisComplete(prev => {
-              const newSet = new Set([...prev, practicingWord]);
-              console.log('✅ Word analysis marked as complete (success):', practicingWord);
+              const newSet = new Set([...prev, wordToAnalyze]);
+              console.log('✅ Word analysis marked as complete (success):', wordToAnalyze);
               console.log('📊 Updated wordsAnalysisComplete:', Array.from(newSet));
               return newSet;
             });
-          } else if (practicingWord) {
-            console.log('✅ Word analysis already marked as complete:', practicingWord);
+          } else if (wordToAnalyze) {
+            console.log('✅ Word analysis already marked as complete:', wordToAnalyze);
           } else {
-            console.log('❌ No practicingWord set when trying to mark analysis complete');
+            console.log('❌ No wordToAnalyze set when trying to mark analysis complete');
           }
           
           // Note: wordsReadyForAnalysis is already marked in stopRecording for immediate button availability
@@ -2291,7 +2338,7 @@ export default function Toolbar({
           
           const errorMessage = 'No analysis can be done because no word pronunciation was spoken and recorded. Please speak the word clearly and try again.';
           const errorData: PronunciationWord = {
-            word: practicingWord || 'Unknown',
+            word: wordToAnalyze || 'Unknown',
             score: 0,
             needsPractice: true,
             feedback: errorMessage,
@@ -2300,9 +2347,9 @@ export default function Toolbar({
           };
           
           setPronunciationWords(prev => {
-            const existing = prev.find(w => w.word === practicingWord);
+            const existing = prev.find(w => w.word.toLowerCase() === wordToAnalyze?.toLowerCase());
             if (existing) {
-              return prev.map(w => w.word === practicingWord ? errorData : w);
+              return prev.map(w => w.word.toLowerCase() === wordToAnalyze?.toLowerCase() ? errorData : w);
             } else {
               return [...prev, errorData];
             }
@@ -2316,7 +2363,7 @@ export default function Toolbar({
         // Handle API failure - could be due to no audio or other issues
         const errorMessage = 'No analysis can be done because no word pronunciation was spoken and recorded. Please speak the word clearly and try again.';
         const errorData: PronunciationWord = {
-          word: practicingWord || 'Unknown',
+          word: wordToAnalyze || 'Unknown',
           score: 0,
           needsPractice: true,
           feedback: errorMessage,
@@ -2325,9 +2372,9 @@ export default function Toolbar({
         };
         
         setPronunciationWords(prev => {
-          const existing = prev.find(w => w.word === practicingWord);
+          const existing = prev.find(w => w.word.toLowerCase() === wordToAnalyze?.toLowerCase());
           if (existing) {
-            return prev.map(w => w.word === practicingWord ? errorData : w);
+            return prev.map(w => w.word.toLowerCase() === wordToAnalyze?.toLowerCase() ? errorData : w);
           } else {
             return [...prev, errorData];
           }
@@ -2392,17 +2439,27 @@ export default function Toolbar({
 
     try {
       console.log('🔍 Starting word pronunciation analysis...');
-      await analyzeWordPronunciation(audioBlob);
+      // Pass the word to analyzeWordPronunciation to ensure correct word is analyzed and stored
+      await analyzeWordPronunciation(audioBlob, word);
 
-      const wordResult = pronunciationWords.find(
+      // Try to find the word result - check both the exact word and practicingWord
+      let wordResult = pronunciationWords.find(
         (w) => w.word.toLowerCase() === word.toLowerCase()
       );
+      
+      // If not found, try finding by practicingWord (fallback)
+      if (!wordResult && practicingWord) {
+        wordResult = pronunciationWords.find(
+          (w) => w.word.toLowerCase() === practicingWord.toLowerCase()
+        );
+      }
 
       if (wordResult) {
         console.log('📊 Found word result after analysis:', wordResult);
         console.log('📊 Word result has dimensions:', !!wordResult.dimensions);
 
         if (pronunciationAnalysis) {
+          // Update only the specific word, preserving all other words
           const updatedWords = pronunciationAnalysis.words.map((w) =>
             w.word.toLowerCase() === word.toLowerCase() ? wordResult : w
           );
@@ -2412,16 +2469,30 @@ export default function Toolbar({
           if (!wordExists) {
             updatedWords.push(wordResult);
           }
+          
+          // Recalculate overallScore based on all words (including the updated one)
+          // This ensures the overall score reflects the new word score while other words remain unchanged
+          const newOverallScore = updatedWords.length > 0
+            ? Math.round(updatedWords.reduce((sum, w) => sum + w.score, 0) / updatedWords.length)
+            : pronunciationAnalysis.overallScore;
+          
           const updatedAnalysis = {
             ...pronunciationAnalysis,
             words: updatedWords,
+            overallScore: newOverallScore,
+            sentenceScore: newOverallScore, // Update sentence score as well
+            hasPronunciationErrors: newOverallScore < 75,
           };
           setPronunciationAnalysis(updatedAnalysis);
           console.log(
             '✅ Updated pronunciationAnalysis with word:',
             word,
             'with dimensions:',
-            !!wordResult.dimensions
+            !!wordResult.dimensions,
+            'New overall score:',
+            newOverallScore,
+            'Other words preserved:',
+            updatedWords.length - 1
           );
 
           setTimeout(() => {
@@ -2483,6 +2554,14 @@ export default function Toolbar({
         setWordsAnalysisComplete((prev) => {
           const newSet = new Set([...prev, word]);
           console.log('✅ Word marked as analysis complete:', word);
+          return newSet;
+        });
+        
+        // Remove word from wordsReadyForAnalysis so Analyse button disappears and Practice button appears
+        setWordsReadyForAnalysis(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(word);
+          console.log('✅ Word removed from wordsReadyForAnalysis - Analyse button will hide, Practice button will show');
           return newSet;
         });
       } else {
@@ -3876,9 +3955,9 @@ export default function Toolbar({
                       analyzeSentence();
                     }}
                     isWordReadyForAnalysis={(word) => {
-                      // Word is ready if it's been analyzed (in pronunciationWords) OR marked as ready
-                      const hasWordData = pronunciationWords.some(w => w.word.toLowerCase() === word.toLowerCase());
-                      return wordsReadyForAnalysis.has(word) || (wordsAnalysisComplete.has(word) && hasWordData);
+                      // Word is ready for analysis if it's in wordsReadyForAnalysis AND not yet analyzed
+                      // Once analyzed, wordsReadyForAnalysis is cleared, so this returns false and Practice button shows
+                      return wordsReadyForAnalysis.has(word) && !wordsAnalysisComplete.has(word);
                     }}
                     isWordAnalyzed={(word) => {
                       // Word has been analyzed if it's in wordsAnalysisComplete
