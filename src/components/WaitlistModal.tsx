@@ -18,6 +18,21 @@ const countryCodes = [
   { code: '+91', label: 'India (+91)' },
   { code: '+81', label: 'Japan (+81)' },
   { code: '+61', label: 'Australia (+61)' },
+  { code: '+31', label: 'Netherlands (+31)' },
+  { code: '+32', label: 'Belgium (+32)' },
+  { code: '+41', label: 'Switzerland (+41)' },
+  { code: '+43', label: 'Austria (+43)' },
+  { code: '+48', label: 'Poland (+48)' },
+  { code: '+46', label: 'Sweden (+46)' },
+  { code: '+47', label: 'Norway (+47)' },
+  { code: '+45', label: 'Denmark (+45)' },
+  { code: '+358', label: 'Finland (+358)' },
+  { code: '+353', label: 'Ireland (+353)' },
+  { code: '+351', label: 'Portugal (+351)' },
+  { code: '+30', label: 'Greece (+30)' },
+  { code: '+420', label: 'Czech Republic (+420)' },
+  { code: '+36', label: 'Hungary (+36)' },
+  { code: '+40', label: 'Romania (+40)' },
 ];
 
 const languages = [
@@ -30,14 +45,27 @@ const languages = [
   'Japanese',
   'Korean',
   'Mandarin Chinese',
+  'Dutch',
+  'Swedish',
+  'Norwegian',
+  'Danish',
+  'Finnish',
+  'Russian',
+  'Arabic',
+  'Hindi',
+  'Turkish',
+  'Polish',
+  'Czech',
+  'Greek',
+  'Hebrew',
+  'Vietnamese',
+  'Thai',
+  'Indonesian',
 ];
 
 const reasons = [
-  'Casual Learning',
   'Professional Need',
-  'Freelancer',
-  'Current Trend or Craze',
-  'Potential Growth Opportunity',
+  'Casual Learning',
 ];
 
 export default function WaitlistModal({ isOpen, onClose, onSuccess }: WaitlistModalProps) {
@@ -82,6 +110,14 @@ export default function WaitlistModal({ isOpen, onClose, onSuccess }: WaitlistMo
 
     try {
       const trimmedEmail = email.trim();
+      
+      // Validate email contains "@" symbol
+      if (!trimmedEmail.includes('@')) {
+        setError('Please enter a valid email address.');
+        setSubmitting(false);
+        return;
+      }
+      
       const trimmedFirstName = firstName.trim();
 
       const { error: insertError } = await supabase.from('waitlist_leads').insert({
@@ -182,6 +218,7 @@ export default function WaitlistModal({ isOpen, onClose, onSuccess }: WaitlistMo
     firstName.trim() &&
     lastName.trim() &&
     email.trim() &&
+    email.includes('@') &&
     countryCode.trim() &&
     phoneNumber.trim() &&
     targetLanguage.trim() &&
