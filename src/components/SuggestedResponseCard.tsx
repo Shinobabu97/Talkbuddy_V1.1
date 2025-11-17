@@ -154,7 +154,7 @@ export default function SuggestedResponseCard({
       </div>
 
       {/* Translation Display */}
-      {showTranslation && (
+      {showTranslation && translation && (
         <div className="mt-3 pt-3 border-t border-gray-200">
           <p className="text-xs text-gray-600 italic">{translation}</p>
         </div>

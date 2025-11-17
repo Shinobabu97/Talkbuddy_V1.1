@@ -21,8 +21,11 @@ import {
   FileCheck,
   Bookmark
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { supabase, AuthUser } from './lib/supabase';
 import AuthModal from './components/AuthModal';
+import WaitlistModal from './components/WaitlistModal';
+import WaitlistSuccessModal from './components/WaitlistSuccessModal';
 import Dashboard from './components/Dashboard';
 
 function App() {
@@ -30,6 +33,9 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
+  const [waitlistModalOpen, setWaitlistModalOpen] = useState(false);
+  const [waitlistSuccessOpen, setWaitlistSuccessOpen] = useState(false);
+  const [waitlistSuccessEmail, setWaitlistSuccessEmail] = useState<string | null>(null);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [openFAQ, setOpenFAQ] = useState<number | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -281,22 +287,23 @@ function App() {
       <header className="relative z-50 bg-white border-b border-gray-200 sticky top-0 shadow-sm">
         <div className="max-w-6xl mx-auto px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
-            <div className="flex items-center space-x-3">
-              <span className="text-xl font-bold text-text font-extrabold tracking-tight">TalkBuddy</span>
+            <div className="flex flex-col space-y-1">
+              <span className="text-3xl md:text-4xl font-bold text-text font-extrabold tracking-tight">TalkBuddy</span>
+              <span className="text-xs md:text-sm text-text font-body">Your AI-Powered Language Coach</span>
             </div>
             
             <nav className="hidden md:flex items-center space-x-8">
-              <a href="#home" className="text-text-muted hover:text-text transition-colors font-body text-sm">Home</a>
-              <a href="#benefits" className="text-text-muted hover:text-text transition-colors font-body text-sm">Benefits</a>
-              <a href="#how-it-works" className="text-text-muted hover:text-text transition-colors font-body text-sm">How It Works</a>
-              <a href="#testimonials" className="text-text-muted hover:text-text transition-colors font-body text-sm">Reviews</a>
-              <a href="#faq" className="text-text-muted hover:text-text transition-colors font-body text-sm">FAQ</a>
+              <a href="#home" className="text-text hover:text-primary-600 transition-colors font-body text-xs md:text-sm">Home</a>
+              <a href="#benefits" className="text-text hover:text-primary-600 transition-colors font-body text-xs md:text-sm">Benefits</a>
+              <a href="#how-it-works" className="text-text hover:text-primary-600 transition-colors font-body text-xs md:text-sm">How It Works</a>
+              <a href="#testimonials" className="text-text hover:text-primary-600 transition-colors font-body text-xs md:text-sm">Reviews</a>
+              <a href="#faq" className="text-text hover:text-primary-600 transition-colors font-body text-xs md:text-sm">FAQ</a>
             </nav>
 
             <div className="flex items-center space-x-4">
               <button 
                 onClick={() => handleAuthModal('login')}
-                className="hidden md:inline-flex btn-glossy px-6 py-3 rounded-full font-bold text-base"
+                className="hidden md:inline-flex btn-glossy px-4 md:px-6 py-2 md:py-3 rounded-full font-bold text-sm md:text-base"
               >
                 Login
               </button>
@@ -315,14 +322,14 @@ function App() {
         {isMenuOpen && (
           <div className="md:hidden glass-strong border-t border-white/20" style={{ background: 'rgba(255, 255, 255, 0.4)' }}>
             <div className="px-2 py-2 space-y-2">
-              <a href="#home" className="block py-2 text-gray-700 hover:text-primary-600 transition-colors font-medium">Home</a>
-              <a href="#benefits" className="block py-2 text-gray-700 hover:text-primary-600 transition-colors font-medium">Benefits</a>
-              <a href="#how-it-works" className="block py-2 text-gray-700 hover:text-primary-600 transition-colors font-medium">How It Works</a>
-              <a href="#testimonials" className="block py-2 text-gray-700 hover:text-primary-600 transition-colors font-medium">Reviews</a>
-              <a href="#faq" className="block py-2 text-gray-700 hover:text-primary-600 transition-colors font-medium">FAQ</a>
+              <a href="#home" className="block py-2 text-text hover:text-primary-600 transition-colors font-medium text-sm">Home</a>
+              <a href="#benefits" className="block py-2 text-text hover:text-primary-600 transition-colors font-medium text-sm">Benefits</a>
+              <a href="#how-it-works" className="block py-2 text-text hover:text-primary-600 transition-colors font-medium text-sm">How It Works</a>
+              <a href="#testimonials" className="block py-2 text-text hover:text-primary-600 transition-colors font-medium text-sm">Reviews</a>
+              <a href="#faq" className="block py-2 text-text hover:text-primary-600 transition-colors font-medium text-sm">FAQ</a>
               <button 
                 onClick={() => handleAuthModal('login')}
-                className="w-full mt-2 btn-glossy px-6 py-3 rounded-full font-bold text-base"
+                className="w-full mt-2 btn-glossy px-6 py-3 rounded-full font-bold text-sm md:text-base"
               >
                 Login
               </button>
@@ -337,38 +344,58 @@ function App() {
           <div className="grid lg:grid-cols-2 gap-16 items-center">
             <div className="space-y-8">
               <div className="space-y-6">
-                <h1 className="text-5xl lg:text-7xl font-extrabold text-text leading-tight tracking-tight">
+                <h1 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-text leading-relaxed tracking-tight">
                   The Language Partner Who Actually Listens
                 </h1>
-                <p className="text-lg text-text-muted leading-relaxed font-body max-w-xl">
+                <p className="text-lg text-text leading-relaxed font-body max-w-xl">
                   Talk to an AI friend with infinite patience for your 'um's and 'uh's— one that adapts to your pace, cheers you on, and helps you build confidence before facing real conversations.
                 </p>
               </div>
               
-              <div className="flex flex-col sm:flex-row gap-4">
-                <button 
-                  onClick={() => handleAuthModal('signup')}
-                  className="btn-glossy px-6 py-3 rounded-full font-bold text-base"
-                >
-                  Try Your First Conversation
-                </button>
-                <div className="flex items-center space-x-2 text-text-muted">
-                  <div className="flex">
-                    {[...Array(5)].map((_, i) => (
-                      <Star key={i} className="h-4 w-4 text-yellow-400 fill-current" />
-                    ))}
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
+                  <div className="flex flex-col items-center sm:items-start gap-3">
+                    <div className="flex flex-col sm:flex-row items-center gap-4">
+                      <button 
+                        onClick={() => setWaitlistModalOpen(true)}
+                        className="btn-glossy px-6 py-3 rounded-full font-bold text-base"
+                      >
+                        Join the Wait List
+                      </button>
+                      <div className="flex items-center space-x-2 text-text-muted">
+                        <div className="flex">
+                          {[...Array(5)].map((_, i) => (
+                            <Star key={i} className="h-4 w-4 text-yellow-400 fill-current" />
+                          ))}
+                        </div>
+                        <span className="font-medium text-sm font-body">4.9/5 from 5,500+ users</span>
+                      </div>
+                    </div>
+                    
+                    {/* QR Code Section */}
+                    <div className="flex flex-col items-center gap-2">
+                      <QRCodeSVG 
+                        value={window.location.href}
+                        size={150}
+                        level="H"
+                        includeMargin={true}
+                        className="bg-white p-2 rounded-lg border border-gray-200"
+                      />
+                      <p className="text-xs text-text-muted font-body text-center">
+                        Scan to join the waitlist
+                      </p>
+                    </div>
                   </div>
-                  <span className="font-medium text-sm font-body">4.9/5 from 5,500+ users</span>
                 </div>
               </div>
             </div>
 
             <div className="relative">
-              <div className="relative card-glass rounded-2xl p-8">
+              <div className="relative card-glass rounded-2xl p-6 md:p-8">
                 <img 
                   src="https://images.pexels.com/photos/3184360/pexels-photo-3184360.jpeg?auto=compress&cs=tinysrgb&w=600&h=400&fit=crop" 
                   alt="Person learning language with blue-themed technology setup" 
-                  className="w-full h-64 object-cover rounded-lg mb-4"
+                  className="w-full h-48 md:h-56 object-cover rounded-lg mb-4"
                 />
                 <div className="space-y-3">
                   <div className="flex items-center space-x-2">
@@ -628,10 +655,10 @@ function App() {
               Join thousands of learners who've transformed their speaking skills with TalkBuddy
             </p>
             <button 
-              onClick={() => handleAuthModal('signup')}
+              onClick={() => setWaitlistModalOpen(true)}
                 className="btn-glossy px-6 py-3 rounded-full font-bold text-base"
             >
-              Try Your First Conversation
+              Join the Wait List
             </button>
           </div>
 
@@ -682,6 +709,19 @@ function App() {
         onSignUpStart={() => {
           signingUpRef.current = true;
         }}
+      />
+      <WaitlistModal
+        isOpen={waitlistModalOpen}
+        onClose={() => setWaitlistModalOpen(false)}
+        onSuccess={(email) => {
+          setWaitlistSuccessEmail(email);
+          setWaitlistSuccessOpen(true);
+        }}
+      />
+      <WaitlistSuccessModal
+        isOpen={waitlistSuccessOpen}
+        email={waitlistSuccessEmail}
+        onClose={() => setWaitlistSuccessOpen(false)}
       />
     </div>
   );

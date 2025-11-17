@@ -447,6 +447,8 @@ export default function Dashboard({ user }: DashboardProps) {
   const [isSending, setIsSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [translatedMessages, setTranslatedMessages] = useState<{[key: string]: string}>({});
+  const [translationSources, setTranslationSources] = useState<{[key: string]: 'direct' | 'suggestion'}>({});
+  const [translatingMessages, setTranslatingMessages] = useState<{[key: string]: boolean}>({});
   const [suggestedResponses, setSuggestedResponses] = useState<{[key: string]: (string | {german: string, english: string})[]}>({});
   const getSuggestionKey = (conversationIdValue: string | null | undefined, messageId: string) => {
     const convoPart = conversationIdValue ?? selectedConversation ?? 'new-conversation';
@@ -460,6 +462,9 @@ export default function Dashboard({ user }: DashboardProps) {
     if (selectedConversation) {
       console.log('🧹 Clearing cached suggested responses for new conversation:', selectedConversation);
     }
+    setTranslatedMessages({});
+    setTranslationSources({});
+    setTranslatingMessages({});
     setSuggestedResponses({});
     setShowSuggestions({});
     setShowSuggestionTranslation({});
@@ -1641,6 +1646,13 @@ MANDATORISCHER PROZESS:
 2. VERSTEHE den Gesprächskontext (medizinisch, geschäftlich, etc.)
 3. GENERIERE spezifische Antworten, die jede Frage direkt beantworten
 
+KRITISCH FÜR ENGLISCHE ÜBERSETZUNGEN:
+- Die englischen Übersetzungen (ENGLISH: [e1] | [e2] | [e3]) MÜSSEN zu 100% auf Englisch sein
+- KEINE deutschen Wörter dürfen in den englischen Übersetzungen bleiben
+- Jedes deutsche Wort muss vollständig ins Englische übersetzt werden
+- Die englischen Übersetzungen müssen natürliches, korrektes Englisch sein
+- Beispiel: "Ich habe Schmerzen" → "I have pain" (NICHT "Ich habe pain" oder "I have Schmerzen")
+
 ${isSecondOrSubsequentMessage ? `🚨🚨🚨 KRITISCH FÜR 2.+ NACHRICHT 🚨🚨🚨
 
 Diese Vorschläge sind für die 2. oder spätere Bot-Nachricht. Sie MÜSSEN eng mit der SOFORTIGEN VORHERIGEN Bot-Nachricht gekoppelt sein.
@@ -1709,22 +1721,72 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
         const englishMatch = content.match(/ENGLISH:\s*(.+)/);
         
         if (translationMatch) {
+          const suggestionTranslation = translationMatch[1].trim();
+          let addedSuggestionTranslation = false;
           setTranslatedMessages(prev => {
             // Only set if doesn't exist (preserve user translations)
             if (prev[messageId]) {
               console.log('Translation already exists, preserving user translation');
               return prev;
             }
+            addedSuggestionTranslation = true;
             return {
               ...prev,
-              [messageId]: translationMatch[1].trim()
+              [messageId]: suggestionTranslation
             };
           });
+          if (addedSuggestionTranslation) {
+            setTranslationSources(prev => ({
+              ...prev,
+              [messageId]: 'suggestion'
+            }));
+          }
         }
         
         if (suggestionsMatch && englishMatch) {
           const germanSuggestions = suggestionsMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-          const englishTranslations = englishMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+          let englishTranslations = englishMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+          
+          // Validate English translations - check for German words
+          const needsRetranslation: number[] = [];
+          englishTranslations.forEach((translation, index) => {
+            if (hasGermanWords(translation)) {
+              console.warn(`⚠️ German words detected in English translation ${index + 1}: "${translation}"`);
+              needsRetranslation.push(index);
+            }
+          });
+          
+          // Re-translate suggestions that contain German words
+          if (needsRetranslation.length > 0) {
+            console.log(`🔄 Re-translating ${needsRetranslation.length} suggestion(s) with German words...`);
+            try {
+              const suggestionsToRetranslate = needsRetranslation.map(idx => germanSuggestions[idx]);
+              const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/translate`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  text: suggestionsToRetranslate.join(' | '),
+                  targetLanguage: 'English'
+                })
+              });
+              
+              if (response.ok) {
+                const data = await response.json();
+                const retranslations = data.translation.split(' | ').map((s: string) => s.trim());
+                needsRetranslation.forEach((originalIndex, retransIndex) => {
+                  if (retranslations[retransIndex]) {
+                    englishTranslations[originalIndex] = retranslations[retransIndex];
+                    console.log(`✅ Re-translated suggestion ${originalIndex + 1}: "${englishTranslations[originalIndex]}"`);
+                  }
+                });
+              }
+            } catch (error) {
+              console.error('Error re-translating suggestions:', error);
+            }
+          }
           
           const pairedSuggestions = germanSuggestions.map((german: string, index: number) => ({
             german: german.trim(),
@@ -2216,6 +2278,18 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
     }
   };
 
+  // Helper function to detect German words in English text
+  const hasGermanWords = (text: string): boolean => {
+    if (!text) return false;
+    // Common German words and patterns
+    const germanPatterns = [
+      /\b(der|die|das|den|dem|des|ein|eine|einer|einem|einen|eines|und|oder|aber|mit|von|zu|auf|in|an|für|ist|sind|haben|werden|können|müssen|sollen|wollen|möchte|mögen|bin|bist|war|waren|wird|werde|wirst|werdet|hast|hat|hatte|hatten|kann|kannst|könnt|konnte|konnten|will|willst|wollt|wollte|wollten|soll|sollst|sollt|sollte|sollten|muss|musst|müsst|musste|mussten|mag|magst|mögt|mochte|mochten|ich|du|er|sie|es|wir|ihr|Sie)\b/i,
+      /[äöüßÄÖÜ]/,
+      /\b(ja|nein|bitte|danke|gern|gerne|vielleicht|natürlich|wirklich|sehr|viel|mehr|am|zum|zur|im|ins|vom|beim)\b/i
+    ];
+    return germanPatterns.some(pattern => pattern.test(text));
+  };
+
   const generateTranslationAndSuggestions = async (
     messageId: string,
     germanText: string,
@@ -2496,7 +2570,7 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
     }));
   };
 
-  const toggleTranslation = (messageId: string) => {
+  const toggleTranslation = async (messageId: string) => {
     const isCurrentlyShowing = showTranslation[messageId];
     
     if (isCurrentlyShowing) {
@@ -2507,42 +2581,125 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
       }));
     } else {
       // Show translation - get it if we don't have it
-      if (!translatedMessages[messageId]) {
-        // Find the message content
-        const message = chatMessages.find(msg => msg.id === messageId);
-        if (message) {
-          translateMessage(messageId, message.content);
+      const message = chatMessages.find(msg => msg.id === messageId);
+      if (message && message.role === 'assistant') {
+        const hasDirectTranslation = translationSources[messageId] === 'direct';
+        const needsFreshTranslation = !translatedMessages[messageId] || translatingMessages[messageId] || !hasDirectTranslation;
+        
+        if (needsFreshTranslation) {
+          // Translation doesn't exist or isn't direct/validated yet, fetch it
+          console.log('🔤 EN button clicked - fetching and validating translation for message:', messageId);
+          console.log('🔤 Full German message content:', message.content);
+          console.log('🔤 Message content length:', message.content.length);
+          
+          if (!hasDirectTranslation && translatedMessages[messageId]) {
+            setTranslatedMessages(prev => {
+              const updated = { ...prev };
+              delete updated[messageId];
+              return updated;
+            });
+          }
+          setTranslationSources(prev => {
+            const updated = { ...prev };
+            delete updated[messageId];
+            return updated;
+          });
+          
+          // Set loading state
+          setTranslatingMessages(prev => ({
+            ...prev,
+            [messageId]: true
+          }));
+          setShowTranslation(prev => ({
+            ...prev,
+            [messageId]: true
+          }));
+          
+          // Fetch and validate translation
+          const success = await translateMessage(messageId, message.content);
+          
+          // Clear loading state
+          setTranslatingMessages(prev => {
+            const updated = { ...prev };
+            delete updated[messageId];
+            return updated;
+          });
+          
+          // Only show translation if it was successfully validated
+          if (success) {
+            setShowTranslation(prev => ({
+              ...prev,
+              [messageId]: true
+            }));
+          } else {
+            console.error('❌ Translation validation failed, not showing translation');
+          }
+        } else {
+          // Translation exists and is validated, just show it
+          console.log('🔤 EN button clicked - validated translation already exists for message:', messageId);
+          setShowTranslation(prev => ({
+            ...prev,
+            [messageId]: true
+          }));
+        }
+      } else if (message) {
+        // For user messages or other roles, just toggle visibility if translation exists
+        if (translatedMessages[messageId]) {
+          setShowTranslation(prev => ({
+            ...prev,
+            [messageId]: true
+          }));
         }
       }
-      setShowTranslation(prev => ({
-        ...prev,
-        [messageId]: true
-      }));
     }
   };
 
-  const translateMessage = async (messageId: string, germanText: string) => {
+  const translateMessage = async (messageId: string, germanText: string): Promise<boolean> => {
     console.log('🔤 === TRANSLATION REQUEST ===');
     console.log('Message ID:', messageId);
     console.log('German Text:', germanText);
+    console.log('German Text Length:', germanText.length);
+    
+    const storeDirectTranslation = (translationText: string) => {
+      setTranslatedMessages(prev => ({
+        ...prev,
+        [messageId]: translationText
+      }));
+      setTranslationSources(prev => ({
+        ...prev,
+        [messageId]: 'direct'
+      }));
+    };
+    
+    const clearTranslationSource = () => {
+      setTranslationSources(prev => {
+        const updated = { ...prev };
+        delete updated[messageId];
+        return updated;
+      });
+      setTranslatedMessages(prev => {
+        const updated = { ...prev };
+        delete updated[messageId];
+        return updated;
+      });
+    };
+    
+    // Validate input
+    if (!germanText || germanText.trim().length === 0) {
+      console.error('❌ Empty German text provided for translation');
+      return false;
+    }
     
     try {
-      // Use chat function for translation since translate function might not exist
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/translate`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: [{
-            role: 'user',
-            content: `Translate this German text to English: "${germanText}". Provide only the English translation, nothing else.`
-          }],
-          conversationId: 'translation',
-          contextLevel: 'Casual',
-          difficultyLevel: 'Intermediate',
-          systemInstruction: "You are a German to English translator. Provide ONLY the English translation of the German text. Be accurate and concise. Do not add any explanations or additional text."
+          text: germanText.trim(),
+          targetLanguage: 'English'
         })
       });
 
@@ -2552,29 +2709,75 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
       if (response.ok) {
         const data = await response.json();
         console.log('🔤 Translation response data:', data);
-        console.log('🔤 Translation message:', data.message);
+        console.log('🔤 Translation text:', data.translation);
+        console.log('🔤 Translation text length:', data.translation?.length || 0);
         
-        if (data.message) {
-          setTranslatedMessages(prev => ({
-            ...prev,
-            [messageId]: data.message
-          }));
-          console.log('✅ Translation set for message ID:', messageId);
+        if (data.translation && data.translation.trim().length > 0) {
+          const translation = data.translation.trim();
+          
+          // CRITICAL: Validate translation - check for German words
+          if (hasGermanWords(translation)) {
+            console.warn('⚠️ German words detected in bot message translation after edge function processing');
+            console.warn('⚠️ Translation contains German words:', translation);
+            
+            // Try re-translating with a more explicit request
+            console.log('🔄 Attempting re-translation with stricter validation...');
+            try {
+              const retryResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/translate`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  text: germanText.trim(),
+                  targetLanguage: 'English'
+                })
+              });
+              
+              if (retryResponse.ok) {
+                const retryData = await retryResponse.json();
+                const retryTranslation = retryData.translation?.trim();
+                
+                if (retryTranslation && !hasGermanWords(retryTranslation)) {
+                  console.log('✅ Re-translation successful, no German words detected');
+                  storeDirectTranslation(retryTranslation);
+                  return true;
+                } else if (retryTranslation) {
+                  console.warn('⚠️ Re-translation still contains German words, using it anyway');
+                  storeDirectTranslation(retryTranslation);
+                  return true;
+                }
+              }
+            } catch (retryError) {
+              console.error('Error during re-translation:', retryError);
+            }
+            
+            // If re-translation failed, use original but log warning
+            console.warn('⚠️ Using translation with German words (validation failed)');
+            storeDirectTranslation(translation);
+            return true;
+          } else {
+            // Translation is valid - no German words detected
+            console.log('✅ Translation validated - no German words detected');
+            storeDirectTranslation(translation);
+            return true;
+          }
         } else {
-          console.error('❌ No message in response data');
+          console.error('❌ No translation in response data or translation is empty');
+          clearTranslationSource();
+          return false;
         }
       } else {
         const errorText = await response.text();
         console.error('❌ Translation failed:', errorText);
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        clearTranslationSource();
+        return false;
       }
     } catch (error) {
       console.error('Error translating message:', error);
-      // Fallback - set a placeholder
-      setTranslatedMessages(prev => ({
-        ...prev,
-        [messageId]: 'Translation unavailable'
-      }));
+      clearTranslationSource();
+      return false;
     }
   };
 
@@ -2719,9 +2922,14 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
         });
         
         if (translationMatch) {
+          const suggestionTranslation = translationMatch[1].trim();
           setTranslatedMessages(prev => ({
             ...prev,
-            [messageId]: translationMatch[1].trim()
+            [messageId]: suggestionTranslation
+          }));
+          setTranslationSources(prev => ({
+            ...prev,
+            [messageId]: 'suggestion'
           }));
         }
         
@@ -3606,7 +3814,48 @@ Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1]
 
       if (response.ok) {
         const data = await response.json();
-        const translations = data.translation.split(' | ');
+        let translations = data.translation.split(' | ').map((s: string) => s.trim());
+        
+        // Validate translations - check for German words
+        const needsRetranslation: number[] = [];
+        translations.forEach((translation, index) => {
+          if (hasGermanWords(translation)) {
+            console.warn(`⚠️ German words detected in translation ${index + 1}: "${translation}"`);
+            needsRetranslation.push(index);
+          }
+        });
+        
+        // Re-translate if needed (edge function should handle this, but double-check)
+        if (needsRetranslation.length > 0) {
+          console.log(`🔄 Re-translating ${needsRetranslation.length} suggestion(s) with German words...`);
+          try {
+            const suggestionsToRetranslate = needsRetranslation.map(idx => suggestions[idx]);
+            const retryResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/translate`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                text: suggestionsToRetranslate.join(' | '),
+                targetLanguage: 'English'
+              })
+            });
+            
+            if (retryResponse.ok) {
+              const retryData = await retryResponse.json();
+              const retranslations = retryData.translation.split(' | ').map((s: string) => s.trim());
+              needsRetranslation.forEach((originalIndex, retransIndex) => {
+                if (retranslations[retransIndex]) {
+                  translations[originalIndex] = retranslations[retransIndex];
+                  console.log(`✅ Re-translated suggestion ${originalIndex + 1}: "${translations[originalIndex]}"`);
+                }
+              });
+            }
+          } catch (error) {
+            console.error('Error re-translating suggestions:', error);
+          }
+        }
         
         // Store translations for each suggestion
         const translatedSuggestions = suggestions.map((suggestion, index) => ({
@@ -7058,6 +7307,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     setShowTranslation({});
     setShowSuggestions({});
     setTranslatedMessages({});
+    setTranslationSources({});
+    setTranslatingMessages({});
     setSuggestedResponses({});
     setShowSuggestionTranslation({});
     
@@ -8128,18 +8379,33 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   )}
                   
                   {/* Translation */}
-                  {message.role === 'assistant' && showTranslation[message.id] && translatedMessages[message.id] && (
+                  {message.role === 'assistant' && showTranslation[message.id] && (
                     <div className="ml-4 mt-2 max-w-sm lg:max-w-lg">
-                      <div className="bg-gray-100 px-3 py-2 rounded-lg text-xs text-gray-700">
-                        <span className="font-medium">Translation: </span>
-                        {translatedMessages[message.id]}
-                      </div>
-                      <button
-                        onClick={() => extractVocabularyFromText(message.content)}
-                        className="mt-2 text-xs text-text600 hover:text-text800 hover:underline transition-colors"
-                      >
-                        📚 Add words to vocab
-                      </button>
+                      {translatingMessages[message.id] ? (
+                        <div className="bg-gray-100 px-3 py-2 rounded-lg text-xs text-gray-700">
+                          <div className="flex items-center space-x-2">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <span>Translating...</span>
+                          </div>
+                        </div>
+                      ) : translatedMessages[message.id] ? (
+                        <>
+                          <div className="bg-gray-100 px-3 py-2 rounded-lg text-xs text-gray-700">
+                            <span className="font-medium">Translation: </span>
+                            {translatedMessages[message.id]}
+                          </div>
+                          <button
+                            onClick={() => extractVocabularyFromText(message.content)}
+                            className="mt-2 text-xs text-text600 hover:text-text800 hover:underline transition-colors"
+                          >
+                            📚 Add words to vocab
+                          </button>
+                        </>
+                      ) : (
+                        <div className="bg-red-50 px-3 py-2 rounded-lg text-xs text-red-700">
+                          Translation unavailable. Please try again.
+                        </div>
+                      )}
                     </div>
                   )}
                   
@@ -8154,8 +8420,11 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                         suggestionsForMessage.map((suggestion, index) => {
                           const responseId = `${message.id}-${index}`;
                           const suggestionText = typeof suggestion === 'string' ? suggestion : suggestion.german;
+                          // For suggestion translations, always prefer per-suggestion English text.
+                          // If a suggestion is still a plain string (no object with .english yet),
+                          // we skip showing a translation rather than reusing the message translation.
                           const suggestionTranslation = typeof suggestion === 'string' 
-                            ? translatedMessages[message.id] || '' 
+                            ? '' 
                             : suggestion.english;
                           
                           return (
