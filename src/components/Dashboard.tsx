@@ -9004,6 +9004,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm relative backdrop-blur-sm bg-white/95">
                 {/* Text Input */}
                 <div className="mb-6">
+                  <label className="block text-sm font-semibold text-text800 mb-2 font-heading">Context</label>
                   <textarea
                     placeholder="My left knee is injured and I want to visit a doctor."
                     value={conversationInput}
@@ -9018,7 +9019,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 <div className="flex space-x-4 mb-6">
                   {/* Context Level */}
                   <div className="flex-1 relative">
-                    <label className="block text-sm font-semibold text-text800 mb-2 font-heading">Context</label>
+                    <label className="block text-sm font-semibold text-text800 mb-2 font-heading">Style</label>
                     <button
                       onClick={() => !currentConversationContextLocked && setShowContextDropdown(!showContextDropdown)}
                       disabled={currentConversationContextLocked}
