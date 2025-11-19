@@ -393,7 +393,7 @@ function App() {
             <div className="relative">
               <div className="relative card-glass rounded-2xl p-6 md:p-8">
                 <img 
-                  src="https://znwcnjxgkptaanfdsbfq.supabase.co/storage/v1/object/public/Video/TalkBuddy_%20Speak%20German%20(3).mp4" 
+                  src="https://znwcnjxgkptaanfdsbfq.supabase.co/storage/v1/object/public/Landing%20Page%20Image/Landing%20page%20image.jpg" 
                   alt="Person learning language with blue-themed technology setup" 
                   className="w-full h-48 md:h-56 object-cover rounded-lg mb-4"
                 />
