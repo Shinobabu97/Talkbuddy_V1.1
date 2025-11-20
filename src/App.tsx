@@ -701,14 +701,15 @@ function App() {
         </div>
       </footer>
 
+      {/* SIGNUP DISABLED: onSignUpStart callback removed */}
+      {/* onSignUpStart={() => {
+        signingUpRef.current = true;
+      }} */}
       <AuthModal
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
         initialMode={authModalMode}
         showSuccessMessage={showSuccessMessage}
-        onSignUpStart={() => {
-          signingUpRef.current = true;
-        }}
       />
       <WaitlistModal
         isOpen={waitlistModalOpen}

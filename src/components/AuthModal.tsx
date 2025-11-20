@@ -11,7 +11,9 @@ interface AuthModalProps {
 }
 
 export default function AuthModal({ isOpen, onClose, initialMode = 'login', showSuccessMessage, onSignUpStart }: AuthModalProps) {
-  const [mode, setMode] = useState<'login' | 'signup' | 'forgot' | 'signup-success'>(initialMode);
+  // SIGNUP DISABLED: Default to 'login' even if 'signup' is passed
+  const resolvedInitialMode = initialMode === 'signup' ? 'login' : initialMode;
+  const [mode, setMode] = useState<'login' | 'signup' | 'forgot' | 'signup-success'>(resolvedInitialMode);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -24,8 +26,9 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
   });
 
   // Update mode when initialMode changes
+  // SIGNUP DISABLED: Always default to 'login' even if 'signup' is passed
   React.useEffect(() => {
-    setMode(initialMode);
+    setMode(initialMode === 'signup' ? 'login' : initialMode);
   }, [initialMode]);
 
   // Show success message when needed
@@ -66,28 +69,29 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
         if (error) throw error;
         // Modal will close automatically via auth state change
         
-      } else if (mode === 'signup') {
-        onSignUpStart?.();
-        const { error } = await supabase.auth.signUp({
-          email: formData.email,
-          password: formData.password,
-          options: {
-            data: {
-              first_name: formData.firstName,
-              last_name: formData.lastName
-            }
-          }
-        });
+      // SIGNUP DISABLED: Commented out signup functionality
+      // } else if (mode === 'signup') {
+      //   onSignUpStart?.();
+      //   const { error } = await supabase.auth.signUp({
+      //     email: formData.email,
+      //     password: formData.password,
+      //     options: {
+      //       data: {
+      //         first_name: formData.firstName,
+      //         last_name: formData.lastName
+      //       }
+      //     }
+      //   });
 
-        if (error) throw error;
+      //   if (error) throw error;
 
-        // Show success message and switch to login
-        setMode('login');
-        setMessage({
-          type: 'success',
-          text: 'Account created successfully! Now sign in with your credentials.'
-        });
-        setFormData({ firstName: '', lastName: '', email: formData.email, password: '' });
+      //   // Show success message and switch to login
+      //   setMode('login');
+      //   setMessage({
+      //     type: 'success',
+      //     text: 'Account created successfully! Now sign in with your credentials.'
+      //   });
+      //   setFormData({ firstName: '', lastName: '', email: formData.email, password: '' });
         
       } else if (mode === 'forgot') {
         const { error } = await supabase.auth.resetPasswordForEmail(formData.email);
@@ -116,6 +120,10 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
   };
 
   const switchMode = (newMode: 'login' | 'signup' | 'forgot') => {
+    // SIGNUP DISABLED: Prevent switching to signup mode
+    if (newMode === 'signup') {
+      return; // Ignore signup mode requests
+    }
     setMode(newMode);
     setMessage(null);
     setFormData({ firstName: '', lastName: '', email: '', password: '' });
@@ -135,15 +143,20 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
 
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-text mb-2 font-display">
-            {mode === 'login' ? 'Welcome Back' : mode === 'signup' ? 'Create Account' : 'Reset Password'}
+            {/* SIGNUP DISABLED: Removed signup title option */}
+            {mode === 'login' ? 'Welcome Back' : 'Reset Password'}
+            {/* : mode === 'signup' ? 'Create Account' : 'Reset Password'} */}
           </h2>
           <p className="text-text-muted font-body">
+            {/* SIGNUP DISABLED: Removed signup subtitle option */}
             {mode === 'login' 
               ? 'Sign in to continue your language learning journey'
-              : mode === 'signup'
-              ? 'Join thousands of learners building speaking confidence'
               : 'Enter your email to receive reset instructions'
             }
+            {/* : mode === 'signup'
+              ? 'Join thousands of learners building speaking confidence'
+              : 'Enter your email to receive reset instructions'
+            */}
           </p>
         </div>
 
@@ -158,7 +171,8 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {mode === 'signup' && (
+          {/* SIGNUP DISABLED: Commented out signup form fields (First Name, Last Name) */}
+          {/* {mode === 'signup' && (
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -197,7 +211,7 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
                 </div>
               </div>
             </div>
-          )}
+          )} */}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -255,7 +269,8 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
             {loading ? (
               <Loader2 className="h-5 w-5 animate-spin" />
             ) : (
-              mode === 'login' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Send Reset Email'
+              /* SIGNUP DISABLED: Removed 'Create Account' button text option - mode === 'login' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Send Reset Email' */
+              mode === 'login' ? 'Sign In' : 'Send Reset Email'
             )}
           </button>
         </form>
@@ -263,12 +278,13 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
         <div className="mt-6 text-center">
           {mode === 'login' ? (
             <div className="space-y-2">
-              <button
+              {/* SIGNUP DISABLED: Commented out "Don't have an account? Sign up" link */}
+              {/* <button
                 onClick={() => switchMode('signup')}
                 className="text-primary-600 hover:text-primary-700 font-medium transition-colors duration-200"
               >
                 Don't have an account? Sign up
-              </button>
+              </button> */}
               <div>
                 <button
                   onClick={() => switchMode('forgot')}
@@ -278,20 +294,24 @@ export default function AuthModal({ isOpen, onClose, initialMode = 'login', show
                 </button>
               </div>
             </div>
-          ) : mode === 'signup' ? (
-            <button
-              onClick={() => switchMode('login')}
-              className="text-primary-600 hover:text-primary-700 font-medium transition-colors duration-200"
-            >
-              Already have an account? Sign in
-            </button>
           ) : (
-            <button
-              onClick={() => switchMode('login')}
-              className="text-primary-600 hover:text-primary-700 font-medium transition-colors duration-200"
-            >
-              Back to sign in
-            </button>
+            <>
+              {/* SIGNUP DISABLED: Removed signup mode link (switched to login from signup) */}
+              {/* ) : mode === 'signup' ? (
+                <button
+                  onClick={() => switchMode('login')}
+                  className="text-primary-600 hover:text-primary-700 font-medium transition-colors duration-200"
+                >
+                  Already have an account? Sign in
+                </button>
+              */}
+              <button
+                onClick={() => switchMode('login')}
+                className="text-primary-600 hover:text-primary-700 font-medium transition-colors duration-200"
+              >
+                Back to sign in
+              </button>
+            </>
           )}
         </div>
       </div>
