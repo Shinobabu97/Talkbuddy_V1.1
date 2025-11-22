@@ -1,0 +1,200 @@
+import React from 'react';
+import { X, BookOpen, Mic, CheckCircle, Award, TrendingUp } from 'lucide-react';
+import { ConversationSummary } from '../utils/summaryGenerator';
+
+interface ConversationSummaryModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  summary: ConversationSummary;
+}
+
+const ConversationSummaryModal: React.FC<ConversationSummaryModalProps> = ({
+  isOpen,
+  onClose,
+  summary
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="p-6 border-b border-gray-200 bg-background-light">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Conversation Summary</h2>
+              <p className="text-sm text-gray-600 mt-1">Great job on your German practice!</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Praise Section */}
+          <div className="bg-background-light rounded-lg p-4 border border-gray-200">
+            <div className="flex items-start space-x-3">
+              <Award className="h-6 w-6 text-green-600 flex-shrink-0 mt-1" />
+              <p className="text-gray-800 font-medium">{summary.praise}</p>
+            </div>
+          </div>
+
+          {/* Stats Grid */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-primary-50 rounded-lg p-4 border border-primary-200">
+              <div className="flex items-center space-x-2 mb-2">
+                <BookOpen className="h-5 w-5 text-primary-600" />
+                <h3 className="font-semibold text-gray-900">Vocabulary</h3>
+              </div>
+              <p className="text-2xl font-bold text-primary-600">{summary.stats.wordsLearned + summary.stats.wordsDeleted}</p>
+              <p className="text-xs text-gray-600">words practiced</p>
+            </div>
+
+            {summary.stats.testsCompleted > 0 && (
+              <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
+                <div className="flex items-center space-x-2 mb-2">
+                  <CheckCircle className="h-5 w-5 text-purple-600" />
+                  <h3 className="font-semibold text-gray-900">Tests</h3>
+                </div>
+                <p className="text-2xl font-bold text-purple-600">{summary.stats.averageTestScore}%</p>
+                <p className="text-xs text-gray-600">average score</p>
+              </div>
+            )}
+
+        {summary.stats.pronunciationAttempts > 0 && (
+              <div className="bg-pink-50 rounded-lg p-4 border border-pink-200">
+                <div className="flex items-center space-x-2 mb-2">
+                  <Mic className="h-5 w-5 text-pink-600" />
+                  <h3 className="font-semibold text-gray-900">Pronunciation</h3>
+                </div>
+                <p className="text-2xl font-bold text-pink-600">{summary.stats.sentencePronunciationScore}/100</p>
+                <p className="text-xs text-gray-600">latest sentence score</p>
+            {(summary.pronunciationStrongWords.length > 0 || summary.pronunciationNeedsPractice.length > 0) && (
+              <div className="mt-3 space-y-2">
+                {summary.pronunciationStrongWords.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Strong words</p>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {summary.pronunciationStrongWords.map((word) => (
+                        <span key={word} className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">
+                          {word}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {summary.pronunciationNeedsPractice.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Needs practice</p>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {summary.pronunciationNeedsPractice.map((word) => (
+                        <span key={word} className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-700">
+                          {word}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+              </div>
+            )}
+
+            <div className="bg-indigo-50 rounded-lg p-4 border border-indigo-200">
+              <div className="flex items-center space-x-2 mb-2">
+                <TrendingUp className="h-5 w-5 text-indigo-600" />
+                <h3 className="font-semibold text-gray-900">Overall Accuracy</h3>
+              </div>
+              <p className="text-2xl font-bold text-indigo-600">
+                {summary.stats.pronunciationAttempts > 0
+                  ? `${summary.stats.overallPronunciationScore}/100`
+                  : '0/100'}
+              </p>
+              <p className="text-xs text-gray-600">average sentence pronunciation</p>
+            </div>
+          </div>
+
+          {/* Feedback Sections */}
+          <div className="space-y-4">
+            {/* Vocabulary Feedback */}
+            <div className="bg-white rounded-lg p-4 border border-gray-200 space-y-3">
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-2 flex items-center">
+                  <BookOpen className="h-4 w-4 mr-2 text-primary-600" />
+                  Vocabulary Progress
+                </h3>
+                <p className="text-sm text-gray-700">{summary.vocabularyFeedback}</p>
+              </div>
+              {summary.wordsToPractise.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-1">Words to repractice</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {summary.wordsToPractise.map((word) => (
+                      <span key={word} className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-700">
+                        {word}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Test Feedback */}
+            {summary.stats.testsCompleted > 0 && (
+              <div className="bg-white rounded-lg p-4 border border-gray-200">
+                <h3 className="font-semibold text-gray-900 mb-2 flex items-center">
+                  <CheckCircle className="h-4 w-4 mr-2 text-purple-600" />
+                  Test Results
+                </h3>
+                <p className="text-sm text-gray-700">{summary.testFeedback}</p>
+              </div>
+            )}
+
+            {/* Pronunciation Feedback */}
+            {summary.stats.pronunciationAttempts > 0 && (
+              <div className="bg-white rounded-lg p-4 border border-gray-200">
+                <h3 className="font-semibold text-gray-900 mb-2 flex items-center">
+                  <Mic className="h-4 w-4 mr-2 text-pink-600" />
+                  Pronunciation
+                </h3>
+                <p className="text-sm text-gray-700">{summary.pronunciationFeedback}</p>
+              </div>
+            )}
+
+            {/* Grammar Feedback */}
+            <div className="bg-white rounded-lg p-4 border border-gray-200">
+              <h3 className="font-semibold text-gray-900 mb-2 flex items-center">
+                <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
+                Grammar
+              </h3>
+              <p className="text-sm text-gray-700">{summary.grammarFeedback}</p>
+            </div>
+          </div>
+
+          {/* Encouragement */}
+          <div className="bg-background-light rounded-lg p-4 border border-gray-200">
+            <p className="text-gray-800 font-medium text-center">{summary.encouragement}</p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="p-6 border-t border-gray-200 bg-gray-50">
+          <button
+            onClick={onClose}
+            className="w-full px-6 py-3 btn-glossy font-bold rounded-full text-base"
+          >
+            Start New Conversation
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ConversationSummaryModal;
+

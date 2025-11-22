@@ -3,6 +3,7 @@ import { corsHeaders } from '../_shared/cors.ts'
 
 interface TTSRequest {
   text: string;
+  speed?: number; // Optional speed parameter (0.5 to 2.0)
 }
 
 interface TTSResponse {
@@ -18,11 +19,22 @@ serve(async (req) => {
   }
 
   try {
-    const { text }: TTSRequest = await req.json()
+    const { text, speed = 0.85 }: TTSRequest = await req.json()
 
     if (!text) {
       return new Response(
         JSON.stringify({ success: false, error: 'Text is required' }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      )
+    }
+
+    // Validate speed parameter
+    if (speed && (speed < 0.5 || speed > 2.0)) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Speed must be between 0.5 and 2.0' }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -48,7 +60,7 @@ serve(async (req) => {
         input: text,
         voice: 'nova', // Consistent female voice optimized for German
         response_format: 'mp3',
-        speed: 0.85 // Consistent speed for natural German pronunciation
+        speed: speed // Use the provided speed parameter
       })
     })
 

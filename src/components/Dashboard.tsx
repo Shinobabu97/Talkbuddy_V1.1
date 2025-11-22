@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { germanTTS } from '../lib/tts';
+import { saveMessageAnalysis, PronunciationData } from '../lib/analysisStorage';
 import {
   Mic,
   MicOff,
@@ -10,21 +11,35 @@ import {
   Loader2,
   User,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ArrowLeft,
+  ArrowRight,
+  Lock,
   Send,
   Play,
   BookOpen,
   BarChart3,
   MessageCircle,
   Volume2,
-  Target,
   Bot,
   Trash2,
   X,
+  Menu,
+  Sparkles,
+  Target,
 } from 'lucide-react';
 import { supabase, AuthUser } from '../lib/supabase';
 import OnboardingFlow from './OnboardingFlow';
+import OnboardingHints, { dashboardHints, chatBubbleHints } from './OnboardingHints';
 import ProfilePictureModal from './ProfilePictureModal';
 import Toolbar from './Toolbar';
+import VocabularyBuilderModal from './VocabularyBuilderModal';
+import PodcastsPanel from './PodcastsPanel';
+import ConversationSummaryModal from './ConversationSummaryModal';
+import SuggestedResponseCard from './SuggestedResponseCard';
+import { SessionData } from '../types/sessionData';
+import { generateConversationSummary, ConversationSummary } from '../utils/summaryGenerator';
 
 interface DashboardProps {
   user: AuthUser;
@@ -54,20 +69,24 @@ const getRandomLastSeen = () => {
 
 interface OnboardingData {
   profilePictureUrl?: string;
-  motivations: string[];
+  learningLanguage?: string;
+  nativeLanguage?: string;
+  focusGroup?: 'travelers' | 'business';
+  // Keep old fields for backward compatibility
+  motivations?: string[];
   customMotivation?: string;
-  hobbies: string[];
-  customHobbies: string[];
-  hasWork: boolean;
+  hobbies?: string[];
+  customHobbies?: string[];
+  hasWork?: boolean;
   workDomain?: string;
-  germanLevel: string;
-  speakingFears: string[];
-  customFears: string[];
-  timeline: string;
-  goals: string[];
-  personalityTraits: string[];
+  germanLevel?: string;
+  speakingFears?: string[];
+  customFears?: string[];
+  timeline?: string;
+  goals?: string[];
+  personalityTraits?: string[];
   secretDetails?: string;
-  conversationTopics: string[];
+  conversationTopics?: string[];
 }
 
 interface Conversation {
@@ -77,6 +96,8 @@ interface Conversation {
   context_level: string;
   difficulty_level: string;
   context_locked: boolean;
+  difficulty_locked: boolean;
+  conversation_context?: string;
   created_at: string;
   updated_at: string;
   user_id: string;
@@ -91,6 +112,7 @@ interface ChatMessage {
   isAudio?: boolean; // Flag for audio messages
   isTranscribing?: boolean; // Flag for messages being transcribed
   showTryAgain?: boolean; // Flag to show "Try it again" button
+  pronunciationData?: PronunciationData; // Pronunciation analysis data for German voice messages
 }
 
 type MessageStatus = 'checking' | 'needs_correction' | 'mismatch' | 'error';
@@ -102,8 +124,86 @@ export default function Dashboard({ user }: DashboardProps) {
   const [showProfileModal, setShowProfileModal] = React.useState(false);
   const [currentProfilePicture, setCurrentProfilePicture] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Hints system state
+  const [showHints, setShowHints] = useState(false);
+  const [showChatHints, setShowChatHints] = useState(false);
+  const [hintsDismissed, setHintsDismissed] = useState(false);
+  const [hasSentFirstMessage, setHasSentFirstMessage] = useState(false);
 
   // 🎮 GAMIFICATION STATE
+  const STREAK_STORAGE_KEY = 'lingoStreak';
+
+  interface StreakStorage {
+    current: number;
+    longest: number;
+    lastActiveDate: string | null;
+    lastActivityTimestamp: number | null;
+    weeklyStreakEarned: boolean;
+    monthlyStreakEarned: boolean;
+    monthDaysTarget: number;
+  }
+
+  const getDateKey = (date: Date) => date.toISOString().slice(0, 10);
+
+  const getDaysInMonth = (date: Date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    return new Date(year, month + 1, 0).getDate();
+  };
+
+  const calculateDayDiff = (from: string, to: string) => {
+    const fromDate = new Date(`${from}T00:00:00`);
+    const toDate = new Date(`${to}T00:00:00`);
+    const diff = toDate.getTime() - fromDate.getTime();
+    return Math.floor(diff / (1000 * 60 * 60 * 24));
+  };
+
+  const loadStreakData = (): StreakStorage => {
+    const defaultData = () => ({
+      current: 0,
+      longest: 0,
+      lastActiveDate: null,
+      lastActivityTimestamp: null,
+      weeklyStreakEarned: false,
+      monthlyStreakEarned: false,
+      monthDaysTarget: getDaysInMonth(new Date())
+    });
+
+    if (typeof window === 'undefined') {
+      return defaultData();
+    }
+
+    try {
+      const raw = localStorage.getItem(STREAK_STORAGE_KEY);
+      if (!raw) {
+        return defaultData();
+      }
+      const parsed = JSON.parse(raw) as Partial<StreakStorage>;
+      return {
+        current: Number(parsed.current) || 0,
+        longest: Number(parsed.longest) || 0,
+        lastActiveDate: typeof parsed.lastActiveDate === 'string' ? parsed.lastActiveDate : null,
+        lastActivityTimestamp: Number(parsed.lastActivityTimestamp) || null,
+        weeklyStreakEarned: Boolean(parsed.weeklyStreakEarned),
+        monthlyStreakEarned: Boolean(parsed.monthlyStreakEarned),
+        monthDaysTarget: Number(parsed.monthDaysTarget) || getDaysInMonth(new Date())
+      };
+    } catch (error) {
+      console.warn('Unable to load streak data from storage', error);
+      return defaultData();
+    }
+  };
+
+  const persistStreakData = (data: StreakStorage) => {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(STREAK_STORAGE_KEY, JSON.stringify(data));
+    } catch (error) {
+      console.warn('Unable to persist streak data', error);
+    }
+  };
+
   const [playerStats, setPlayerStats] = React.useState({
     level: 1,
     experience: 0,
@@ -122,13 +222,152 @@ export default function Dashboard({ user }: DashboardProps) {
     pronunciationChampion: 0
   });
 
+  const streakDataRef = React.useRef<StreakStorage>(loadStreakData());
+
+  React.useEffect(() => {
+    const stored = streakDataRef.current;
+    const today = new Date();
+    const todayKey = getDateKey(today);
+
+    if (stored.lastActiveDate) {
+      const diff = calculateDayDiff(stored.lastActiveDate, todayKey);
+      if (diff > 1) {
+        const reset: StreakStorage = {
+          ...stored,
+          current: 0,
+          lastActiveDate: stored.lastActiveDate,
+          lastActivityTimestamp: stored.lastActivityTimestamp,
+          weeklyStreakEarned: false,
+          monthlyStreakEarned: false,
+          monthDaysTarget: getDaysInMonth(today)
+        };
+        streakDataRef.current = reset;
+        persistStreakData(reset);
+      }
+    } else {
+      streakDataRef.current = {
+        ...stored,
+        lastActiveDate: null,
+        lastActivityTimestamp: null,
+        weeklyStreakEarned: false,
+        monthlyStreakEarned: false,
+        monthDaysTarget: getDaysInMonth(today)
+      };
+      persistStreakData(streakDataRef.current);
+    }
+
+    setPlayerStats(prev => ({
+      ...prev,
+      currentStreak: streakDataRef.current.current,
+      longestStreak: streakDataRef.current.longest
+    }));
+  }, []);
+
+  const updateStreakOnActivity = React.useCallback((): StreakStorage => {
+    const now = new Date();
+    const todayKey = getDateKey(now);
+    const stored = streakDataRef.current;
+
+    if (stored.lastActiveDate === todayKey) {
+      return stored;
+    }
+
+    let current = stored.current;
+
+    const lastActivityTimestamp = stored.lastActivityTimestamp ?? 0;
+    const nowTimestamp = now.getTime();
+    let diffDays = 0;
+
+    if (stored.lastActiveDate) {
+      diffDays = calculateDayDiff(stored.lastActiveDate, todayKey);
+    }
+
+    if (!stored.lastActiveDate || !stored.lastActivityTimestamp) {
+      current = 1;
+    } else if (diffDays === 0) {
+      const diffMs = nowTimestamp - lastActivityTimestamp;
+      if (diffMs >= 24 * 60 * 60 * 1000) {
+        current = stored.current + 1;
+      } else {
+        return stored;
+      }
+    } else if (diffDays === 1) {
+      current = stored.current + 1;
+    } else {
+      current = 1;
+    }
+
+    const monthDaysTarget = getDaysInMonth(now);
+    const weeklyStreakEarned = current >= 7;
+    const monthlyStreakEarned = current >= monthDaysTarget;
+
+    const updated: StreakStorage = {
+      current,
+      longest: Math.max(stored.longest, current),
+      lastActiveDate: todayKey,
+      lastActivityTimestamp: nowTimestamp,
+      weeklyStreakEarned,
+      monthlyStreakEarned,
+      monthDaysTarget
+    };
+
+    streakDataRef.current = updated;
+    persistStreakData(updated);
+    return updated;
+  }, []);
+
   const [showLevelUp, setShowLevelUp] = React.useState(false);
   const [showAchievement, setShowAchievement] = React.useState<string | null>(null);
+  const [achievementData, setAchievementData] = React.useState<{ title: string; description: string } | null>(null);
   const [recentAchievements, setRecentAchievements] = React.useState<string[]>([]);
+
+  // 📊 SESSION TRACKING STATE
+  const createInitialSessionData = () : SessionData => ({
+    sessionId: `session-${Date.now()}`,
+    startTime: new Date().toISOString(),
+    wordsLearned: [],
+    wordsDeleted: [],
+    vocabularyTests: [],
+    wordsLearnedFromTests: 0,
+    pronunciationAttempts: [],
+    sentencePronunciationScores: [],
+    lastSentencePronunciationScore: null,
+    grammarMistakes: [],
+    correctResponses: 0,
+    totalMessages: 0
+  });
+
+  const sessionDataRef = useRef<SessionData>({
+    ...createInitialSessionData(),
+    wordsLearnedFromTests: Number(localStorage.getItem('wordsLearnedTotal') || '0')
+  });
+  const [sessionData, setSessionData] = useState<SessionData>(sessionDataRef.current);
+
+  const updateSessionData = React.useCallback((updater: (prev: SessionData) => SessionData) => {
+    setSessionData(prev => {
+      const next = updater(prev);
+      sessionDataRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const resetSessionData = React.useCallback(() => {
+    const next = {
+      ...createInitialSessionData(),
+      wordsLearnedFromTests: Number(localStorage.getItem('wordsLearnedTotal') || '0')
+    };
+    sessionDataRef.current = next;
+    setSessionData(next);
+  }, []);
+
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [conversationSummary, setConversationSummary] = useState<ConversationSummary | null>(null);
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [contextLevel, setContextLevel] = useState('Professional');
   const [difficultyLevel, setDifficultyLevel] = useState('Intermediate');
   const [currentConversationContextLocked, setCurrentConversationContextLocked] = useState(false);
+  const [currentConversationDifficultyLocked, setCurrentConversationDifficultyLocked] = useState(false);
+  const [lastGermanVoiceMessage, setLastGermanVoiceMessage] = useState<any>(null);
   const [showContextDropdown, setShowContextDropdown] = useState(false);
   const [showDifficultyDropdown, setShowDifficultyDropdown] = useState(false);
   const [conversationInput, setConversationInput] = useState('');
@@ -139,6 +378,8 @@ export default function Dashboard({ user }: DashboardProps) {
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [messageInput, setMessageInput] = useState('');
+  const [suggestedReplies, setSuggestedReplies] = useState<string[]>([]);
+  const [skipIntentOnce, setSkipIntentOnce] = useState(false);
   const [modalInput, setModalInput] = useState('');
   const [isModalRecording, setIsModalRecording] = useState(false);
   const [modalRecorder, setModalRecorder] = useState<MediaRecorder | null>(null);
@@ -152,12 +393,27 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('Initial userAttempts:', userAttempts);
     console.log('Initial errorMessages:', errorMessages);
     
+    // Add beforeunload event listener for session clearing
+    const handleBeforeUnload = () => {
+      console.log('🔄 === WINDOW CLOSING - CLEARING SESSION ===');
+      resetConversationState();
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
     return () => {
       console.log('🛑 === DASHBOARD COMPONENT UNMOUNTING ===');
       console.log('Final messageInput:', messageInput);
       console.log('Final waitingForCorrection:', waitingForCorrection);
       console.log('Final userAttempts:', userAttempts);
       console.log('Final errorMessages:', errorMessages);
+      
+      // Clear session on unmount
+      console.log('🔄 === COMPONENT UNMOUNTING - CLEARING SESSION ===');
+      resetConversationState();
+      
+      // Remove event listener
+      window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, []);
   
@@ -187,17 +443,39 @@ export default function Dashboard({ user }: DashboardProps) {
       setMessageStatus({});
       console.log('✅ === STATES CLEARED FOR NEW CONVERSATION ===');
     }
-  }, [selectedConversation]);
+}, [selectedConversation]);
   const [isSending, setIsSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [translatedMessages, setTranslatedMessages] = useState<{[key: string]: string}>({});
-  const [suggestedResponses, setSuggestedResponses] = useState<{[key: string]: string[]}>({});
+  const [translationSources, setTranslationSources] = useState<{[key: string]: 'direct' | 'suggestion'}>({});
+  const [translatingMessages, setTranslatingMessages] = useState<{[key: string]: boolean}>({});
+  const [suggestedResponses, setSuggestedResponses] = useState<{[key: string]: (string | {german: string, english: string})[]}>({});
+  const getSuggestionKey = (conversationIdValue: string | null | undefined, messageId: string) => {
+    const convoPart = conversationIdValue ?? selectedConversation ?? 'new-conversation';
+    return `${convoPart}::${messageId}`;
+  };
   const [showTranslation, setShowTranslation] = useState<{[key: string]: boolean}>({});
+  const [showSuggestionTranslation, setShowSuggestionTranslation] = useState<{[key: string]: boolean}>({});
   const [showSuggestions, setShowSuggestions] = useState<{[key: string]: boolean}>({});
+  const [showSuggestionsButtonClicked, setShowSuggestionsButtonClicked] = useState<{[key: string]: boolean}>({});
+  React.useEffect(() => {
+    if (selectedConversation) {
+      console.log('🧹 Clearing cached suggested responses for new conversation:', selectedConversation);
+    }
+    setTranslatedMessages({});
+    setTranslationSources({});
+    setTranslatingMessages({});
+    setSuggestedResponses({});
+    setShowSuggestions({});
+    setShowSuggestionTranslation({});
+    setShowSuggestionsButtonClicked({});
+  }, [selectedConversation]);
   const [hoveredConversation, setHoveredConversation] = useState<string | null>(null);
   const [showToolbar, setShowToolbar] = useState(false);
   const [currentAIMessage, setCurrentAIMessage] = useState<string>('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [statsExpanded, setStatsExpanded] = useState(true);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [germanPartnerName, setGermanPartnerName] = useState<string>('');
   const [lastSeenTime, setLastSeenTime] = useState<string>('');
   const [toolbarOpenedViaHelp, setToolbarOpenedViaHelp] = useState<boolean>(false);
@@ -211,6 +489,24 @@ export default function Dashboard({ user }: DashboardProps) {
   const [suggestedAnswers, setSuggestedAnswers] = useState<{[key: string]: string}>({});
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const [messageStatus, setMessageStatus] = useState<{[key: string]: MessageStatus}>({});
+  const [showVocabBuilder, setShowVocabBuilder] = useState(false);
+  const [showPodcastsModal, setShowPodcastsModal] = useState(false);
+  const [lastSuggestionUsed, setLastSuggestionUsed] = useState<{[messageId: string]: string}>({});
+  
+  // State for pronunciation practice from suggested responses
+  const [recordedAudioBlobs, setRecordedAudioBlobs] = useState<Map<string, { blob: Blob, text: string }>>(new Map());
+  const [responseRecordingState, setResponseRecordingState] = useState<{[responseId: string]: boolean}>({});
+  const [responseAnalyzingState, setResponseAnalyzingState] = useState<{[responseId: string]: boolean}>({});
+  const [responseShowAnalyze, setResponseShowAnalyze] = useState<{[responseId: string]: boolean}>({});
+  const [responseHasBeenAnalyzed, setResponseHasBeenAnalyzed] = useState<{[responseId: string]: boolean}>({});
+  const [practiceRecorders, setPracticeRecorders] = useState<{[responseId: string]: MediaRecorder}>({});
+  const [pendingPronunciationAnalysis, setPendingPronunciationAnalysis] = useState<{audioBlob: Blob, text: string, responseId: string} | null>(null);
+  
+  // State for mic button recording analysis
+  const [micRecordingBlob, setMicRecordingBlob] = useState<Blob | null>(null);
+  const [micRecordingTranscription, setMicRecordingTranscription] = useState<string | null>(null);
+  const [showMicAnalyzeButton, setShowMicAnalyzeButton] = useState(false);
+  const [currentMicMessageId, setCurrentMicMessageId] = useState<string | null>(null);
 
   const updateMessageStatus = (messageId: string, status: MessageStatus | null) => {
     setMessageStatus(prev => {
@@ -281,6 +577,30 @@ export default function Dashboard({ user }: DashboardProps) {
   // Comprehensive analysis state
   const [comprehensiveAnalysis, setComprehensiveAnalysis] = useState<{[key: string]: any}>({});
   
+  // Pronunciation features state
+  const [globalPlaybackSpeed, setGlobalPlaybackSpeed] = useState<number>(() => {
+    const saved = localStorage.getItem('talkbuddy-playback-speed');
+    return saved ? parseFloat(saved) : 1.0;
+  });
+
+  // Individual word speeds for Pronunciation Guide
+  const [wordSpeeds, setWordSpeeds] = useState<Record<string, number>>({});
+
+  // Helper function to get speed for a specific word
+  const getWordSpeed = (word: string): number => {
+    return wordSpeeds[word] || globalPlaybackSpeed;
+  };
+
+  // Helper function to set speed for a specific word - UNUSED
+  // const setWordSpeed = (word: string, speed: number): void => {
+  //   setWordSpeeds(prev => ({
+  //     ...prev,
+  //     [word]: speed
+  //   }));
+  // };
+  const [phoneticBreakdowns, setPhoneticBreakdowns] = useState<{[key: string]: Array<{original: string, phonetic: string, transliteration: string, syllables: string[]}>}>({});
+  const [showPronunciationBreakdown, setShowPronunciationBreakdown] = useState<{[key: string]: boolean}>({});
+  
   // Debug messageInput state changes
   React.useEffect(() => {
     console.log('📝 === MESSAGE INPUT STATE CHANGED ===');
@@ -288,6 +608,11 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('Length:', messageInput.length);
     console.log('Trimmed:', messageInput.trim());
   }, [messageInput]);
+
+  // Persist global playback speed to localStorage
+  useEffect(() => {
+    localStorage.setItem('talkbuddy-playback-speed', globalPlaybackSpeed.toString());
+  }, [globalPlaybackSpeed]);
   
   // Debug errorMessages state changes
   React.useEffect(() => {
@@ -486,6 +811,10 @@ export default function Dashboard({ user }: DashboardProps) {
       if (onboardingRecord && onboardingRecord.completed_at) {
         const data: OnboardingData = {
           profilePictureUrl: profileData?.profile_picture_url || null,
+          learningLanguage: onboardingRecord.learning_language,
+          nativeLanguage: onboardingRecord.native_language,
+          focusGroup: onboardingRecord.focus_group as 'travelers' | 'business' | undefined,
+          // Keep old fields for backward compatibility
           motivations: onboardingRecord.motivations || [],
           customMotivation: onboardingRecord.custom_motivation,
           hobbies: onboardingRecord.hobbies || [],
@@ -502,14 +831,46 @@ export default function Dashboard({ user }: DashboardProps) {
           conversationTopics: onboardingRecord.conversation_topics || []
         };
         
+        // Set context level based on focus group
+        if (data.focusGroup === 'travelers') {
+          setContextLevel('Casual');
+        } else if (data.focusGroup === 'business') {
+          setContextLevel('Professional');
+        }
+        
         setOnboardingData(data);
         setIsNewUser(false);
         setShowOnboarding(false);
+        
+        // Show hints if not dismissed
+        if (!onboardingRecord.hints_dismissed) {
+          setHintsDismissed(false);
+          setShowHints(true);
+        } else {
+          setHintsDismissed(true);
+        }
       } else {
         const hasCompletedOnboarding = localStorage.getItem(`onboarding_${user.id}`);
         if (hasCompletedOnboarding) {
           setIsNewUser(false);
-          setOnboardingData(JSON.parse(hasCompletedOnboarding));
+          const localData = JSON.parse(hasCompletedOnboarding);
+          // Normalize data from localStorage to ensure arrays are arrays
+          const normalizedData: OnboardingData = {
+            ...localData,
+            goals: Array.isArray(localData.goals) ? localData.goals : [],
+            personalityTraits: Array.isArray(localData.personalityTraits) ? localData.personalityTraits : [],
+            conversationTopics: Array.isArray(localData.conversationTopics) ? localData.conversationTopics : [],
+            germanLevel: localData.germanLevel || 'beginner',
+          };
+          setOnboardingData(normalizedData);
+          
+          // Set context level based on focus group
+          if (normalizedData.focusGroup === 'travelers') {
+            setContextLevel('Casual');
+          } else if (normalizedData.focusGroup === 'business') {
+            setContextLevel('Professional');
+          }
+          
           setShowOnboarding(false);
         } else {
           setShowOnboarding(true);
@@ -546,10 +907,39 @@ export default function Dashboard({ user }: DashboardProps) {
   };
 
   const createNewConversation = async () => {
-    if (!conversationInput.trim()) return;
+    console.log('🚀 === START CHAT BUTTON CLICKED ===');
+    console.log('Conversation input:', conversationInput);
+    console.log('Input trim check:', conversationInput.trim());
+    console.log('Context level:', contextLevel);
+    console.log('Difficulty level:', difficultyLevel);
+    
+    if (!conversationInput.trim()) {
+      console.log('❌ === BLOCKING - Empty conversation input ===');
+      return;
+    }
+
+    // Language and gibberish validation at conversation start (no quick replies here)
+    const startText = conversationInput.trim();
+    const langAtStart = detectLanguage(startText);
+    const onlyLettersAtStart = startText.replace(/[^A-Za-zÄÖÜäöüß]/g, '');
+    const vowelCountAtStart = (onlyLettersAtStart.match(/[aeiouAEIOUÄÖÜäöü]/g) || []).length;
+    const gibberishAtStart = onlyLettersAtStart.length > 0 && (vowelCountAtStart === 0 || (onlyLettersAtStart.length > 30 && vowelCountAtStart / onlyLettersAtStart.length < 0.15));
+
+    if (langAtStart !== 'german' && langAtStart !== 'english') {
+      alert('Please enter phrases or topics in German or English only to help us assist you better.');
+      return;
+    }
+    if (gibberishAtStart) {
+      alert("We couldn’t understand your input. Please enter clear sentences in German or English.");
+      return;
+    }
 
     try {
+      console.log('👤 User ID:', user.id);
+      console.log('👤 User object:', user);
+      
       // Create the conversation in database
+      // NOTE: conversation_context column doesn't exist in database yet, so excluding it
       const { data, error } = await supabase
         .from('conversations')
         .insert({
@@ -558,12 +948,21 @@ export default function Dashboard({ user }: DashboardProps) {
           preview: conversationInput.slice(0, 100),
           context_level: contextLevel,
           difficulty_level: difficultyLevel,
-          context_locked: false
+          context_locked: false,
+          difficulty_locked: false
+          // conversation_context: conversationInput.trim() - removed until column exists
         })
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Supabase insert error:', error);
+        console.error('Error code:', error.code);
+        console.error('Error message:', error.message);
+        console.error('Error details:', error.details);
+        console.error('Error hint:', error.hint);
+        throw error;
+      }
 
       // Add to conversations list and start immediately
       setConversations(prev => [data, ...prev]);
@@ -573,8 +972,10 @@ export default function Dashboard({ user }: DashboardProps) {
       
       // Clear input
       setConversationInput('');
+      console.log('✅ === CONVERSATION CREATED SUCCESSFULLY ===');
     } catch (error) {
-      console.error('Error creating conversation:', error);
+      console.error('❌ === ERROR CREATING CONVERSATION ===', error);
+      alert('Failed to create conversation. Please check the console for details.');
     }
   };
 
@@ -584,6 +985,10 @@ export default function Dashboard({ user }: DashboardProps) {
     // Set initial messages
     setChatMessages([]);
     
+    // Store the conversation context separately for future use
+    // Note: conversation_context column will be added to database later
+    console.log('📝 Conversation context stored:', userMessage);
+    
     // Immediately send the user's message to get AI response
     sendInitialMessage(conversationId, userMessage);
   };
@@ -591,6 +996,16 @@ export default function Dashboard({ user }: DashboardProps) {
   const sendInitialMessage = async (conversationId: string, userMessage: string) => {
     setIsSending(true);
     setIsTyping(true);
+    
+    // Store the user's initial message in chatMessages for contextual suggestions
+    const userMessageObj: ChatMessage = {
+      id: '1',
+      role: 'user',
+      content: userMessage,
+      timestamp: new Date().toISOString()
+    };
+    
+    setChatMessages(prev => [...prev, userMessageObj]);
     
     // Reset retry states for new conversation
     setWaitingForCorrection(false);
@@ -602,34 +1017,59 @@ export default function Dashboard({ user }: DashboardProps) {
     setSuggestedAnswers({});
 
     try {
+      // Get user session token for authenticated requests
+      const { data: { session } } = await supabase.auth.getSession();
+      const authToken = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+      
+      console.log('📡 === SENDING INITIAL MESSAGE TO API ===');
+      console.log('Conversation ID:', conversationId);
+      console.log('User message:', userMessage);
+      console.log('Context level:', contextLevel);
+      console.log('Difficulty level:', difficultyLevel);
+      console.log('Onboarding data exists:', !!onboardingData);
+      console.log('Has session token:', !!session?.access_token);
+      
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           messages: [{
             role: 'user',
-            content: `${contextLevel === 'Professional' ? 'Ich möchte dieses Szenario üben' : 'Ich möchte dieses Szenario üben'}: ${userMessage}. ${contextLevel === 'Professional' ? 'Beginnen Sie das Gespräch sofort mit der ersten Frage auf Deutsch. Verwenden Sie keine einleitenden Phrasen wie "Natürlich, gerne!" oder "Gerne!" - stellen Sie einfach die erste Frage direkt. WICHTIG: Antworten Sie NUR auf Deutsch. Verwenden Sie "Sie" statt "Du" für eine professionelle Atmosphäre.' : 'Beginn das Gespräch sofort mit der ersten Frage auf Deutsch. Verwende keine einleitenden Phrasen wie "Natürlich, gerne!" oder "Gerne!" - stell einfach die erste Frage direkt. WICHTIG: Antworte NUR auf Deutsch. Verwende "Du" statt "Sie" für eine lockere Atmosphäre.'}`
+            content: `Ich möchte dieses Szenario üben: ${userMessage}.\n\nWICHTIG:\n1. Bestätigen Sie zunächst, dass Sie den Kontext verstanden haben\n2. Fassen Sie kurz zusammen, was wir üben werden\n3. Fragen Sie, ob ich bereit bin, mit dem Rollenspiel zu beginnen\n4. Antworten Sie NUR auf Deutsch\n${contextLevel === 'Professional' ? 'Verwenden Sie "Sie" für formale Anrede.' : 'Verwenden Sie "Du" für lockere Anrede.'}`
           }],
           conversationId,
           contextLevel,
           difficultyLevel,
-          userProfile: onboardingData ? {
+          userProfile: onboardingData && onboardingData.germanLevel ? {
             germanLevel: onboardingData.germanLevel,
-            goals: onboardingData.goals,
-            personalityTraits: onboardingData.personalityTraits,
-            conversationTopics: onboardingData.conversationTopics
-          } : undefined
+            goals: Array.isArray(onboardingData.goals) ? onboardingData.goals : [],
+            personalityTraits: Array.isArray(onboardingData.personalityTraits) ? onboardingData.personalityTraits : [],
+            conversationTopics: Array.isArray(onboardingData.conversationTopics) ? onboardingData.conversationTopics : []
+          } : undefined,
+          conversationContext: userMessage
         })
       });
+      
+      console.log('📡 === API RESPONSE ===');
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
 
       if (!response.ok) {
-        throw new Error('Failed to get response');
+        const errorText = await response.text();
+        console.error('❌ API Error:', response.status, errorText);
+        throw new Error(`Failed to get response: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
+      
+      if (!data || !data.message) {
+        console.error('❌ Invalid API response - missing message field');
+        console.error('Response data:', data);
+        throw new Error('Invalid API response: missing message field');
+      }
       
       console.log('AI Response:', data.message);
       
@@ -640,22 +1080,51 @@ export default function Dashboard({ user }: DashboardProps) {
         timestamp: new Date().toISOString()
       };
 
-      setChatMessages(prev => [...prev, assistantMessage]);
+      let updatedInitialMessages: ChatMessage[] = [];
+      setChatMessages(prev => {
+        updatedInitialMessages = [...prev, assistantMessage];
+        return updatedInitialMessages;
+      });
       
-      // Lock the context for this conversation
+      // Lock the context AND difficulty for this conversation
       await supabase
         .from('conversations')
-        .update({ context_locked: true })
+        .update({ 
+          context_locked: true,
+          difficulty_locked: true
+        })
         .eq('id', conversationId);
       
       // Update local state
       setCurrentConversationContextLocked(true);
+      setCurrentConversationDifficultyLocked(true);
       
       // Update current message but don't show toolbar automatically
       setCurrentAIMessage(data.message);
+      
+      // Auto-generate 3 contextual suggestions after initial AI response
+      const messageId = '2'; // First AI message ID
+      await generateContextualSuggestionsForInitialResponse(
+        messageId,
+        data.message,
+        userMessage,
+        updatedInitialMessages.length ? updatedInitialMessages : chatMessages,
+        conversationId
+      );
 
     } catch (error) {
-      console.error('Error sending initial message:', error);
+      console.error('❌ === ERROR SENDING INITIAL MESSAGE ===');
+      console.error('Error:', error);
+      console.error('Error details:', {
+        conversationId,
+        userMessage,
+        contextLevel,
+        difficultyLevel,
+        hasOnboardingData: !!onboardingData,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined
+      });
+      
       const errorMessage: ChatMessage = {
         id: '2',
         role: 'assistant',
@@ -663,14 +1132,462 @@ export default function Dashboard({ user }: DashboardProps) {
         timestamp: new Date().toISOString()
       };
       setChatMessages(prev => [...prev, errorMessage]);
+      
+      // Show user-friendly error alert with more details
+      const userErrorMsg = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Failed to start conversation: ${userErrorMsg}\n\nPlease check:\n1. Your internet connection\n2. Browser console for details\n3. Try refreshing the page`);
     } finally {
       setIsSending(false);
       setIsTyping(false);
     }
   };
 
-  const generateTranslationAndSuggestions = async (messageId: string, germanText: string) => {
+  // Unified function to generate suggestions using OpenAI
+  // Automatically detects most recent bot message if not provided
+  const generateSuggestionsUsingOpenAI = async (
+    messageId: string,
+    botMessage?: string,
+    userContext?: string,
+    messagesOverride?: ChatMessage[],
+    conversationIdParam?: string | null
+  ) => {
+    console.log('🎯 === GENERATING SUGGESTIONS USING OPENAI ===');
+    console.log('Message ID:', messageId);
+    
+    // Auto-detect most recent bot message if not provided
+    const messages = messagesOverride ?? chatMessages;
+    const suggestionKey = getSuggestionKey(conversationIdParam, messageId);
+
+    // CRITICAL FIX: Always prioritize provided botMessage - it's the most recent bot response
+    let resolvedAssistantIndex = -1;
+    let aiMessage: string;
+
+    if (botMessage) {
+      // Use provided bot message directly - this ensures we're using the correct, most recent bot response
+      aiMessage = botMessage;
+      console.log('✅ Using provided bot message directly:', aiMessage);
+      
+      // Try to find the message in the array to get its index for conversation history
+      const targetAssistantIndex = messages.findIndex(
+        (msg) => msg.role === 'assistant' && msg.id === messageId
+      );
+      if (targetAssistantIndex >= 0) {
+        resolvedAssistantIndex = targetAssistantIndex;
+        console.log('✅ Found bot message in messages array at index:', resolvedAssistantIndex);
+      } else {
+        // If not found, use the last assistant message index as fallback
+        const assistantMessages = messages.filter((msg) => msg.role === 'assistant');
+        if (assistantMessages.length > 0) {
+          const lastAssistantIndex = messages.findIndex(
+            (msg) => msg === assistantMessages[assistantMessages.length - 1]
+          );
+          resolvedAssistantIndex = lastAssistantIndex >= 0 ? lastAssistantIndex : messages.length - 1;
+          console.log('⚠️ Bot message not found by ID, using last assistant message index:', resolvedAssistantIndex);
+        } else {
+          resolvedAssistantIndex = messages.length; // Will be used as end index for history
+          console.log('⚠️ No assistant messages found, using messages.length as index');
+        }
+      }
+    } else {
+      // Fallback: Try to find by messageId
+      const targetAssistantIndex = messages.findIndex(
+        (msg) => msg.role === 'assistant' && msg.id === messageId
+      );
+      const targetAssistantMessage =
+        targetAssistantIndex >= 0 ? messages[targetAssistantIndex] : undefined;
+
+      if (targetAssistantMessage) {
+        aiMessage = targetAssistantMessage.content;
+        resolvedAssistantIndex = targetAssistantIndex;
+        console.log('✅ Matched bot message by ID:', { messageId, aiMessage, index: resolvedAssistantIndex });
+      } else {
+        // Fall back to most recent assistant message if the specific ID cannot be found
+        const assistantMessages = messages.filter((msg) => msg.role === 'assistant');
+        const mostRecentBotMessage = assistantMessages[assistantMessages.length - 1];
+
+        if (!mostRecentBotMessage) {
+          console.error('❌ No bot message found in chatMessages');
+          // Fallback: use generateContextualFallbacks
+          const contextualFallbacks = generateContextualFallbacks('', conversationContext);
+          setSuggestedResponses((prev) => ({
+            ...prev,
+            [suggestionKey]: contextualFallbacks,
+          }));
+          return;
+        }
+
+        aiMessage = mostRecentBotMessage.content;
+        resolvedAssistantIndex = messages.findIndex(
+          (msg) => msg === mostRecentBotMessage
+        );
+        console.warn('⚠️ Falling back to most recent bot message due to missing ID match:', {
+          requestedId: messageId,
+          fallbackId: mostRecentBotMessage.id,
+          index: resolvedAssistantIndex,
+        });
+      }
+    }
+
+    // Enhanced conversation context extraction: Get last 4-6 messages for better context (increased from 2-3)
+    let conversationContext: string = userContext || '';
+    let conversationHistory: string = '';
+
+    if (resolvedAssistantIndex >= 0) {
+      // Include more messages for better context (4-6 messages instead of 2-3)
+      const startIndex = Math.max(0, resolvedAssistantIndex - 4);
+      const recentMessages = messages.slice(startIndex, resolvedAssistantIndex + 1);
+      conversationHistory = recentMessages
+        .map((msg) => `${msg.role === 'user' ? 'User' : 'Bot'}: ${msg.content}`)
+        .join(' -> ');
+      console.log('📜 Conversation history (last 4-6 messages):', conversationHistory);
+      console.log('📜 Message count in history:', recentMessages.length);
+    } else if (messages.length > 0) {
+      // Fallback: use last 4-6 messages if index not found
+      const startIndex = Math.max(0, messages.length - 5);
+      const recentMessages = messages.slice(startIndex);
+      conversationHistory = recentMessages
+        .map((msg) => `${msg.role === 'user' ? 'User' : 'Bot'}: ${msg.content}`)
+        .join(' -> ');
+      console.log('📜 Conversation history (fallback, last messages):', conversationHistory);
+    }
+
+    // Also get initial user context if available (for first message)
+    if (!conversationContext) {
+      const firstUserMessage = messages.find((msg) => msg.role === 'user');
+      if (firstUserMessage) {
+        conversationContext = firstUserMessage.content;
+        console.log('Using first user message as context:', conversationContext);
+      }
+    }
+
+    // Determine if this is 2nd+ bot message (not the first one)
+    const assistantMessages = messages.filter((msg) => msg.role === 'assistant');
+    let isSecondOrSubsequentMessage = false;
+    if (resolvedAssistantIndex >= 0) {
+      const assistantMessagesUpToTarget = messages
+        .slice(0, resolvedAssistantIndex + 1)
+        .filter((msg) => msg.role === 'assistant');
+      isSecondOrSubsequentMessage = assistantMessagesUpToTarget.length > 1;
+    } else {
+      isSecondOrSubsequentMessage = assistantMessages.length > 1;
+    }
+    console.log(
+      '📊 Is 2nd+ bot message:',
+      isSecondOrSubsequentMessage,
+      'Total assistant messages:',
+      assistantMessages.length
+    );
+    
+    // Extract and parse all questions from bot message
+    const extractQuestions = (message: string): { questions: string[], types: string[], topics: string[] } => {
+      const questions: string[] = [];
+      const types: string[] = [];
+      const topics: string[] = [];
+      
+      // Split by question marks to find individual questions
+      const sentences = message.split(/(?<=[?!.])/);
+      
+      sentences.forEach(sentence => {
+        const trimmed = sentence.trim();
+        if (trimmed.includes('?')) {
+          questions.push(trimmed);
+          
+          // Determine question type
+          const lower = trimmed.toLowerCase();
+          if (/was führt|was bringt|was möchten|was willst|was will|worüber|wovon|womit/i.test(lower)) {
+            types.push('what-brings');
+            // Extract topic after "zu mir", "zu Ihnen", etc.
+            const topicMatch = trimmed.match(/(?:zu (?:mir|ihnen|uns)|über|von|mit)\s+([^?]+)/i);
+            if (topicMatch) topics.push(topicMatch[1].trim());
+          } else if (/gibt es|haben sie|hast du|gibt es.*die|gibt es.*die/i.test(lower)) {
+            types.push('yes-no-existence');
+            // Extract what exists/is being asked about
+            const topicMatch = trimmed.match(/gibt es\s+([^?]+)|haben sie\s+([^?]+)|hast du\s+([^?]+)/i);
+            if (topicMatch) {
+              const topic = topicMatch[1] || topicMatch[2] || topicMatch[3];
+              if (topic) topics.push(topic.trim());
+            }
+          } else if (/^was\b/i.test(trimmed)) {
+            types.push('what');
+          } else if (/^wie\b/i.test(trimmed)) {
+            // Check if it's a feeling/emotion question FIRST before generic "how"
+            if (/wie fühl|wie geht es|wie empfind|wie fühlt|geht es dir|geht es ihnen|geht es ihnen|wie gehts/i.test(lower)) {
+              types.push('feeling-emotion');
+              // Extract context (in diesem Moment, jetzt, etc.)
+              const contextMatch = trimmed.match(/(?:in (?:diesem|dem)|jetzt|gerade|momentan|aktuell)/i);
+              if (contextMatch) topics.push(contextMatch[0]);
+            } else {
+              types.push('how');
+            }
+          } else if (/^wo\b/i.test(trimmed)) {
+            types.push('where');
+          } else if (/^wann\b/i.test(trimmed)) {
+            types.push('when');
+          } else if (/^warum\b/i.test(trimmed)) {
+            types.push('why');
+          } else if (/^wer\b/i.test(trimmed)) {
+            types.push('who');
+          } else if (/welche|welcher|welches/i.test(trimmed)) {
+            types.push('which');
+          } else if (/sind sie|bist du|können sie|kannst du|ist|soll|möchten/i.test(lower)) {
+            types.push('yes-no');
+          }
+        }
+      });
+      
+      return { questions, types, topics };
+    };
+    
+    const questionAnalysis = extractQuestions(aiMessage);
+    console.log('📋 Question Analysis:', questionAnalysis);
+    
+    // Detect question type - expanded readiness detection
+    const isReadinessQuestion = /sind.*bereit|bist.*bereit|ready|bereit.*beginnen|bereit.*starten|bereit.*mit|mit.*rollenspiel|rollenspiel.*beginnen|rollenspiel.*starten|möchten.*starten|können.*beginnen|kann.*anfangen|starten.*wir/i.test(aiMessage);
+    const isYesNoQuestion = /\?/.test(aiMessage) && (/sind|bist|haben|hast|kannst|können|ist|soll|möchten|gibt es/i.test(aiMessage));
+    const isInformationalQuestion = /\?/.test(aiMessage) && (/was|wie|wo|wann|warum|welche|welcher|welches/i.test(aiMessage));
+    const isFeelingEmotionQuestion = /wie fühl|wie geht es|wie empfind|wie fühlt|geht es dir|geht es ihnen|wie gehts/i.test(aiMessage.toLowerCase());
+    const isWhatBringsQuestion = /was führt|was bringt/i.test(aiMessage.toLowerCase());
+    const isGibtEsQuestion = /gibt es/i.test(aiMessage.toLowerCase());
+    const containsQuestion = /\?/.test(aiMessage) || /sind sie|bist du|können sie|kannst du|haben sie|hast du/i.test(aiMessage.toLowerCase());
+    
+    console.log('Question detection:', {
+      isReadinessQuestion,
+      isYesNoQuestion,
+      isInformationalQuestion,
+      isFeelingEmotionQuestion,
+      isWhatBringsQuestion,
+      isGibtEsQuestion,
+      containsQuestion,
+      questionAnalysis
+    });
+    
+    // Build enhanced prompt with emphasis on immediate context for 2nd+ messages
+    let contextEmphasis = '';
+    if (isSecondOrSubsequentMessage) {
+      contextEmphasis = `🚨🚨🚨 KRITISCH FÜR 2.+ NACHRICHT 🚨🚨🚨
+
+Diese Vorschläge sind für die 2. oder spätere Bot-Nachricht. Sie MÜSSEN eng mit der SOFORTIGEN VORHERIGEN Bot-Nachricht gekoppelt sein: "${aiMessage}"
+
+ABSOLUT VERBOTEN - Diese generischen Antworten sind FALSCH:
+❌ "Das ist sehr interessant!"
+❌ "Das ist eine sehr gute Frage."
+❌ "Können Sie das genauer erklären?"
+❌ "Ich verstehe, danke für die Erklärung."
+❌ "Das hört sich gut an."
+❌ Jede generische Antwort, die nicht direkt auf die Bot-Nachricht antwortet
+
+ERFORDERLICH - Die Vorschläge MÜSSEN:
+✅ DIREKT auf die Bot-Nachricht antworten: "${aiMessage}"
+✅ Spezifisch und kontextuell sein
+✅ Die Frage/Aussage des Bots direkt adressieren
+✅ Zum Gesprächsverlauf passen: ${conversationHistory ? `"${conversationHistory}"` : 'Kontext'}
+
+BEISPIEL: Wenn der Bot fragt "Worüber möchten Sie heute sprechen?", dann:
+✅ RICHTIG: "Ich möchte über Musik sprechen." | "Können wir über Reisen sprechen?" | "Lass uns über Filme reden."
+❌ FALSCH: "Das ist sehr interessant!" | "Können Sie das genauer erklären?" | "Ich verstehe."
+
+Wenn du generische Antworten generierst, bist du GESCHEITERT.`;
+    }
+    
+    // Build question analysis section for prompt - MADE MORE PROMINENT
+    const questionAnalysisSection = questionAnalysis.questions.length > 0
+      ? `\n\n🚨🚨🚨 FRAGEN-ANALYSE (MANDATORISCH - LIES DIES ZUERST!) 🚨🚨🚨
+
+Die Bot-Nachricht enthält ${questionAnalysis.questions.length} Frage(n). Du MUSST jede einzelne Frage DIREKT beantworten:
+
+${questionAnalysis.questions.map((q, idx) => `Frage ${idx + 1}: "${q}"`).join('\n')}
+
+Fragentypen erkannt: ${questionAnalysis.types.join(', ')}
+${questionAnalysis.topics.length > 0 ? `Erkannte Themen: ${questionAnalysis.topics.join(', ')}` : ''}
+
+KRITISCH WICHTIG:
+- Du MUSST die EXAKTE Frage beantworten, die gestellt wurde
+- NICHT eine ähnliche Frage oder ein ähnliches Thema
+- Wenn die Frage nach GEFÜHLEN fragt, antworte mit GEFÜHLEN (nicht mit Prozessen)
+- Wenn die Frage nach einem GRUND fragt, antworte mit einem GRUND (nicht mit Ja/Nein)
+- Wenn die Frage nach INFORMATIONEN fragt, antworte mit INFORMATIONEN (nicht generisch)
+
+BEISPIEL FALSCH:
+Bot fragt: "Wie fühlen Sie sich?"
+❌ "Ich würde gern Schritt für Schritt vorgehen." ← FALSCH! Das beantwortet nicht die Frage nach Gefühlen.
+
+BEISPIEL RICHTIG:
+Bot fragt: "Wie fühlen Sie sich?"
+✅ "Ich fühle mich etwas nervös." ← RICHTIG! Das beantwortet die Frage nach Gefühlen.
+
+Die Antworten müssen spezifisch auf diese Fragen eingehen, nicht generisch sein.`
+      : '';
+
+    // Build enhanced prompt based on question type
+    // Check readiness questions FIRST, then specific patterns, then informational, then yes/no
+    let questionInstruction = '';
+    if (containsQuestion) {
+      if (isReadinessQuestion) {
+        questionInstruction = `KRITISCH UND MANDATORISCH: Die KI-Nachricht ist eine Bereitschaftsfrage (z.B. "Sind Sie bereit?" oder "Sind Sie bereit, mit dem Rollenspiel zu beginnen?").
+
+MANDATORISCHE ANFORDERUNGEN:
+- Du MUSST genau 3 Antworten generieren, die DIREKT die Bereitschaftsfrage beantworten
+- Antwort 1 MUSS eine Zustimmung sein: "Ja, ich bin bereit" oder "Ja, gern" oder "Ja, ich bin bereit zu beginnen"
+- Antwort 2 MUSS eine Zustimmung mit Nachfrage sein: "Ja, aber ich habe eine Frage" oder "Ja, aber können Sie erklären..." oder "Ja, bevor wir beginnen..."
+- Antwort 3 MUSS eine Ablehnung oder Nachfrage sein: "Nein, können Sie bitte erklären?" oder "Können Sie bitte zuerst erklären?" oder "Ich habe noch eine Frage"
+
+ABSOLUT VERBOTEN - Diese Antworten sind FALSCH und beantworten die Frage NICHT:
+❌ "Das ist sehr interessant!"
+❌ "Das ist eine sehr gute Frage."
+❌ "Können Sie das genauer erklären?"
+❌ "Ich verstehe, danke für die Erklärung."
+❌ "Das hört sich gut an."
+
+KORREKTE BEISPIELE für "Sind Sie bereit, mit dem Rollenspiel zu beginnen?":
+✅ "Ja, ich bin bereit."
+✅ "Ja, aber ich habe eine Frage."
+✅ "Nein, können Sie bitte erklären?"
+
+Wenn du generische Antworten generierst, bist du GESCHEITERT. Generiere NUR direkte Ja/Nein-Varianten.`;
+      } else if (isFeelingEmotionQuestion) {
+        // "Wie fühlen Sie sich?" type questions
+        questionInstruction = `🚨🚨🚨 KRITISCH: Die Bot-Nachricht fragt nach GEFÜHLEN/EMOTIONEN (z.B. "Wie fühlen Sie sich?" oder "Wie geht es Ihnen?").
+
+MANDATORISCH - Die Antworten MÜSSEN:
+- TATSÄCHLICHE GEFÜHLE/EMOTIONEN beschreiben (nervös, aufgeregt, ruhig, unsicher, etc.)
+- Zum Gesprächskontext passen: "${conversationContext}"
+- Spezifisch sein, nicht generisch
+- DIREKT die Frage nach Gefühlen beantworten
+
+ABSOLUT VERBOTEN - Diese Antworten sind FALSCH (sie beantworten die Frage NICHT):
+❌ "Ich würde gern Schritt für Schritt vorgehen." (Prozess, keine Gefühle)
+❌ "Vielleicht beginnen wir mit einer kurzen Zusammenfassung." (Prozess, keine Gefühle)
+❌ "Lassen Sie uns zuerst die wichtigsten Punkte priorisieren." (Prozess, keine Gefühle)
+❌ "Das ist sehr interessant." (keine Gefühle)
+❌ Jede Antwort, die nicht über Gefühle/Emotionen spricht
+
+BEISPIEL RICHTIG (medizinisches Szenario, Bot fragt "Wie fühlen Sie sich in diesem Moment?"):
+✅ "Ich fühle mich etwas nervös." (I feel a bit nervous.)
+✅ "Ich bin etwas aufgeregt, aber auch neugierig." (I'm a bit excited, but also curious.)
+✅ "Ich fühle mich unsicher, was mich erwartet." (I feel uncertain about what to expect.)
+
+BEISPIEL RICHTIG (Geschäftsszenario, Bot fragt "Wie fühlen Sie sich?"):
+✅ "Ich fühle mich gut vorbereitet." (I feel well prepared.)
+✅ "Ich bin zuversichtlich, dass wir eine Lösung finden." (I'm confident we'll find a solution.)
+✅ "Ich fühle mich etwas angespannt, aber bereit." (I feel a bit tense, but ready.)
+
+BEISPIEL FALSCH (generisch - VERBOTEN):
+❌ "Ich würde gern Schritt für Schritt vorgehen."
+❌ "Vielleicht beginnen wir mit einer kurzen Zusammenfassung."
+❌ "Das ist sehr interessant."
+
+KRITISCH: Wenn der Kontext medizinisch ist, antworte mit medizinisch-relevanten Gefühlen (nervös, besorgt, unsicher, erleichtert).
+Wenn der Kontext geschäftlich ist, antworte mit geschäftlich-relevanten Gefühlen (zuversichtlich, vorbereitet, gespannt).
+Die Antworten MÜSSEN über GEFÜHLE sprechen, nicht über Prozesse oder Methoden.`;
+      } else if (isWhatBringsQuestion) {
+        // "Was führt Sie heute zu mir?" type questions
+        questionInstruction = `🚨 KRITISCH: Die Bot-Nachricht fragt "Was führt Sie zu mir?" oder "Was bringt Sie hierher?" - eine Frage nach dem GRUND/ZWECK.
+
+MANDATORISCH - Die Antworten MÜSSEN:
+- Einen KONKRETEN GRUND oder ZWECK nennen (warum der Benutzer hier ist)
+- Zum Gesprächskontext passen: "${conversationContext}"
+- Spezifisch sein, nicht generisch
+
+BEISPIEL RICHTIG (medizinisches Szenario):
+Bot fragt: "Was führt Sie heute zu mir?"
+✅ "Ich habe Schmerzen im Rücken."
+✅ "Ich brauche eine Kontrolluntersuchung."
+✅ "Ich möchte über meine Symptome sprechen."
+
+BEISPIEL RICHTIG (Geschäftsszenario):
+Bot fragt: "Was führt Sie heute zu mir?"
+✅ "Ich möchte über unser neues Projekt sprechen."
+✅ "Ich brauche Ihre Beratung zu einem Vertrag."
+✅ "Ich habe Fragen zu unseren Geschäftsbedingungen."
+
+BEISPIEL FALSCH (generisch - VERBOTEN):
+❌ "Ja, ich habe eine Frage dazu."
+❌ "Nein, momentan nicht."
+❌ "Könnten Sie das bitte genauer erklären?"
+
+Wenn der Kontext medizinisch ist, antworte mit medizinischen Gründen (Schmerzen, Symptome, Untersuchung).
+Wenn der Kontext geschäftlich ist, antworte mit geschäftlichen Gründen (Projekt, Vertrag, Beratung).`;
+      } else if (isGibtEsQuestion) {
+        // "Gibt es bestimmte Beschwerden oder Fragen?" type questions
+        questionInstruction = `🚨 KRITISCH: Die Bot-Nachricht fragt "Gibt es..." - eine Frage nach der EXISTENZ/VORHANDENSEIN von etwas.
+
+MANDATORISCH - Die Antworten MÜSSEN:
+- DIREKT beantworten, ob es das Gefragte gibt oder nicht
+- Wenn "Ja", dann SPEZIFISCHE Details nennen
+- Zum Gesprächskontext passen: "${conversationContext}"
+
+BEISPIEL RICHTIG (Bot fragt: "Gibt es bestimmte Beschwerden oder Fragen?"):
+✅ "Ja, ich habe Schmerzen im Rücken." (spezifische Beschwerde)
+✅ "Ja, ich möchte über meine Symptome sprechen." (spezifisches Thema)
+✅ "Nein, es ist nur eine Routineuntersuchung." (klare Antwort mit Kontext)
+
+BEISPIEL FALSCH (generisch - VERBOTEN):
+❌ "Ja, ich habe eine Frage dazu." (zu generisch, keine Details)
+❌ "Nein, momentan nicht." (kein Kontext)
+❌ "Könnten Sie das bitte genauer erklären?" (beantwortet die Frage nicht)
+
+Die Antworten müssen SPEZIFISCH sein und Details zum Kontext enthalten.`;
+      } else if (isInformationalQuestion) {
+        questionInstruction = `WICHTIG: Die KI-Nachricht ist eine Informationsfrage (Was/Wie/Wo/Wann/Warum/Wer/Welche).
+
+MANDATORISCH - Die Antworten MÜSSEN:
+- DIREKT spezifische Informationen zur Frage geben
+- Zum Kontext passen: "${conversationContext}"
+- Praktisch und rollenspielgerecht sein
+- NICHT generisch sein
+
+BEISPIEL RICHTIG (Bot fragt: "Worüber möchten Sie sprechen?"):
+✅ "Ich möchte über Musik sprechen."
+✅ "Können wir über Reisen sprechen?"
+✅ "Lass uns über Filme reden."
+
+BEISPIEL FALSCH:
+❌ "Das ist sehr interessant!"
+❌ "Können Sie das genauer erklären?"
+❌ "Ich verstehe."`;
+      } else if (isYesNoQuestion) {
+        questionInstruction = `WICHTIG: Die KI-Nachricht ist eine Ja/Nein-Frage.
+
+MANDATORISCH - Die Antworten MÜSSEN:
+- DIREKT die Frage mit Ja/Nein beantworten
+- Wenn Ja, dann SPEZIFISCHE Details hinzufügen
+- Wenn Nein, dann eine ALTERNATIVE oder BEGRÜNDUNG geben
+- Zum Kontext passen: "${conversationContext}"
+
+BEISPIEL RICHTIG (Bot fragt: "Haben Sie Schmerzen?"):
+✅ "Ja, ich habe Schmerzen im Rücken."
+✅ "Nein, aber ich fühle mich müde."
+✅ "Ja, leichte Kopfschmerzen."
+
+BEISPIEL FALSCH:
+❌ "Ja, ich habe eine Frage dazu."
+❌ "Nein, momentan nicht."
+❌ "Das ist interessant."`;
+      } else {
+        questionInstruction = `WICHTIG: Die KI-Nachricht enthält eine Frage.
+
+MANDATORISCH - Die Antworten MÜSSEN:
+- DIREKT auf die Frage antworten
+- Spezifisch sein, nicht generisch
+- Die Frage beantworten, nicht umschweifen
+- Zum Kontext passen: "${conversationContext}"
+
+ABSOLUT VERBOTEN:
+❌ "Das ist sehr interessant!"
+❌ "Das ist eine sehr gute Frage."
+❌ "Können Sie das genauer erklären?" (wenn nicht direkt relevant)
+❌ "Ich verstehe, danke für die Erklärung."`;
+      }
+    } else {
+      questionInstruction = `Die KI-Nachricht ist eine Aussage oder Anweisung. Generiere Antworten, die:
+- Kontextuell zur Aussage passen: "${conversationContext}"
+- Für das Rollenspiel geeignet sind
+- Natürlich auf die Aussage reagieren
+- Spezifisch sind, nicht generisch`;
+    }
+    
     try {
+      // Call OpenAI API for ALL suggestions (including readiness questions)
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
         headers: {
@@ -680,64 +1597,727 @@ export default function Dashboard({ user }: DashboardProps) {
         body: JSON.stringify({
           messages: [{
             role: 'user',
-            content: `Please provide: 1) English translation of: "${germanText}" 2) Three suggested German responses that a language learner could use to reply. IMPORTANT: The suggestions must be ONLY in German - no English translations in parentheses or brackets. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [suggestion1] | [suggestion2] | [suggestion3]`
+            content: `SCHRITT 1: ANALYSIERE die Bot-Nachricht: "${aiMessage}"
+
+${questionAnalysisSection}
+
+${contextEmphasis}
+
+${conversationHistory ? `Gesprächsverlauf (letzte 4-6 Nachrichten): ${conversationHistory}` : ''}
+
+${conversationContext ? `Anfänglicher Kontext: Der Benutzer möchte dieses Szenario üben: "${conversationContext}"` : ''}
+
+SCHRITT 2: VERSTEHE den Kontext:
+- Gesprächskontext: ${conversationContext || 'Allgemein'}
+- Formellitätsgrad: ${contextLevel === 'Professional' ? 'Formell (Sie)' : 'Informell (Du)'}
+- Schwierigkeitsgrad: ${difficultyLevel}
+
+SCHRITT 3: GENERIERE Antworten basierend auf der Frage-Analyse:
+
+${questionInstruction}
+
+🚨🚨🚨 KRITISCH - Die Vorschläge MÜSSEN: 🚨🚨🚨
+1. DIREKT die EXAKTE Frage beantworten, die in der Bot-Nachricht gestellt wurde: "${aiMessage}"
+   - NICHT eine ähnliche Frage
+   - NICHT ein ähnliches Thema
+   - Die EXAKTE Frage, die gestellt wurde
+2. Spezifisch sein - KEINE generischen Antworten
+3. Zum Gesprächskontext passen: ${conversationContext || 'Allgemein'}
+4. Für das Rollenspiel geeignet sein
+5. Den Formellitätsgrad berücksichtigen: ${contextLevel === 'Professional' ? 'Formell (Sie)' : 'Informell (Du)'}
+${isSecondOrSubsequentMessage ? '6. NICHT generisch sein - sie müssen spezifisch auf die Bot-Nachricht antworten' : ''}
+
+${isSecondOrSubsequentMessage ? 'VERBOTEN für 2.+ Nachrichten: Generische Antworten wie "Das ist interessant", "Ja, ich habe eine Frage dazu", "Nein, momentan nicht", "Ich würde gern Schritt für Schritt vorgehen" - diese sind FALSCH' : ''}
+
+WICHTIG: Überprüfe, ob deine Antworten die EXAKTE Frage beantworten. Wenn die Frage nach Gefühlen fragt, müssen die Antworten über Gefühle sprechen. Wenn die Frage nach einem Grund fragt, müssen die Antworten einen Grund nennen.
+
+Generiere genau 3 kurze deutsche Antworten (maximal 8 Wörter), die DIREKT die EXAKTE Frage(n) beantworten.
+
+Format: TRANSLATION: [English translation of AI message] SUGGESTIONS: [Antwort 1] | [Antwort 2] | [Antwort 3] ENGLISH: [Answer 1] | [Answer 2] | [Answer 3]`
           }],
-          conversationId: 'helper',
+          conversationId: selectedConversation || 'helper',
           contextLevel,
           difficultyLevel,
-          systemInstruction: "When providing German suggestions, respond ONLY in German. Do not include any English translations in parentheses or brackets in the suggestions."
+          conversationContext: conversationContext,
+          systemInstruction: `Du bist ein Experte für deutsche Rollenspiele. Deine Aufgabe: Generiere 3 passende deutsche Antworten, die DIREKT die Fragen in der Bot-Nachricht beantworten.
+
+MANDATORISCHER PROZESS:
+1. ANALYSIERE die Bot-Nachricht und identifiziere ALLE Fragen
+2. VERSTEHE den Gesprächskontext (medizinisch, geschäftlich, etc.)
+3. GENERIERE spezifische Antworten, die jede Frage direkt beantworten
+
+KRITISCH FÜR ENGLISCHE ÜBERSETZUNGEN:
+- Die englischen Übersetzungen (ENGLISH: [e1] | [e2] | [e3]) MÜSSEN zu 100% auf Englisch sein
+- KEINE deutschen Wörter dürfen in den englischen Übersetzungen bleiben
+- Jedes deutsche Wort muss vollständig ins Englische übersetzt werden
+- Die englischen Übersetzungen müssen natürliches, korrektes Englisch sein
+- Beispiel: "Ich habe Schmerzen" → "I have pain" (NICHT "Ich habe pain" oder "I have Schmerzen")
+
+${isSecondOrSubsequentMessage ? `🚨🚨🚨 KRITISCH FÜR 2.+ NACHRICHT 🚨🚨🚨
+
+Diese Vorschläge sind für die 2. oder spätere Bot-Nachricht. Sie MÜSSEN eng mit der SOFORTIGEN VORHERIGEN Bot-Nachricht gekoppelt sein.
+
+ABSOLUT VERBOTEN für 2.+ Nachrichten:
+❌ Generische Antworten wie "Das ist sehr interessant!"
+❌ "Das ist eine sehr gute Frage."
+❌ "Ja, ich habe eine Frage dazu." (zu generisch)
+❌ "Nein, momentan nicht." (kein Kontext)
+❌ "Können Sie das genauer erklären?" (wenn nicht direkt relevant)
+❌ "Ich verstehe, danke für die Erklärung."
+❌ Jede generische Antwort, die nicht direkt auf die Bot-Nachricht antwortet
+
+ERFORDERLICH für 2.+ Nachrichten:
+✅ DIREKTE Antworten auf die Bot-Nachricht: "${aiMessage}"
+✅ Spezifisch und kontextuell - mit Details
+✅ Direkte Adressierung der Frage/Aussage des Bots
+✅ Zum Gesprächskontext passend: ${conversationContext || 'Allgemein'}
+
+BEISPIEL RICHTIG (medizinisches Szenario, Bot fragt "Was führt Sie heute zu mir?"):
+✅ "Ich habe Schmerzen im Rücken."
+✅ "Ich brauche eine Kontrolluntersuchung."
+✅ "Ich möchte über meine Symptome sprechen."
+
+BEISPIEL FALSCH (generische Antworten):
+❌ "Ja, ich habe eine Frage dazu."
+❌ "Nein, momentan nicht."
+❌ "Könnten Sie das bitte genauer erklären?"
+
+Wenn du generische Antworten für 2.+ Nachrichten generierst, bist du GESCHEITERT.` : ''}
+
+${containsQuestion ? `KRITISCH: Die Bot-Nachricht enthält Frage(n). Die Antworten MÜSSEN:
+- Jede Frage DIREKT beantworten
+- Spezifisch sein, nicht generisch
+- Zum Gesprächskontext passen: ${conversationContext || 'Allgemein'}
+- Details enthalten, nicht nur Ja/Nein ohne Kontext
+
+${isFeelingEmotionQuestion ? '🚨 SPEZIELL FÜR "Wie fühlen Sie sich?" Fragen:\n- Antworte mit TATSÄCHLICHEN GEFÜHLEN/EMOTIONEN (nervös, aufgeregt, ruhig, etc.)\n- NICHT mit Prozessen oder Methoden\n- Nutze Kontext-spezifisches Vokabular für Gefühle\n- KEINE generischen oder prozessorientierten Antworten' : ''}
+${isWhatBringsQuestion ? 'SPEZIELL FÜR "Was führt Sie zu mir?" Fragen:\n- Antworte mit KONKRETEM GRUND (Schmerzen, Untersuchung, Projekt, etc.)\n- Nutze Kontext-spezifisches Vokabular\n- KEINE generischen Antworten' : ''}
+${isGibtEsQuestion ? 'SPEZIELL FÜR "Gibt es..." Fragen:\n- Beantworte mit Ja/Nein + SPEZIFISCHE Details\n- Wenn Ja: Nenne konkrete Beispiele\n- Wenn Nein: Gib Kontext oder Alternative' : ''}` : `Die Bot-Nachricht ist eine Aussage. Generiere passende, kontextuelle Reaktionen, die spezifisch auf die Aussage eingehen.`}
+
+${conversationHistory ? `Gesprächsverlauf: "${conversationHistory}"` : ''}
+${conversationContext ? `Gesprächskontext: "${conversationContext}"` : ''}
+Bot-Nachricht: "${aiMessage}"
+Formellitätsgrad: ${contextLevel}
+
+WICHTIGE REGELN:
+- Antworten müssen DIREKT die Frage(n) beantworten
+- Spezifisch sein - KEINE generischen Phrasen
+- Kontext-spezifisches Vokabular verwenden
+- ${isSecondOrSubsequentMessage ? 'FÜR 2.+ NACHRICHTEN: KEINE generischen Antworten - sie müssen DIREKT auf die Bot-Nachricht antworten' : 'Keine generischen Antworten wie "Das ist interessant" wenn eine Frage gestellt wird'}
+
+Format: TRANSLATION: [translation] SUGGESTIONS: [a1] | [a2] | [a3] ENGLISH: [e1] | [e2] | [e3]`
         })
       });
-
+      
       if (response.ok) {
         const data = await response.json();
         const content = data.message;
         
-        console.log('Translation and suggestions response:', content);
+        console.log('📡 API Response for suggestions:', content);
         
         // Parse translation and suggestions
         const translationMatch = content.match(/TRANSLATION:\s*(.+?)(?=SUGGESTIONS:|$)/);
-        const suggestionsMatch = content.match(/SUGGESTIONS:\s*(.+)/);
+        const suggestionsMatch = content.match(/SUGGESTIONS:\s*(.+?)(?=ENGLISH:|$)/);
+        const englishMatch = content.match(/ENGLISH:\s*(.+)/);
         
         if (translationMatch) {
-          setTranslatedMessages(prev => ({
-            ...prev,
-            [messageId]: translationMatch[1].trim()
-          }));
+          const suggestionTranslation = translationMatch[1].trim();
+          let addedSuggestionTranslation = false;
+          setTranslatedMessages(prev => {
+            // Only set if doesn't exist (preserve user translations)
+            if (prev[messageId]) {
+              console.log('Translation already exists, preserving user translation');
+              return prev;
+            }
+            addedSuggestionTranslation = true;
+            return {
+              ...prev,
+              [messageId]: suggestionTranslation
+            };
+          });
+          if (addedSuggestionTranslation) {
+            setTranslationSources(prev => ({
+              ...prev,
+              [messageId]: 'suggestion'
+            }));
+          }
         }
         
-        if (suggestionsMatch) {
-          const suggestions = suggestionsMatch[1].split('|').map(s => s.trim()).filter(s => s.length > 0);
+        if (suggestionsMatch && englishMatch) {
+          const germanSuggestions = suggestionsMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+          let englishTranslations = englishMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
           
-          // Clean up any English translations that might be in parentheses or brackets
-          const cleanedSuggestions = suggestions.map(suggestion => {
-            // Remove English text in parentheses like (English translation)
-            let cleaned = suggestion.replace(/\([^)]*[A-Za-z][^)]*\)/g, '');
-            // Remove English text in brackets like [English translation]
-            cleaned = cleaned.replace(/\[[^\]]*[A-Za-z][^\]]*\]/g, '');
-            // Remove any remaining English text patterns
-            cleaned = cleaned.replace(/\([^)]*\)/g, '');
-            cleaned = cleaned.replace(/\[[^\]]*\]/g, '');
-            // Trim whitespace
-            return cleaned.trim();
-          }).filter(s => s.length > 0);
+          // Validate English translations - check for German words
+          const needsRetranslation: number[] = [];
+          englishTranslations.forEach((translation, index) => {
+            if (hasGermanWords(translation)) {
+              console.warn(`⚠️ German words detected in English translation ${index + 1}: "${translation}"`);
+              needsRetranslation.push(index);
+            }
+          });
           
-          console.log('Original suggestions:', suggestions);
-          console.log('Cleaned suggestions:', cleanedSuggestions);
+          // Re-translate suggestions that contain German words
+          if (needsRetranslation.length > 0) {
+            console.log(`🔄 Re-translating ${needsRetranslation.length} suggestion(s) with German words...`);
+            try {
+              const suggestionsToRetranslate = needsRetranslation.map(idx => germanSuggestions[idx]);
+              const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/translate`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  text: suggestionsToRetranslate.join(' | '),
+                  targetLanguage: 'English'
+                })
+              });
+              
+              if (response.ok) {
+                const data = await response.json();
+                const retranslations = data.translation.split(' | ').map((s: string) => s.trim());
+                needsRetranslation.forEach((originalIndex, retransIndex) => {
+                  if (retranslations[retransIndex]) {
+                    englishTranslations[originalIndex] = retranslations[retransIndex];
+                    console.log(`✅ Re-translated suggestion ${originalIndex + 1}: "${englishTranslations[originalIndex]}"`);
+                  }
+                });
+              }
+            } catch (error) {
+              console.error('Error re-translating suggestions:', error);
+            }
+          }
+          
+          const pairedSuggestions = germanSuggestions.map((german: string, index: number) => ({
+            german: german.trim(),
+            english: englishTranslations[index] ? englishTranslations[index].trim() : ''
+          }));
+          
+          console.log('✅ Generated suggestions:', pairedSuggestions);
+          
+          // Enhanced validation: Check for generic responses for 2nd+ messages or readiness questions
+          const genericPatterns = [
+            /^das ist.*interessant/i,
+            /^das ist.*sehr interessant/i,
+            /^das ist.*gute.*frage/i,
+            /^können.*sie.*das.*genauer.*erklären/i,
+            /^können.*sie.*erklären[^?]*$/i,
+            /^ich verstehe[,.]?$/i,
+            /^ich verstehe, danke/i,
+            /^danke.*erklärung/i,
+            /^das hört.*gut/i,
+            /^das klingt.*gut/i,
+            /^ja, ich habe eine frage dazu/i,
+            /^nein, momentan nicht/i,
+            /^ja, ich habe eine frage/i,
+            /^nein, nicht wirklich/i,
+            /^könnten sie das bitte genauer erklären/i
+          ];
+          
+          // Process-oriented patterns that shouldn't be used for feeling questions
+          const processPatterns = [
+            /schritt für schritt/i,
+            /zusammenfassung/i,
+            /priorisieren/i,
+            /vorgehen/i,
+            /beginnen wir/i,
+            /lassen sie uns/i,
+            /als nächstes/i
+          ];
+          
+          // Feeling/emotion patterns that should be present for feeling questions
+          const feelingPatterns = [
+            /fühle mich/i,
+            /fühle/i,
+            /geht es/i,
+            /nervös/i,
+            /aufgeregt/i,
+            /ruhig/i,
+            /unsicher/i,
+            /besorgt/i,
+            /zuversichtlich/i,
+            /angst/i,
+            /sorgen/i,
+            /erleichtert/i,
+            /gespannt/i,
+            /vorbereitet/i,
+            /müde/i,
+            /gut/i,
+            /schlecht/i,
+            /bin.*nervös/i,
+            /bin.*aufgeregt/i,
+            /bin.*unsicher/i,
+            /bin.*besorgt/i,
+            /bin.*zuversichtlich/i
+          ];
+          
+          // Check if suggestions are generic (not contextually relevant)
+          const hasGenericResponses = pairedSuggestions.some(suggestion => {
+            const germanText = suggestion.german.toLowerCase().trim();
+            return genericPatterns.some(pattern => pattern.test(germanText));
+          });
+          
+          // Check if feeling questions are answered with processes instead of feelings
+          const hasProcessResponsesForFeelingQuestion = isFeelingEmotionQuestion && pairedSuggestions.some(suggestion => {
+            const germanText = suggestion.german.toLowerCase().trim();
+            return processPatterns.some(pattern => pattern.test(germanText));
+          });
+          
+          // Check if feeling questions actually contain feeling words
+          const hasFeelingWords = isFeelingEmotionQuestion && pairedSuggestions.some(suggestion => {
+            const germanText = suggestion.german.toLowerCase().trim();
+            return feelingPatterns.some(pattern => pattern.test(germanText));
+          });
+          
+          // For readiness questions, check for direct responses
+          if (isReadinessQuestion) {
+            const hasDirectResponses = pairedSuggestions.some(suggestion => {
+              const germanText = suggestion.german.toLowerCase();
+              return /^ja[,!.]|^nein[,!.]|bereit|aber.*frage/i.test(germanText);
+            });
+            
+            if (hasGenericResponses || !hasDirectResponses) {
+              console.warn('⚠️ OpenAI returned generic responses for readiness question, using fallback');
+              const contextualFallbacks = generateContextualFallbacks(aiMessage, conversationContext);
+              setSuggestedResponses(prev => ({
+                ...prev,
+                [suggestionKey]: contextualFallbacks
+              }));
+              return;
+            }
+          }
+          
+          // For feeling/emotion questions, reject if answers are process-oriented or don't contain feelings
+          if (isFeelingEmotionQuestion) {
+            if (hasProcessResponsesForFeelingQuestion) {
+              console.warn('⚠️ OpenAI returned process-oriented responses for feeling question, using fallback');
+              console.warn('⚠️ Process responses detected for feeling question');
+              const contextualFallbacks = generateContextualFallbacks(aiMessage, conversationContext);
+              setSuggestedResponses(prev => ({
+                ...prev,
+                [suggestionKey]: contextualFallbacks
+              }));
+              return;
+            }
+            
+            if (!hasFeelingWords) {
+              console.warn('⚠️ OpenAI returned responses without feeling words for feeling question, using fallback');
+              console.warn('⚠️ No feeling words detected in responses');
+              const contextualFallbacks = generateContextualFallbacks(aiMessage, conversationContext);
+              setSuggestedResponses(prev => ({
+                ...prev,
+                [suggestionKey]: contextualFallbacks
+              }));
+              return;
+            }
+          }
+          
+          // For 2nd+ messages, reject if all suggestions are generic
+          if (isSecondOrSubsequentMessage && hasGenericResponses) {
+            const genericCount = pairedSuggestions.filter(suggestion => {
+              const germanText = suggestion.german.toLowerCase().trim();
+              return genericPatterns.some(pattern => pattern.test(germanText));
+            }).length;
+            
+            // If 2 or more suggestions are generic, reject and use fallback
+            if (genericCount >= 2) {
+              console.warn('⚠️ OpenAI returned generic responses for 2nd+ message, using fallback');
+              console.warn('⚠️ Generic count:', genericCount, 'out of', pairedSuggestions.length);
+              const contextualFallbacks = generateContextualFallbacks(aiMessage, conversationContext);
+              setSuggestedResponses(prev => ({
+                ...prev,
+                [suggestionKey]: contextualFallbacks
+              }));
+              return;
+            }
+          }
           
           setSuggestedResponses(prev => ({
             ...prev,
-            [messageId]: cleanedSuggestions
+            [suggestionKey]: pairedSuggestions
           }));
+          
+          // Don't automatically show suggestions - only show when user clicks question mark icon
         } else {
-          console.log('No suggestions match found in:', content);
+          console.log('⚠️ Could not parse suggestions from API response, using fallback');
+          // Fallback to contextual suggestions
+          const contextualFallbacks = generateContextualFallbacks(aiMessage, conversationContext);
+          setSuggestedResponses(prev => ({
+            ...prev,
+            [suggestionKey]: contextualFallbacks
+          }));
+          // Don't automatically show suggestions - only show when user clicks question mark icon
         }
       } else {
-        console.error('Failed to get translation and suggestions:', response.status, response.statusText);
+        const errorText = await response.text();
+        console.error('❌ API call failed:', response.status, errorText);
+        // Fallback to contextual suggestions
+        const contextualFallbacks = generateContextualFallbacks(aiMessage, conversationContext);
+        setSuggestedResponses(prev => ({
+          ...prev,
+          [suggestionKey]: contextualFallbacks
+        }));
+        // Don't automatically show suggestions - only show when user clicks question mark icon
       }
     } catch (error) {
-      console.error('Error generating translation and suggestions:', error);
+      console.error('❌ Error generating suggestions:', error);
+      // Fallback to contextual suggestions
+      const contextualFallbacks = generateContextualFallbacks(aiMessage, conversationContext);
+      setSuggestedResponses(prev => ({
+        ...prev,
+        [suggestionKey]: contextualFallbacks
+      }));
+      // Don't automatically show suggestions - only show when user clicks question mark icon
     }
+  };
+
+  // Generate 3 contextual suggestions for initial AI response
+  const generateContextualSuggestionsForInitialResponse = async (
+    messageId: string,
+    aiMessage: string,
+    userContext: string,
+    messagesOverride?: ChatMessage[],
+    conversationIdParam?: string | null
+  ) => {
+    console.log('🎯 === GENERATING CONTEXTUAL SUGGESTIONS FOR INITIAL RESPONSE ===');
+    console.log('Message ID:', messageId);
+    console.log('AI Message:', aiMessage);
+    console.log('User Context:', userContext);
+    
+    // Use unified function with provided bot message and user context
+    await generateSuggestionsUsingOpenAI(messageId, aiMessage, userContext, messagesOverride, conversationIdParam);
+  };
+
+  // Generate contextual fallback suggestions based on AI message content
+  const generateContextualFallbacks = (germanText: string, conversationContextParam?: string) => {
+    const text = germanText.toLowerCase();
+    // Use provided conversation context or try to get from current conversation
+    const contextToUse = conversationContextParam || (selectedConversation ? conversations.find(c => c.id === selectedConversation)?.conversation_context : undefined);
+    const contextText = contextToUse ? contextToUse.toLowerCase() : '';
+    
+    // Check for readiness questions FIRST - this is critical!
+    if (text.includes('bereit') && (text.includes('rollenspiel') || text.includes('beginnen') || text.includes('starten') || text.includes('mit dem'))) {
+      console.log('✅ Fallback: Detected readiness question, returning appropriate responses');
+      return [
+        { german: 'Ja, ich bin bereit.', english: 'Yes, I am ready.' },
+        { german: 'Ja, aber ich habe eine Frage.', english: 'Yes, but I have a question.' },
+        { german: 'Nein, können Sie bitte erklären?', english: 'No, can you please explain?' }
+      ];
+    }
+    
+    // Check for "Wie fühlen Sie sich?" type questions
+    if (/wie fühl|wie geht es|wie empfind|wie fühlt|geht es dir|geht es ihnen|wie gehts/i.test(germanText)) {
+      console.log('✅ Fallback: Detected "Wie fühlen" question');
+      // Check context from conversation context if available - use both message text and conversation context
+      const isMedical = text.includes('arzt') || text.includes('ärztin') || text.includes('praxis') || text.includes('untersuchung') || text.includes('symptom') || text.includes('schmerz') || text.includes('wartezimmer') || text.includes('krank') || text.includes('patient') || contextText.includes('arzt') || contextText.includes('ärztin') || contextText.includes('praxis') || contextText.includes('untersuchung') || contextText.includes('krank') || contextText.includes('patient');
+      const isBusiness = text.includes('geschäft') || text.includes('projekt') || text.includes('vertrag') || text.includes('meeting') || text.includes('beratung') || text.includes('geschäftspartner') || contextText.includes('geschäft') || contextText.includes('projekt') || contextText.includes('vertrag') || contextText.includes('meeting');
+      
+      if (isMedical) {
+        return [
+          { german: 'Ich fühle mich etwas nervös.', english: 'I feel a bit nervous.' },
+          { german: 'Ich bin etwas aufgeregt, aber auch neugierig.', english: 'I am a bit excited, but also curious.' },
+          { german: 'Ich fühle mich unsicher, was mich erwartet.', english: 'I feel uncertain about what to expect.' }
+        ];
+      } else if (isBusiness) {
+        return [
+          { german: 'Ich fühle mich gut vorbereitet.', english: 'I feel well prepared.' },
+          { german: 'Ich bin zuversichtlich, dass wir eine Lösung finden.', english: 'I am confident we will find a solution.' },
+          { german: 'Ich fühle mich etwas angespannt, aber bereit.', english: 'I feel a bit tense, but ready.' }
+        ];
+      } else {
+        // Generic context
+        return [
+          { german: 'Ich fühle mich gut.', english: 'I feel good.' },
+          { german: 'Ich bin etwas aufgeregt.', english: 'I am a bit excited.' },
+          { german: 'Ich fühle mich etwas unsicher.', english: 'I feel a bit uncertain.' }
+        ];
+      }
+    }
+    
+    // Check for "Was führt Sie zu mir?" type questions
+    if (/was führt|was bringt/i.test(germanText)) {
+      console.log('✅ Fallback: Detected "Was führt" question');
+      // Check context from conversation context if available - use both message text and conversation context
+      const isMedical = text.includes('arzt') || text.includes('ärztin') || text.includes('praxis') || text.includes('untersuchung') || text.includes('symptom') || text.includes('schmerz') || contextText.includes('arzt') || contextText.includes('ärztin') || contextText.includes('praxis') || contextText.includes('untersuchung') || contextText.includes('krank') || contextText.includes('patient');
+      const isBusiness = text.includes('geschäft') || text.includes('projekt') || text.includes('vertrag') || text.includes('meeting') || text.includes('beratung') || contextText.includes('geschäft') || contextText.includes('projekt') || contextText.includes('vertrag') || contextText.includes('meeting');
+      
+      if (isMedical) {
+        return [
+          { german: 'Ich habe Schmerzen im Rücken.', english: 'I have back pain.' },
+          { german: 'Ich brauche eine Kontrolluntersuchung.', english: 'I need a check-up.' },
+          { german: 'Ich möchte über meine Symptome sprechen.', english: 'I would like to talk about my symptoms.' }
+        ];
+      } else if (isBusiness) {
+        return [
+          { german: 'Ich möchte über unser neues Projekt sprechen.', english: 'I would like to talk about our new project.' },
+          { german: 'Ich brauche Ihre Beratung zu einem Vertrag.', english: 'I need your advice on a contract.' },
+          { german: 'Ich habe Fragen zu unseren Geschäftsbedingungen.', english: 'I have questions about our business terms.' }
+        ];
+      } else {
+        // Generic context
+        return [
+          { german: 'Ich habe eine wichtige Angelegenheit zu besprechen.', english: 'I have an important matter to discuss.' },
+          { german: 'Ich brauche Ihre Hilfe bei etwas.', english: 'I need your help with something.' },
+          { german: 'Ich möchte mit Ihnen über ein Thema sprechen.', english: 'I would like to talk with you about a topic.' }
+        ];
+      }
+    }
+    
+    // Check for "Gibt es..." questions
+    if (/gibt es/i.test(germanText)) {
+      console.log('✅ Fallback: Detected "Gibt es" question');
+      if (text.includes('beschwerden') || text.includes('symptom') || text.includes('schmerz')) {
+        return [
+          { german: 'Ja, ich habe Schmerzen im Rücken.', english: 'Yes, I have back pain.' },
+          { german: 'Ja, ich möchte über meine Symptome sprechen.', english: 'Yes, I would like to talk about my symptoms.' },
+          { german: 'Nein, es ist nur eine Routineuntersuchung.', english: 'No, it is just a routine check-up.' }
+        ];
+      } else if (text.includes('frage') || text.includes('fragen')) {
+        return [
+          { german: 'Ja, ich habe Fragen zu meiner Behandlung.', english: 'Yes, I have questions about my treatment.' },
+          { german: 'Ja, ich möchte etwas Genaueres wissen.', english: 'Yes, I would like to know something more specific.' },
+          { german: 'Nein, momentan nicht.', english: 'No, not at the moment.' }
+        ];
+      } else {
+        return [
+          { german: 'Ja, ich habe einige Fragen dazu.', english: 'Yes, I have some questions about that.' },
+          { german: 'Ja, ich möchte mehr Informationen.', english: 'Yes, I would like more information.' },
+          { german: 'Nein, momentan nicht.', english: 'No, not at the moment.' }
+        ];
+      }
+    }
+    
+    // Enhanced detection for common question patterns that need direct answers
+    if (text.includes('möchten sie') || text.includes('möchtest du') || text.includes('wollen sie') || text.includes('willst du')) {
+      const topicMatch = text.match(/(?:möchten|wollen).*?(?:über|von|mit)\s+([^?]+)/i);
+      if (topicMatch) {
+        const topic = topicMatch[1].trim();
+        return [
+          { german: `Ja, gerne. Lassen Sie uns über ${topic} sprechen.`, english: `Yes, please. Let's talk about ${topic}.` },
+          { german: `Das klingt interessant. Erzählen Sie mir mehr über ${topic}.`, english: `That sounds interesting. Tell me more about ${topic}.` },
+          { german: `Gerne, aber zuerst habe ich eine Frage zu ${topic}.`, english: `Gladly, but first I have a question about ${topic}.` }
+        ];
+      }
+    }
+    
+    // Detection for "haben sie" / "hast du" questions
+    if ((text.includes('haben sie') || text.includes('hast du')) && text.includes('?')) {
+      if (text.includes('frage') || text.includes('fragen')) {
+        return [
+          { german: 'Ja, ich habe eine Frage dazu.', english: 'Yes, I have a question about that.' },
+          { german: 'Nein, momentan nicht, aber vielleicht später.', english: 'No, not at the moment, but maybe later.' },
+          { german: 'Ja, könnten Sie das bitte genauer erklären?', english: 'Yes, could you please explain that in more detail?' }
+        ];
+      }
+      if (text.includes('erfahrung') || text.includes('erlebt')) {
+        return [
+          { german: 'Ja, ich habe bereits Erfahrung damit.', english: 'Yes, I already have experience with that.' },
+          { german: 'Nein, das wäre für mich neu.', english: 'No, that would be new for me.' },
+          { german: 'Ich habe etwas Erfahrung, aber nicht viel.', english: 'I have some experience, but not much.' }
+        ];
+      }
+    }
+    
+    // Specific question patterns and their direct answers
+    if (text.includes('welche details') || text.includes('which details') || text.includes('am wichtigsten')) {
+      return [
+        { german: 'Die Budgetplanung ist am wichtigsten für uns.', english: 'Budget planning is most important for us.' },
+        { german: 'Die technischen Spezifikationen sind entscheidend.', english: 'Technical specifications are crucial.' },
+        { german: 'Die Sicherheitsanforderungen haben Priorität.', english: 'Security requirements have priority.' }
+      ];
+    }
+    
+    if (text.includes('anforderungen') || text.includes('requirements')) {
+      return [
+        { german: 'Wir brauchen eine Cloud-basierte Lösung.', english: 'We need a cloud-based solution.' },
+        { german: 'Die Sicherheit ist unsere Hauptpriorität.', english: 'Security is our main priority.' },
+        { german: 'Wir benötigen 24/7 Support.', english: 'We need 24/7 support.' }
+      ];
+    }
+    
+    if (text.includes('erfahrung') || text.includes('experience')) {
+      return [
+        { german: 'Ja, ich habe Erfahrung mit Microsoft-Produkten.', english: 'Yes, I have experience with Microsoft products.' },
+        { german: 'Ich arbeite seit 5 Jahren in der IT-Branche.', english: 'I have been working in IT for 5 years.' },
+        { german: 'Nein, aber ich lerne sehr schnell.', english: 'No, but I learn very quickly.' }
+      ];
+    }
+    
+    if (text.includes('finanz') || text.includes('budget') || text.includes('kosten')) {
+      return [
+        { german: 'Unser Budget liegt bei 50.000 Euro.', english: 'Our budget is 50,000 euros.' },
+        { german: 'Die Kosten sind ein wichtiger Faktor.', english: 'Costs are an important factor.' },
+        { german: 'Wir suchen nach einer kosteneffizienten Lösung.', english: 'We are looking for a cost-effective solution.' }
+      ];
+    }
+    
+    // Business/Professional context
+    if (text.includes('vertrag') || text.includes('software') || text.includes('geschäft') || text.includes('meeting') || text.includes('projekt')) {
+      return [
+        { german: 'Das Projekt sollte bis Ende des Jahres abgeschlossen sein.', english: 'The project should be completed by the end of the year.' },
+        { german: 'Wir haben bereits einen ähnlichen Vertrag abgeschlossen.', english: 'We have already signed a similar contract.' },
+        { german: 'Können wir die nächsten Schritte besprechen?', english: 'Can we discuss the next steps?' }
+      ];
+    }
+    
+    // Travel context
+    if (text.includes('reise') || text.includes('hotel') || text.includes('flug') || text.includes('stadt') || text.includes('urlaub')) {
+      return [
+        { german: 'Ich möchte gerne die Altstadt besichtigen.', english: 'I would like to visit the old town.' },
+        { german: 'Welche Sehenswürdigkeiten empfehlen Sie?', english: 'What sights do you recommend?' },
+        { german: 'Ich interessiere mich für die lokale Küche.', english: 'I am interested in the local cuisine.' }
+      ];
+    }
+    
+    // Food/Restaurant context
+    if (text.includes('essen') || text.includes('restaurant') || text.includes('küche') || text.includes('speise') || text.includes('menü')) {
+      return [
+        { german: 'Ich bin Vegetarier, haben Sie vegetarische Optionen?', english: 'I am vegetarian, do you have vegetarian options?' },
+        { german: 'Das hört sich sehr lecker an!', english: 'That sounds very delicious!' },
+        { german: 'Können Sie das Gericht empfehlen?', english: 'Can you recommend this dish?' }
+      ];
+    }
+    
+    // General conversation context - enhanced to be more specific
+    if (text.includes('frage') && text.includes('?')) {
+      // If it's asking if user has a question
+      return [
+        { german: 'Ja, ich habe eine Frage dazu.', english: 'Yes, I have a question about that.' },
+        { german: 'Nein, momentan nicht.', english: 'No, not at the moment.' },
+        { german: 'Könnten Sie das bitte genauer erklären?', english: 'Could you please explain that in more detail?' }
+      ];
+    }
+    if (text.includes('denken') || text.includes('meinung') || text.includes('glauben')) {
+      return [
+        { german: 'Ich denke, dass wir das Schritt für Schritt angehen sollten.', english: 'I think we should approach this step by step.' },
+        { german: 'Meine Meinung dazu ist, dass wir mehr Informationen brauchen.', english: 'My opinion is that we need more information.' },
+        { german: 'Ich glaube, das ist ein guter Ansatz.', english: 'I believe that is a good approach.' }
+      ];
+    }
+    const questionWordMatch = text.match(/\b(welche|welcher|welches|was|wie|wo|wann|warum|wer)\b/);
+    const hasQuestionMark = text.includes('?');
+
+    if (questionWordMatch || hasQuestionMark) {
+      const questionWord = questionWordMatch ? questionWordMatch[1] : '';
+
+      if (questionWord.startsWith('welch') || questionWord === 'was') {
+        return [
+          { german: 'Am wichtigsten sind für mich die konkreten nächsten Schritte.', english: 'The most important thing for me is the concrete next steps.' },
+          { german: 'Wir sollten uns zuerst auf die Erwartungen und Ziele einigen.', english: 'We should first agree on the expectations and goals.' },
+          { german: 'Bitte konzentrieren wir uns auf das Thema Budget und Zeitplan.', english: 'Let’s focus on the budget and timeline.' }
+        ];
+      }
+
+      if (questionWord === 'wie') {
+        return [
+          { german: 'Ich würde gern Schritt für Schritt vorgehen.', english: 'I would like to proceed step by step.' },
+          { german: 'Vielleicht beginnen wir mit einer kurzen Zusammenfassung.', english: 'Perhaps we can start with a short summary.' },
+          { german: 'Lassen Sie uns zuerst die wichtigsten Punkte priorisieren.', english: 'Let’s prioritize the key points first.' }
+        ];
+      }
+
+      if (questionWord === 'wo') {
+        return [
+          { german: 'Wir können uns gern im Büro in Berlin treffen.', english: 'We can meet at the office in Berlin.' },
+          { german: 'Ein Treffen online über Teams wäre für mich ideal.', english: 'An online meeting via Teams would be ideal for me.' },
+          { german: 'Lassen Sie uns einen neutralen Ort wählen, z. B. das Café am Bahnhof.', english: 'Let’s choose a neutral location, for example the café at the station.' }
+        ];
+      }
+
+      if (questionWord === 'wann') {
+        return [
+          { german: 'Mir passt der kommende Dienstagvormittag sehr gut.', english: 'Next Tuesday morning works very well for me.' },
+          { german: 'Ich könnte auch Donnerstag gegen 15 Uhr einrichten.', english: 'I could also make Thursday around 3 PM work.' },
+          { german: 'Lassen Sie uns gerne noch diese Woche einen Termin finden.', english: 'Let’s find an appointment later this week.' }
+        ];
+      }
+
+      if (questionWord === 'warum') {
+        return [
+          { german: 'Weil wir langfristige Stabilität für das Projekt benötigen.', english: 'Because we need long-term stability for the project.' },
+          { german: 'Der Hauptgrund ist, dass unsere Kunden klare Prozesse erwarten.', english: 'The main reason is that our customers expect clear processes.' },
+          { german: 'Ohne diese Anpassung riskieren wir Verzögerungen im Ablauf.', english: 'Without this adjustment we risk delays in the process.' }
+        ];
+      }
+
+      if (questionWord === 'wer') {
+        return [
+          { german: 'Mein Kollege Herr Müller übernimmt die Projektleitung.', english: 'My colleague Mr. Müller will take over the project lead.' },
+          { german: 'Für die Abstimmung ist unser Teamleiterin Frau Becker zuständig.', english: 'Our team lead, Ms. Becker, is responsible for coordination.' },
+          { german: 'Ich arbeite eng mit unserem Support-Team zusammen.', english: 'I am working closely with our support team.' }
+        ];
+      }
+
+      // General yes/no or clarification style question fallback
+      return [
+        { german: 'Ja, das passt für mich sehr gut.', english: 'Yes, that works very well for me.' },
+        { german: 'Ich bin mir noch unsicher, könnten Sie das kurz erläutern?', english: 'I’m still unsure, could you briefly explain it?' },
+        { german: 'Im Moment habe ich Bedenken, weil wir noch offene Fragen haben.', english: 'At the moment I have concerns because we still have open questions.' }
+      ];
+    }
+    
+    // Statement fallback referencing the bot message while driving the conversation forward
+    return [
+      { german: 'Danke für die Information. Wie sollen wir als Nächstes vorgehen?', english: 'Thanks for the information. How should we proceed next?' },
+      { german: 'Verstanden, ich unterstütze diesen Ansatz und bringe meine Ideen ein.', english: 'Understood, I support this approach and will contribute my ideas.' },
+      { german: 'Das klingt nach einem guten Plan. Lassen Sie uns die nächsten Schritte klären.', english: 'That sounds like a good plan. Let’s clarify the next steps.' }
+    ];
+  };
+
+  // Context enhancement function - extracts key topics from user messages
+  const enhanceConversationContext = async (conversationId: string, userMessage: string) => {
+    if (!conversationId || !userMessage.trim()) return;
+
+    try {
+      // NOTE: conversation_context column doesn't exist in database yet
+      // This function is disabled until the migration is applied
+      console.log('📝 Context enhancement skipped - column not available yet');
+      return;
+    } catch (error) {
+      console.error('Error in enhanceConversationContext:', error);
+    }
+  };
+
+  // Helper function to detect German words in English text
+  const hasGermanWords = (text: string): boolean => {
+    if (!text) return false;
+    // Common German words and patterns
+    const germanPatterns = [
+      /\b(der|die|das|den|dem|des|ein|eine|einer|einem|einen|eines|und|oder|aber|mit|von|zu|auf|in|an|für|ist|sind|haben|werden|können|müssen|sollen|wollen|möchte|mögen|bin|bist|war|waren|wird|werde|wirst|werdet|hast|hat|hatte|hatten|kann|kannst|könnt|konnte|konnten|will|willst|wollt|wollte|wollten|soll|sollst|sollt|sollte|sollten|muss|musst|müsst|musste|mussten|mag|magst|mögt|mochte|mochten|ich|du|er|sie|es|wir|ihr|Sie)\b/i,
+      /[äöüßÄÖÜ]/,
+      /\b(ja|nein|bitte|danke|gern|gerne|vielleicht|natürlich|wirklich|sehr|viel|mehr|am|zum|zur|im|ins|vom|beim)\b/i
+    ];
+    return germanPatterns.some(pattern => pattern.test(text));
+  };
+
+  const generateTranslationAndSuggestions = async (
+    messageId: string,
+    germanText: string,
+    messagesOverride?: ChatMessage[],
+    conversationIdParam?: string | null
+  ) => {
+    console.log('🎯 === AUTO-GENERATING SUGGESTIONS ===');
+    console.log('Message ID:', messageId);
+    console.log('German text:', germanText);
+    console.log('Messages override provided:', !!messagesOverride);
+    console.log('Messages override length:', messagesOverride?.length || 0);
+    console.log('Conversation ID param:', conversationIdParam);
+    console.log('🚨 FUNCTION CALLED - Starting suggestion generation...');
+    
+    // Get conversation context from current conversation if available
+    let userContext: string | undefined = undefined;
+    if (conversationIdParam || selectedConversation) {
+      const convId = conversationIdParam || selectedConversation;
+      const currentConversation = conversations.find(conv => conv.id === convId);
+      if (currentConversation && currentConversation.conversation_context) {
+        userContext = currentConversation.conversation_context;
+        console.log('📝 Using conversation context for suggestions:', userContext);
+      }
+    }
+    
+    // Use unified function with provided bot message and conversation context
+    // Pass messagesOverride to ensure we use the most recent messages including the new bot response
+    await generateSuggestionsUsingOpenAI(messageId, germanText, userContext, messagesOverride, conversationIdParam);
   };
 
   // Audio cache is now handled by the centralized TTS service
@@ -767,15 +2347,28 @@ export default function Dashboard({ user }: DashboardProps) {
 
   // 🎮 GAMIFICATION TRIGGERS
   const triggerConversationComplete = () => {
+    const streakUpdate = updateStreakOnActivity();
+
     setPlayerStats(prev => ({
       ...prev,
       conversationsCompleted: prev.conversationsCompleted + 1,
-      currentStreak: prev.currentStreak + 1,
-      longestStreak: Math.max(prev.longestStreak, prev.currentStreak + 1)
+      currentStreak: streakUpdate.current,
+      longestStreak: streakUpdate.longest,
+      streak: streakUpdate.current
     }));
     addExperience(25, 'conversation_complete');
     checkAchievements();
   };
+
+  React.useEffect(() => {
+    const stored = streakDataRef.current;
+    setPlayerStats(prev => ({
+      ...prev,
+      currentStreak: stored.current,
+      longestStreak: stored.longest,
+      streak: stored.current
+    }));
+  }, [currentView]);
 
   const triggerWordLearned = (wordCount: number = 1) => {
     setPlayerStats(prev => ({
@@ -798,9 +2391,13 @@ export default function Dashboard({ user }: DashboardProps) {
   const addAchievement = (achievementId: string, title: string, description: string) => {
     setPlayerStats(prev => {
       if (!prev.achievements.includes(achievementId)) {
+        setAchievementData({ title, description });
         setShowAchievement(achievementId);
         setRecentAchievements(prev => [...prev, achievementId]);
-        setTimeout(() => setShowAchievement(null), 3000);
+        setTimeout(() => {
+          setShowAchievement(null);
+          setAchievementData(null);
+        }, 3000);
         setTimeout(() => setRecentAchievements(prev => prev.filter(id => id !== achievementId)), 5000);
         
         return {
@@ -864,7 +2461,116 @@ export default function Dashboard({ user }: DashboardProps) {
     await germanTTS.speak(text);
   };
 
-  const toggleTranslation = (messageId: string) => {
+  // Pronunciation feature functions - UNUSED
+  /*
+  const getPhoneticBreakdown = async (text: string, messageId: string) => {
+    console.log('🎯 Getting phonetic breakdown for:', text, 'Message ID:', messageId);
+    console.log('🔗 Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
+    console.log('🔑 Supabase Key exists:', !!import.meta.env.VITE_SUPABASE_ANON_KEY);
+    
+    // For now, let's create mock data to test the UI
+    console.log('🧪 Using mock data for testing...');
+    
+    const mockData = {
+      words: text.split(' ').map(word => ({
+        original: word,
+        phonetic: `[${word}]`,
+        transliteration: word.toUpperCase(),
+        syllables: [word]
+      }))
+    };
+    
+    console.log('📊 Mock phonetic breakdown data:', mockData);
+    
+    setPhoneticBreakdowns(prev => ({
+      ...prev,
+      [messageId]: mockData.words
+    }));
+    
+    console.log('✅ Mock phonetic breakdown set for message:', messageId);
+    
+    // TODO: Uncomment this when Supabase function is working
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/phonetic-breakdown`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text })
+      });
+
+      console.log('📡 Phonetic breakdown response status:', response.status);
+      console.log('📡 Response headers:', Object.fromEntries(response.headers.entries()));
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Phonetic breakdown error:', errorText);
+        throw new Error(`Failed to get phonetic breakdown: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('📊 Phonetic breakdown data:', data);
+      
+      if (data.success) {
+        setPhoneticBreakdowns(prev => ({
+          ...prev,
+          [messageId]: data.words
+        }));
+        console.log('✅ Phonetic breakdown set for message:', messageId);
+        console.log('📊 Updated phoneticBreakdowns:', { ...phoneticBreakdowns, [messageId]: data.words });
+      } else {
+        console.error('❌ Phonetic breakdown failed:', data.error);
+      }
+    } catch (error) {
+      console.error('❌ Error getting phonetic breakdown:', error);
+      console.error('❌ Error details:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
+    }
+  };
+  */
+
+  const playWordAudio = async (word: string, speed?: number) => {
+    // const actualSpeed = speed || getWordSpeed(word); // Unused
+    
+    // Add gamification points for playing word audio
+    addExperience(2, 'word_audio_play');
+    
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/german-tts`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: word, speed })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate audio');
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        const audio = new Audio(data.audioUrl);
+        await audio.play();
+      }
+    } catch (error) {
+      console.error('Error playing word audio:', error);
+    }
+  };
+
+  const togglePronunciationBreakdown = (messageId: string) => {
+    setShowPronunciationBreakdown(prev => ({
+      ...prev,
+      [messageId]: !prev[messageId]
+    }));
+  };
+
+  const toggleTranslation = async (messageId: string) => {
     const isCurrentlyShowing = showTranslation[messageId];
     
     if (isCurrentlyShowing) {
@@ -875,60 +2581,211 @@ export default function Dashboard({ user }: DashboardProps) {
       }));
     } else {
       // Show translation - get it if we don't have it
-      if (!translatedMessages[messageId]) {
-        // Find the message content
-        const message = chatMessages.find(msg => msg.id === messageId);
-        if (message) {
-          translateMessage(messageId, message.content);
+      const message = chatMessages.find(msg => msg.id === messageId);
+      if (message && message.role === 'assistant') {
+        const hasDirectTranslation = translationSources[messageId] === 'direct';
+        const needsFreshTranslation = !translatedMessages[messageId] || translatingMessages[messageId] || !hasDirectTranslation;
+        
+        if (needsFreshTranslation) {
+          // Translation doesn't exist or isn't direct/validated yet, fetch it
+          console.log('🔤 EN button clicked - fetching and validating translation for message:', messageId);
+          console.log('🔤 Full German message content:', message.content);
+          console.log('🔤 Message content length:', message.content.length);
+          
+          if (!hasDirectTranslation && translatedMessages[messageId]) {
+            setTranslatedMessages(prev => {
+              const updated = { ...prev };
+              delete updated[messageId];
+              return updated;
+            });
+          }
+          setTranslationSources(prev => {
+            const updated = { ...prev };
+            delete updated[messageId];
+            return updated;
+          });
+          
+          // Set loading state
+          setTranslatingMessages(prev => ({
+            ...prev,
+            [messageId]: true
+          }));
+          setShowTranslation(prev => ({
+            ...prev,
+            [messageId]: true
+          }));
+          
+          // Fetch and validate translation
+          const success = await translateMessage(messageId, message.content);
+          
+          // Clear loading state
+          setTranslatingMessages(prev => {
+            const updated = { ...prev };
+            delete updated[messageId];
+            return updated;
+          });
+          
+          // Only show translation if it was successfully validated
+          if (success) {
+            setShowTranslation(prev => ({
+              ...prev,
+              [messageId]: true
+            }));
+          } else {
+            console.error('❌ Translation validation failed, not showing translation');
+          }
+        } else {
+          // Translation exists and is validated, just show it
+          console.log('🔤 EN button clicked - validated translation already exists for message:', messageId);
+          setShowTranslation(prev => ({
+            ...prev,
+            [messageId]: true
+          }));
+        }
+      } else if (message) {
+        // For user messages or other roles, just toggle visibility if translation exists
+        if (translatedMessages[messageId]) {
+          setShowTranslation(prev => ({
+            ...prev,
+            [messageId]: true
+          }));
         }
       }
-      setShowTranslation(prev => ({
-        ...prev,
-        [messageId]: true
-      }));
     }
   };
 
-  const translateMessage = async (messageId: string, germanText: string) => {
+  const translateMessage = async (messageId: string, germanText: string): Promise<boolean> => {
+    console.log('🔤 === TRANSLATION REQUEST ===');
+    console.log('Message ID:', messageId);
+    console.log('German Text:', germanText);
+    console.log('German Text Length:', germanText.length);
+    
+    const storeDirectTranslation = (translationText: string) => {
+      setTranslatedMessages(prev => ({
+        ...prev,
+        [messageId]: translationText
+      }));
+      setTranslationSources(prev => ({
+        ...prev,
+        [messageId]: 'direct'
+      }));
+    };
+    
+    const clearTranslationSource = () => {
+      setTranslationSources(prev => {
+        const updated = { ...prev };
+        delete updated[messageId];
+        return updated;
+      });
+      setTranslatedMessages(prev => {
+        const updated = { ...prev };
+        delete updated[messageId];
+        return updated;
+      });
+    };
+    
+    // Validate input
+    if (!germanText || germanText.trim().length === 0) {
+      console.error('❌ Empty German text provided for translation');
+      return false;
+    }
+    
     try {
-      // Use chat function for translation since translate function might not exist
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/translate`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: [{
-            role: 'user',
-            content: `Translate this German text to English: "${germanText}". Provide only the English translation, nothing else.`
-          }],
-          conversationId: 'translation',
-          systemInstruction: "You are a German to English translator. Provide only the English translation of the German text. Be accurate and concise."
+          text: germanText.trim(),
+          targetLanguage: 'English'
         })
       });
 
+      console.log('🔤 Translation response status:', response.status);
+      console.log('🔤 Translation response ok:', response.ok);
+
       if (response.ok) {
         const data = await response.json();
-        setTranslatedMessages(prev => ({
-          ...prev,
-          [messageId]: data.message
-        }));
+        console.log('🔤 Translation response data:', data);
+        console.log('🔤 Translation text:', data.translation);
+        console.log('🔤 Translation text length:', data.translation?.length || 0);
+        
+        if (data.translation && data.translation.trim().length > 0) {
+          const translation = data.translation.trim();
+          
+          // CRITICAL: Validate translation - check for German words
+          if (hasGermanWords(translation)) {
+            console.warn('⚠️ German words detected in bot message translation after edge function processing');
+            console.warn('⚠️ Translation contains German words:', translation);
+            
+            // Try re-translating with a more explicit request
+            console.log('🔄 Attempting re-translation with stricter validation...');
+            try {
+              const retryResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/translate`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  text: germanText.trim(),
+                  targetLanguage: 'English'
+                })
+              });
+              
+              if (retryResponse.ok) {
+                const retryData = await retryResponse.json();
+                const retryTranslation = retryData.translation?.trim();
+                
+                if (retryTranslation && !hasGermanWords(retryTranslation)) {
+                  console.log('✅ Re-translation successful, no German words detected');
+                  storeDirectTranslation(retryTranslation);
+                  return true;
+                } else if (retryTranslation) {
+                  console.warn('⚠️ Re-translation still contains German words, using it anyway');
+                  storeDirectTranslation(retryTranslation);
+                  return true;
+                }
+              }
+            } catch (retryError) {
+              console.error('Error during re-translation:', retryError);
+            }
+            
+            // If re-translation failed, use original but log warning
+            console.warn('⚠️ Using translation with German words (validation failed)');
+            storeDirectTranslation(translation);
+            return true;
+          } else {
+            // Translation is valid - no German words detected
+            console.log('✅ Translation validated - no German words detected');
+            storeDirectTranslation(translation);
+            return true;
+          }
+        } else {
+          console.error('❌ No translation in response data or translation is empty');
+          clearTranslationSource();
+          return false;
+        }
       } else {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error('❌ Translation failed:', errorText);
+        clearTranslationSource();
+        return false;
       }
     } catch (error) {
       console.error('Error translating message:', error);
-      // Fallback - set a placeholder
-      setTranslatedMessages(prev => ({
-        ...prev,
-        [messageId]: 'Translation unavailable'
-      }));
+      clearTranslationSource();
+      return false;
     }
   };
 
   const toggleSuggestions = async (messageId: string) => {
+    console.log('🔄 toggleSuggestions called for messageId:', messageId);
     const isCurrentlyShowing = showSuggestions[messageId];
+    console.log('Current showSuggestions state:', showSuggestions);
+    console.log('Is currently showing:', isCurrentlyShowing);
     
     if (isCurrentlyShowing) {
       // Hide suggestions
@@ -944,35 +2801,92 @@ export default function Dashboard({ user }: DashboardProps) {
       }));
       
       // Check if we already have suggestions for this message
-      const currentSuggestions = suggestedResponses[messageId];
+      const suggestionKey = getSuggestionKey(selectedConversation, messageId);
+      const currentSuggestions = suggestedResponses[suggestionKey];
+      console.log('🔍 toggleSuggestions: Current suggestions for messageId:', currentSuggestions);
+      console.log('🔍 toggleSuggestions: Suggestions type:', typeof currentSuggestions);
+      console.log('🔍 toggleSuggestions: Suggestions length:', currentSuggestions?.length);
+      
       if (!currentSuggestions || currentSuggestions.length === 0) {
-        // Generate suggestions on demand
+        // Generate suggestions on demand only if not already generated
+        console.log('🔍 toggleSuggestions: No suggestions found, generating new ones...');
         const message = chatMessages.find(msg => msg.id === messageId);
         if (message) {
-          await generateSuggestionsOnDemand(messageId, message.content);
+          console.log('🔍 toggleSuggestions: Found message, generating suggestions for:', message.content);
+          await generateTranslationAndSuggestions(messageId, message.content, undefined, selectedConversation);
+        } else {
+          console.log('🔍 toggleSuggestions: No message found for messageId:', messageId);
         }
       } else {
+        console.log('🔍 toggleSuggestions: Suggestions already exist, checking format...');
         // If we have suggestions but they're not translated yet, translate them
         const firstSuggestion = currentSuggestions[0];
+        console.log('🔍 toggleSuggestions: First suggestion:', firstSuggestion);
+        console.log('🔍 toggleSuggestions: First suggestion type:', typeof firstSuggestion);
+        
         if (typeof firstSuggestion === 'string') {
           // They're still strings, need translation
-          translateSuggestions(messageId, currentSuggestions);
+          console.log('🔍 toggleSuggestions: Converting string suggestions to translated format...');
+          translateSuggestions(messageId, currentSuggestions as string[], suggestionKey);
+        } else {
+          console.log('🔍 toggleSuggestions: Suggestions already in object format, no action needed');
         }
       }
     }
   };
 
-  const useSuggestedResponse = (suggestion: string) => {
-    setMessageInput(suggestion);
+  const toggleSuggestionTranslation = (messageId: string, suggestionIndex: number) => {
+    const key = `${messageId}-${suggestionIndex}`;
+    setShowSuggestionTranslation(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
   };
 
-  // Generate suggestions on demand when user clicks on suggested responses
-  const generateSuggestionsOnDemand = async (messageId: string, germanText: string) => {
-    if (suggestedResponses[messageId]) {
-      return; // Already generated
+  const useSuggestedResponse = (suggestion: string, messageId?: string) => {
+    console.log('🔵 === USER SELECTED A SUGGESTION ===');
+    console.log('Selected suggestion:', suggestion);
+    console.log('Message ID:', messageId);
+    
+    setMessageInput(suggestion);
+    
+    // Track that this suggestion was selected for this message
+    if (messageId) {
+      setLastSuggestionUsed(prev => ({
+        ...prev,
+        [messageId]: suggestion
+      }));
+      console.log('✅ Tracked suggestion selection for message:', messageId);
     }
+  };
+
+  // Generate suggestions on demand when user clicks on suggested responses - UNUSED
+  /*
+  const generateSuggestionsOnDemand = async (messageId: string, germanText: string) => {
+    // Always try to get contextual suggestions, even if fallback exists
+    console.log('🎯 Generating contextual suggestions for:', germanText);
     
     try {
+      // Extract conversation context (last 2-3 messages including current message)
+      const currentMessageIndex = chatMessages.findIndex(msg => msg.id === messageId);
+      let conversationContext = '';
+      
+      if (currentMessageIndex >= 0) {
+        // Include messages up to and including the current message
+        const contextMessages = chatMessages.slice(Math.max(0, currentMessageIndex - 2), currentMessageIndex + 1);
+        const contextStrings = contextMessages.map(msg => `${msg.role}: ${msg.content}`);
+        conversationContext = contextStrings.join(' -> ');
+      }
+      
+      console.log('📝 Conversation context:', conversationContext);
+      
+      // Build enhanced prompt with conversation context
+      const promptContent = conversationContext 
+        ? `Based on this conversation context: ${conversationContext}. The AI just asked: "${germanText}". Please provide: 1) English translation of the AI's question: "${germanText}" 2) Three specific German responses that directly answer or respond to this question, appropriate for a language learner. Each response should be contextually relevant to the question asked. WITH their English translations. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [German suggestion 1] | [German suggestion 2] | [German suggestion 3] ENGLISH: [English translation 1] | [English translation 2] | [English translation 3]`
+        : `The AI just asked: "${germanText}". Please provide: 1) English translation of the AI's question: "${germanText}" 2) Three specific German responses that directly answer or respond to this question, appropriate for a language learner. Each response should be contextually relevant to the question asked. WITH their English translations. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [German suggestion 1] | [German suggestion 2] | [German suggestion 3] ENGLISH: [English translation 1] | [English translation 2] | [English translation 3]`;
+      
+      console.log('🚀 Making API call for contextual suggestions...');
+      
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
         headers: {
@@ -982,12 +2896,12 @@ export default function Dashboard({ user }: DashboardProps) {
         body: JSON.stringify({
           messages: [{
             role: 'user',
-            content: `Please provide: 1) English translation of: "${germanText}" 2) Three suggested German responses that a language learner could use to reply. IMPORTANT: The suggestions must be ONLY in German - no English translations in parentheses or brackets. Format exactly as: TRANSLATION: [translation] SUGGESTIONS: [suggestion1] | [suggestion2] | [suggestion3]`
+            content: promptContent
           }],
           conversationId: 'helper',
           contextLevel,
           difficultyLevel,
-          systemInstruction: "When providing German suggestions, respond ONLY in German. Do not include any English translations in parentheses or brackets in the suggestions."
+          systemInstruction: "You are a German language learning assistant. Generate suggestions that DIRECTLY ANSWER the specific question asked by the AI. Do NOT provide generic responses. Each suggestion must be a concrete, specific answer to the exact question. For example: if asked 'Which details are most important?' respond with specific details like 'Die Budgetplanung ist am wichtigsten' or 'Die technischen Spezifikationen sind entscheidend'. Always provide German suggestions with English translations in the exact format requested."
         })
       });
 
@@ -995,22 +2909,55 @@ export default function Dashboard({ user }: DashboardProps) {
         const data = await response.json();
         const content = data.message;
         
-        // Parse translation and suggestions
+        // Parse translation and suggestions - handle both old and new formats
         const translationMatch = content.match(/TRANSLATION:\s*(.+?)(?=SUGGESTIONS:|$)/);
-        const suggestionsMatch = content.match(/SUGGESTIONS:\s*(.+)/);
+        const suggestionsMatch = content.match(/SUGGESTIONS:\s*(.+?)(?=ENGLISH:|$)/);
+        const englishMatch = content.match(/ENGLISH:\s*(.+)/);
+        
+        console.log('On-demand parsing debug:', {
+          translationMatch: translationMatch ? translationMatch[1] : null,
+          suggestionsMatch: suggestionsMatch ? suggestionsMatch[1] : null,
+          englishMatch: englishMatch ? englishMatch[1] : null,
+          content: content.substring(0, 200) + '...'
+        });
         
         if (translationMatch) {
+          const suggestionTranslation = translationMatch[1].trim();
           setTranslatedMessages(prev => ({
             ...prev,
-            [messageId]: translationMatch[1].trim()
+            [messageId]: suggestionTranslation
+          }));
+          setTranslationSources(prev => ({
+            ...prev,
+            [messageId]: 'suggestion'
           }));
         }
         
-        if (suggestionsMatch) {
-          const suggestions = suggestionsMatch[1].split('|').map(s => s.trim()).filter(s => s.length > 0);
+        // Try new format first (with English translations)
+        if (suggestionsMatch && englishMatch) {
+          const germanSuggestions = suggestionsMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+          const englishTranslations = englishMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+          
+          // Pair German suggestions with their English translations
+          const pairedSuggestions = germanSuggestions.map((german: string, index: number) => ({
+            german: german.trim(),
+            english: englishTranslations[index] ? englishTranslations[index].trim() : ''
+          }));
+          
+          console.log('New format - German suggestions:', germanSuggestions);
+          console.log('New format - English translations:', englishTranslations);
+          console.log('New format - Paired suggestions:', pairedSuggestions);
+          
+          setSuggestedResponses(prev => ({
+            ...prev,
+            [messageId]: pairedSuggestions
+          }));
+        } else if (suggestionsMatch) {
+          // Fallback: old format (German suggestions only)
+          const suggestions = suggestionsMatch[1].split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
           
           // Clean up any English translations that might be in parentheses or brackets
-          const cleanedSuggestions = suggestions.map(suggestion => {
+          const cleanedSuggestions = suggestions.map((suggestion: string) => {
             // Remove English text in parentheses like (English translation)
             let cleaned = suggestion.replace(/\([^)]*[A-Za-z][^)]*\)/g, '');
             // Remove English text in brackets like [English translation]
@@ -1020,18 +2967,47 @@ export default function Dashboard({ user }: DashboardProps) {
             cleaned = cleaned.replace(/\[[^\]]*\]/g, '');
             // Trim whitespace
             return cleaned.trim();
-          }).filter(s => s.length > 0);
+          }).filter((s: string) => s.length > 0);
+          
+          console.log('Old format - Original suggestions:', suggestions);
+          console.log('Old format - Cleaned suggestions:', cleanedSuggestions);
           
           setSuggestedResponses(prev => ({
             ...prev,
             [messageId]: cleanedSuggestions
           }));
+        } else {
+          console.log('No suggestions match found in:', content);
+          // Set fallback suggestions if parsing fails
+          const fallbackSuggestions = [
+            { german: 'Das ist interessant.', english: 'That is interesting.' },
+            { german: 'Können Sie das erklären?', english: 'Can you explain that?' },
+            { german: 'Ich verstehe.', english: 'I understand.' }
+          ];
+          
+          setSuggestedResponses(prev => ({
+            ...prev,
+            [messageId]: fallbackSuggestions
+          }));
         }
       }
     } catch (error) {
       console.error('Error generating suggestions on demand:', error);
+      
+      // Set fallback suggestions to prevent infinite loading
+      const fallbackSuggestions = [
+        'Das ist interessant.',
+        'Können Sie das erklären?',
+        'Ich verstehe.'
+      ];
+      
+      setSuggestedResponses(prev => ({
+        ...prev,
+        [messageId]: fallbackSuggestions
+      }));
     }
   };
+  */
 
   const handleHelpClick = async (messageContent: string, messageId: string) => {
     console.log('AI Grammar help button clicked for message:', messageId);
@@ -1122,42 +3098,133 @@ export default function Dashboard({ user }: DashboardProps) {
     setIsSending(true);
     setIsTyping(true);
     
+    // Check if user selected a suggestion for this message
+    const selectedSuggestion = lastSuggestionUsed[messageId];
+    console.log('🔍 Checking if suggestion was used for this message:', messageId);
+    console.log('Selected suggestion:', selectedSuggestion);
+    
+    // Build enhanced system instruction if suggestion was selected
+    let enhancedSystemInstruction = `${contextLevel === 'Professional' ? 'Sie sind' : 'Du bist'} ein freundlicher Gesprächspartner. Antworte kurz und natürlich (1-2 Sätze). Stelle viele Fragen. Sei neugierig und interessiert. Lass den Nutzer viel sprechen. ${contextLevel === 'Professional' ? 'Verwende "Sie" und höfliche Ausdrücke.' : 'Verwende "Du" und umgangssprachliche Ausdrücke.'} KEINE englischen Übersetzungen oder Erklärungen.`;
+    
+    if (selectedSuggestion) {
+      console.log('✅ User selected a suggestion - enhancing AI context');
+      enhancedSystemInstruction += `\n\nWICHTIGER HINWEIS: Der Nutzer hat diese Antwort aus vorgeschlagenen Optionen ausgewählt: "${selectedSuggestion}". Das zeigt, dass der Nutzer mit dieser Perspektive einverstanden ist oder diese Antwort für passend hält. Baue deine Antwort darauf auf und entwickle das Gespräch weiter basierend auf dieser Auswahl.`;
+      console.log('Enhanced system instruction:', enhancedSystemInstruction.substring(0, 200) + '...');
+    }
+    
+    // Get conversation context from current conversation
+    let conversationContextToSend = userMessage;
+    if (selectedConversation) {
+      const currentConversation = conversations.find(conv => conv.id === selectedConversation);
+      if (currentConversation && currentConversation.conversation_context) {
+        conversationContextToSend = currentConversation.conversation_context;
+        console.log('📝 Using conversation context:', conversationContextToSend);
+      }
+    }
+    
     try {
+      // Build recent conversation history (user + assistant) to maintain context
+      const ensureUserMessagePresent = chatMessages.some(msg => msg.id === messageId)
+        ? chatMessages
+        : [
+            ...chatMessages,
+            {
+              id: messageId,
+              role: 'user',
+              content: textContent,
+              timestamp: new Date().toISOString()
+            }
+          ];
+
+      const sortedMessages = [...ensureUserMessagePresent].sort((a, b) => {
+        const aTime = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const bTime = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return aTime - bTime;
+      });
+
+      const recentMessages = sortedMessages.slice(-8);
+      let openAIMessages = recentMessages.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }));
+
+      if (
+        openAIMessages.length === 0 ||
+        openAIMessages[openAIMessages.length - 1].role !== 'user'
+      ) {
+        openAIMessages = [
+          ...openAIMessages,
+          {
+            role: 'user' as const,
+            content: textContent
+          }
+        ];
+      }
+
+      // Get user session token for authenticated requests
+      const { data: { session } } = await supabase.auth.getSession();
+      const authToken = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+      
+      console.log('📡 === TRIGGERING AI RESPONSE ===');
+      console.log('Conversation ID:', selectedConversation);
+      console.log('User message:', userMessage);
+      console.log('Has session token:', !!session?.access_token);
+      console.log('Onboarding data exists:', !!onboardingData);
+      
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Authorization': `Bearer ${authToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: [{
-            role: 'user',
-            content: userMessage
-          }],
+          messages: openAIMessages,
           conversationId: selectedConversation,
           contextLevel,
           difficultyLevel,
-          userProfile: onboardingData ? {
+          userProfile: onboardingData && onboardingData.germanLevel ? {
             germanLevel: onboardingData.germanLevel,
-            goals: onboardingData.goals,
-            personalityTraits: onboardingData.personalityTraits,
-            conversationTopics: onboardingData.conversationTopics
+            goals: Array.isArray(onboardingData.goals) ? onboardingData.goals : [],
+            personalityTraits: Array.isArray(onboardingData.personalityTraits) ? onboardingData.personalityTraits : [],
+            conversationTopics: Array.isArray(onboardingData.conversationTopics) ? onboardingData.conversationTopics : []
           } : undefined,
-          systemInstruction: `${contextLevel === 'Professional' ? 'Sie sind' : 'Du bist'} ein freundlicher Gesprächspartner. Antworte kurz und natürlich (1-2 Sätze). Stelle viele Fragen. Sei neugierig und interessiert. Lass den Nutzer viel sprechen. ${contextLevel === 'Professional' ? 'Verwende "Sie" und höfliche Ausdrücke.' : 'Verwende "Du" und umgangssprachliche Ausdrücke.'} KEINE englischen Übersetzungen oder Erklärungen.`
+          systemInstruction: enhancedSystemInstruction,
+          conversationContext: conversationContextToSend
         })
       });
-
-      console.log('📡 === AI API RESPONSE ===');
+      
+      console.log('📡 === API RESPONSE RECEIVED ===');
       console.log('Response status:', response.status);
       console.log('Response ok:', response.ok);
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log('📝 === AI RESPONSE DATA ===');
-        console.log('AI message:', data.message);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ API Error Response:', response.status);
+        console.error('Error details:', errorText);
+        const errorMessage = errorText || `API request failed with status ${response.status}`;
+        setIsSending(false);
+        setIsTyping(false);
+        setErrorMessages(prev => ({ ...prev, [messageId]: errorMessage }));
+        return;
+      }
+      
+      const data = await response.json();
+      
+      if (!data || !data.message) {
+        console.error('❌ Invalid API response - missing message field');
+        console.error('Response data:', data);
+        throw new Error('Invalid API response: missing message field');
+      }
+      
+      console.log('📝 === AI RESPONSE DATA ===');
+      console.log('AI message:', data.message);
+      
+      // Generate message ID first
+      const messageId = (Date.now() + 1).toString();
+        console.log('🤖 Generated message ID:', messageId);
         
         const assistantMessage: ChatMessage = {
-          id: (Date.now() + 1).toString(),
+          id: messageId,
           role: 'assistant',
           content: data.message,
           timestamp: new Date().toISOString()
@@ -1167,22 +3234,53 @@ export default function Dashboard({ user }: DashboardProps) {
         console.log('AI message ID:', assistantMessage.id);
         console.log('AI message content:', assistantMessage.content);
         
+        let updatedMessages: ChatMessage[] = [];
         setChatMessages(prev => {
           const newMessages = [...prev, assistantMessage];
+          updatedMessages = newMessages;
           console.log('Updated chat messages count:', newMessages.length);
           return newMessages;
         });
         
         setCurrentAIMessage(data.message);
+        
+        // Automatically generate contextual suggestions for the AI's response
+        console.log('🤖 === ABOUT TO AUTO-GENERATE SUGGESTIONS ===');
+        console.log('🤖 Message ID for suggestions:', messageId);
+        console.log('🤖 AI message content:', data.message);
+        console.log('🤖 Calling generateTranslationAndSuggestions...');
+        
+        // CRITICAL FIX: Pass the bot message content directly and ensure updatedMessages includes the new bot message
+        // This ensures suggestions are generated with the correct, most recent bot response
+        await generateTranslationAndSuggestions(
+          messageId,
+          data.message, // Pass bot message content directly
+          updatedMessages, // Use updatedMessages which includes the new bot message
+          selectedConversation
+        );
+        
+        console.log('🤖 === AUTO-GENERATION CALL COMPLETED ===');
+        
+        // Clear the suggestion tracking for this message after AI has responded
+        if (selectedSuggestion) {
+          console.log('🧹 Clearing suggestion tracking for message:', messageId);
+          setLastSuggestionUsed(prev => {
+            const newState = { ...prev };
+            delete newState[messageId];
+            return newState;
+          });
+        }
+        
         console.log('✅ === AI RESPONSE COMPLETED SUCCESSFULLY ===');
-      } else {
-        console.error('❌ === AI API ERROR ===');
-        console.error('Response status:', response.status);
-        console.error('Response status text:', response.statusText);
-      }
+        setIsSending(false);
+        setIsTyping(false);
     } catch (error) {
       console.error('❌ === AI RESPONSE ERROR ===');
       console.error('Error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      setIsSending(false);
+      setIsTyping(false);
+      setErrorMessages(prev => ({ ...prev, [messageId]: errorMessage }));
     } finally {
       console.log('🏁 === AI RESPONSE FINALLY BLOCK ===');
       setIsSending(false);
@@ -1272,6 +3370,209 @@ export default function Dashboard({ user }: DashboardProps) {
     }
   };
 
+  // Analyze German pronunciation for voice messages
+  const analyzeGermanPronunciation = async (audioBlob: Blob, transcription: string, messageId: string): Promise<PronunciationData | null> => {
+    try {
+      console.log('🎤 === ANALYZING GERMAN PRONUNCIATION ===');
+      console.log('Audio blob size:', audioBlob.size, 'bytes');
+      console.log('Transcription:', transcription);
+      console.log('Message ID:', messageId);
+
+      // Convert audio to base64 using chunked conversion for large files
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      let binaryString = '';
+      const chunkSize = 8192; // Process in 8KB chunks
+      
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.slice(i, i + chunkSize);
+        binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      
+      const base64 = btoa(binaryString);
+
+      // Call pronunciation analysis API
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pronunciation-analysis`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audioData: base64,
+          transcription: transcription
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ Pronunciation analysis completed:', data);
+        console.log('📊 Words in analysis result:', data.words?.length || 0);
+
+        // Ensure word-level scores are properly calculated from dimensions if missing or 0
+        if (data.words && Array.isArray(data.words)) {
+          console.log('🔍 Processing word-level scores...');
+          data.words = data.words.map((word: any) => {
+            let wordScore = word.score || 0;
+            
+            // Calculate score from dimensions if score is missing, 0, or dimensions exist
+            if (word.dimensions && (wordScore === 0 || !wordScore)) {
+              const dimensionScores = [
+                word.dimensions.soundAccuracy?.score || 0,
+                word.dimensions.stressEmphasis?.score || 0,
+                word.dimensions.smoothness?.score || 0,
+                word.dimensions.correctSpeed?.score || 0,
+                word.dimensions.intonationRhythm?.score || 0,
+                word.dimensions.understandability?.score || 0
+              ];
+              
+              // Calculate average of dimension scores
+              const calculatedScore = Math.round(
+                dimensionScores.reduce((sum: number, score: number) => sum + score, 0) / dimensionScores.length
+              );
+              
+              wordScore = calculatedScore;
+              console.log(`✅ Calculated word score for "${word.word}" from dimensions:`, calculatedScore);
+            } else if (word.dimensions && wordScore > 0) {
+              // Verify score matches dimensions (recalculate to ensure accuracy)
+              const dimensionScores = [
+                word.dimensions.soundAccuracy?.score || 0,
+                word.dimensions.stressEmphasis?.score || 0,
+                word.dimensions.smoothness?.score || 0,
+                word.dimensions.correctSpeed?.score || 0,
+                word.dimensions.intonationRhythm?.score || 0,
+                word.dimensions.understandability?.score || 0
+              ];
+              
+              const calculatedScore = Math.round(
+                dimensionScores.reduce((sum: number, score: number) => sum + score, 0) / dimensionScores.length
+              );
+              
+              // Use calculated score to ensure accuracy
+              wordScore = calculatedScore;
+              console.log(`✅ Verified/recalculated word score for "${word.word}":`, calculatedScore);
+            }
+            
+            // Ensure word has proper structure with score
+            return {
+              ...word,
+              score: wordScore,
+              needsPractice: wordScore < 75,
+              // Ensure dimensions exist
+              dimensions: word.dimensions || {
+                soundAccuracy: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } },
+                stressEmphasis: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } },
+                smoothness: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } },
+                correctSpeed: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } },
+                intonationRhythm: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } },
+                understandability: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } }
+              }
+            };
+          });
+          
+          console.log('✅ Processed all word-level scores');
+          console.log('📊 Word scores:', data.words.map((w: any) => ({ word: w.word, score: w.score })));
+          
+          // Ensure ALL words from the expected sentence are included
+          // If some words are missing from the API response, create placeholder entries for them
+          if (transcription) {
+            const expectedWordsList = transcription.split(' ').filter(w => w.length > 0).map(w => 
+              w.toLowerCase().replace(/[.,!?;:]/g, '').trim()
+            );
+            
+            // Normalize API word list for comparison
+            const apiWordsSet = new Set(data.words.map((w: any) => 
+              w.word.toLowerCase().replace(/[.,!?;:]/g, '').trim()
+            ));
+            
+            // Find missing words and create placeholder entries for them
+            expectedWordsList.forEach((expectedWord, index) => {
+              if (!apiWordsSet.has(expectedWord)) {
+                // Create placeholder word entry with low score (Red rating)
+                // This ensures all words are clickable and show scores
+                const placeholderWord: any = {
+                  word: transcription.split(' ')[index] || expectedWord, // Use original word with punctuation
+                  score: 45, // Low score (Red rating) for undetected words
+                  needsPractice: true,
+                  feedback: `"${expectedWord}" was not detected in the recording. Please speak clearly and try again.`,
+                  dimensions: {
+                    soundAccuracy: { score: 45, feedback: { correct: [], incorrect: [`Word "${expectedWord}" was not clearly pronounced`], improvement: ['Practice speaking this word more clearly', 'Ensure all words are spoken'] } },
+                    stressEmphasis: { score: 50, feedback: { correct: [], incorrect: ['Word not detected'], improvement: ['Focus on clear pronunciation'] } },
+                    smoothness: { score: 50, feedback: { correct: [], incorrect: ['Word not detected'], improvement: ['Ensure smooth flow'] } },
+                    correctSpeed: { score: 50, feedback: { correct: [], incorrect: ['Word not detected'], improvement: ['Practice timing'] } },
+                    intonationRhythm: { score: 50, feedback: { correct: [], incorrect: ['Word not detected'], improvement: ['Practice rhythm'] } },
+                    understandability: { score: 40, feedback: { correct: [], incorrect: [`Word "${expectedWord}" was not understandable`], improvement: ['Speak more clearly', 'Practice pronunciation'] } }
+                  }
+                };
+                
+                data.words.push(placeholderWord);
+                console.log(`⚠️ Created placeholder word entry for missing word: "${expectedWord}"`);
+              }
+            });
+            
+            console.log('✅ Verified all expected words are included in analysis');
+            console.log('📊 Total words in analysis:', data.words.length);
+          }
+        } else {
+          console.warn('⚠️ No words array found in analysis result');
+        }
+
+        // Ensure sentence score is calculated from dimensions if missing or 0
+        if (data.sentenceDimensions) {
+          const dimensionScores = [
+            data.sentenceDimensions.soundAccuracy?.score || 0,
+            data.sentenceDimensions.stressEmphasis?.score || 0,
+            data.sentenceDimensions.smoothness?.score || 0,
+            data.sentenceDimensions.correctSpeed?.score || 0,
+            data.sentenceDimensions.intonationRhythm?.score || 0,
+            data.sentenceDimensions.understandability?.score || 0
+          ];
+          const calculatedScore = Math.round(
+            dimensionScores.reduce((sum, score) => sum + score, 0) / dimensionScores.length
+          );
+          
+          // Always recalculate from dimensions to ensure accuracy
+          data.overallScore = calculatedScore;
+          data.sentenceScore = calculatedScore;
+          console.log('✅ Calculated sentence score from dimensions:', calculatedScore);
+        }
+
+        // Save to database
+        if (user && selectedConversation) {
+          const conversation = conversations.find(c => c.id === selectedConversation);
+          if (conversation) {
+            await saveMessageAnalysis(
+              messageId,
+              user.id,
+              conversation.id,
+              transcription,
+              'voice',
+              data,
+              undefined // No grammar topic for pronunciation-only analysis
+            );
+          }
+        }
+
+        // Track sentence-level pronunciation score for conversation summary
+        if (data && typeof (data.sentenceScore ?? data.overallScore) === 'number') {
+          handlePronunciationComplete(
+            data.sentenceScore ?? data.overallScore,
+            transcription,
+            'sentence'
+          );
+        }
+
+        return data;
+      } else {
+        console.error('❌ Pronunciation analysis failed:', response.status);
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Error in pronunciation analysis:', error);
+      return null;
+    }
+  };
+
   const handleErrorCorrection = async (messageId: string) => {
     console.log('=== GRAMMAR HELP BUTTON CLICKED ===');
     console.log('Message ID:', messageId);
@@ -1314,6 +3615,11 @@ export default function Dashboard({ user }: DashboardProps) {
       console.log('Running comprehensive analysis for grammar help');
       await runComprehensiveAnalysis(userMessage.content, messageId);
     }
+    
+    // Auto-load grammar explanation when toolbar opens
+    console.log('Auto-loading grammar explanation for:', userMessage.content);
+    // The grammar explanation will be loaded automatically by the Toolbar component
+    // due to the autoLoadExplanations prop being set to true
   };
 
   const generateSuggestedAnswer = async (messageId: string, userMessage: string) => {
@@ -1475,7 +3781,24 @@ export default function Dashboard({ user }: DashboardProps) {
   };
 
 
-  const translateSuggestions = async (messageId: string, suggestions: string[]) => {
+  const translateSuggestions = async (
+    messageId: string,
+    suggestions: string[],
+    suggestionKeyOverride?: string
+  ) => {
+    console.log('🔄 translateSuggestions called for messageId:', messageId);
+    console.log('🔄 translateSuggestions input suggestions:', suggestions);
+    
+    // Check if we already have test suggestions (object format)
+    const key = suggestionKeyOverride ?? getSuggestionKey(selectedConversation, messageId);
+    const currentSuggestions = suggestedResponses[key];
+    if (currentSuggestions && currentSuggestions.length > 0 && typeof currentSuggestions[0] === 'object') {
+      console.log('🔄 translateSuggestions: Test suggestions already exist, skipping translation');
+      return;
+    }
+    
+    console.log('🔄 translateSuggestions: Proceeding with translation...');
+    
     try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/translate`, {
         method: 'POST',
@@ -1491,7 +3814,48 @@ export default function Dashboard({ user }: DashboardProps) {
 
       if (response.ok) {
         const data = await response.json();
-        const translations = data.translation.split(' | ');
+        let translations = data.translation.split(' | ').map((s: string) => s.trim());
+        
+        // Validate translations - check for German words
+        const needsRetranslation: number[] = [];
+        translations.forEach((translation, index) => {
+          if (hasGermanWords(translation)) {
+            console.warn(`⚠️ German words detected in translation ${index + 1}: "${translation}"`);
+            needsRetranslation.push(index);
+          }
+        });
+        
+        // Re-translate if needed (edge function should handle this, but double-check)
+        if (needsRetranslation.length > 0) {
+          console.log(`🔄 Re-translating ${needsRetranslation.length} suggestion(s) with German words...`);
+          try {
+            const suggestionsToRetranslate = needsRetranslation.map(idx => suggestions[idx]);
+            const retryResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/translate`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                text: suggestionsToRetranslate.join(' | '),
+                targetLanguage: 'English'
+              })
+            });
+            
+            if (retryResponse.ok) {
+              const retryData = await retryResponse.json();
+              const retranslations = retryData.translation.split(' | ').map((s: string) => s.trim());
+              needsRetranslation.forEach((originalIndex, retransIndex) => {
+                if (retranslations[retransIndex]) {
+                  translations[originalIndex] = retranslations[retransIndex];
+                  console.log(`✅ Re-translated suggestion ${originalIndex + 1}: "${translations[originalIndex]}"`);
+                }
+              });
+            }
+          } catch (error) {
+            console.error('Error re-translating suggestions:', error);
+          }
+        }
         
         // Store translations for each suggestion
         const translatedSuggestions = suggestions.map((suggestion, index) => ({
@@ -1501,7 +3865,7 @@ export default function Dashboard({ user }: DashboardProps) {
         
         setSuggestedResponses(prev => ({
           ...prev,
-          [messageId]: translatedSuggestions
+          [key]: translatedSuggestions
         }));
       }
     } catch (error) {
@@ -1554,12 +3918,47 @@ export default function Dashboard({ user }: DashboardProps) {
       console.log('Focusing on error correction instead of AI response');
       updateMessageStatus(messageId, 'needs_correction');
       return;
-    } else if (!analysis) {
+    } else if (!analysis || analysis === null) {
       // Analysis failed - don't proceed with AI response (EXACT SAME AS VOICE)
       console.log('🚫 === ANALYSIS FAILED - NOT SENDING TO AI ===');
-      console.log('Analysis returned null, not proceeding with AI response');
-      updateMessageStatus(messageId, 'error');
-      return;
+      console.log('Analysis returned null or undefined, not proceeding with AI response');
+      console.log('Analysis value:', analysis);
+      console.log('Analysis type:', typeof analysis);
+      
+      // Instead of setting error status, try to get a fallback analysis
+      console.log('🔄 === ATTEMPTING FALLBACK ANALYSIS ===');
+      const fallbackAnalysis = {
+        hasErrors: false,
+        errorTypes: {
+          grammar: false,
+          vocabulary: false,
+          pronunciation: false
+        },
+        corrections: {
+          grammar: null,
+          vocabulary: [],
+          pronunciation: null
+        },
+        suggestions: {
+          grammar: null,
+          vocabulary: null,
+          pronunciation: null
+        },
+        wordsForPractice: [],
+        message: textContent,
+        timestamp: new Date().toISOString()
+      };
+      
+      // Store the fallback analysis
+      setComprehensiveAnalysis(prev => ({
+        ...prev,
+        [messageId]: fallbackAnalysis
+      }));
+      
+      console.log('✅ === FALLBACK ANALYSIS STORED - PROCEEDING TO AI ===');
+      // Continue with AI response instead of showing error
+      // updateMessageStatus(messageId, 'error'); // REMOVED - don't show error
+      // return; // REMOVED - continue with AI response
     }
     
     console.log('✅ === NO ERRORS DETECTED - PROCEEDING TO AI ===');
@@ -1653,6 +4052,12 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('Chat messages count:', chatMessages.length);
 
     const trimmedInput = messageInput.trim();
+    
+    // Auto-collapse sidebar when starting conversation with first user message
+    if (chatMessages.length <= 1 && !sidebarCollapsed) {
+      setSidebarCollapsed(true);
+      console.log('Auto-collapsing sidebar - first user message');
+    }
 
     if (!trimmedInput || isSending || !selectedConversation) {
       console.log('🚫 === BLOCKING SEND MESSAGE ===');
@@ -1662,6 +4067,85 @@ export default function Dashboard({ user }: DashboardProps) {
       console.log('- No conversation:', !selectedConversation);
       return;
     }
+
+    // Intent detection on first user message in conversation (skip if flagged)
+    if (!skipIntentOnce && chatMessages.filter(m => m.role === 'user').length === 0) {
+      const lang = detectLanguage(trimmedInput);
+      const onlyLetters = trimmedInput.replace(/[^A-Za-zÄÖÜäöüß]/g, '');
+      const vowelCount = (onlyLetters.match(/[aeiouAEIOUÄÖÜäöü]/g) || []).length;
+      const isGibberish = onlyLetters.length > 0 && (vowelCount === 0 || onlyLetters.length > 30 && vowelCount / onlyLetters.length < 0.15);
+
+      // If neither German nor English
+      if (lang !== 'german' && lang !== 'english') {
+        alert('Please enter phrases or topics in German or English only to help us assist you better.');
+        return;
+      }
+
+      // If gibberish
+      if (isGibberish) {
+        alert("We couldn’t understand your input. Please enter clear sentences in German or English.");
+        return;
+      }
+
+      // Keyword-based intent detection
+      const categoryKeywords: {[k: string]: string[]} = {
+        Meeting: ['meeting','appointment','present','agenda'],
+        'Café': ['kaffee','menu','order','bill'],
+        Station: ['ticket','bahnhof','train','platform'],
+        Airport: ['boarding','flight','luggage','gate'],
+        Emergency: ['help','emergency','police','hospital']
+      };
+      const textLower = trimmedInput.toLowerCase();
+      let matchedCategory: string | null = null;
+      for (const [cat, keys] of Object.entries(categoryKeywords)) {
+        if (keys.some(k => textLower.includes(k))) { matchedCategory = cat; break; }
+      }
+
+      const level = (onboardingData?.germanLevel || 'beginner').toLowerCase();
+      const makeGerman = (cat: string) => {
+        if (level.includes('advanced')) return `Super! Du möchtest ${cat} üben. Worum soll es genau gehen? Zum Beispiel: Vorstellungen, Agenda oder Feedback.`;
+        if (level.includes('intermediate')) return `Toll! Du willst ${cat} üben. Was genau möchtest du üben? Z. B. Vorstellungen, Agenda oder Feedback.`;
+        return `Klasse! Du möchtest ${cat} üben. Was genau? Zum Beispiel: Vorstellungen, Agenda oder Feedback.`;
+      };
+      const fallbackGerman = () => {
+        if (level.includes('advanced')) return 'Möchtest du ein Meeting, ein Café‑Gespräch, eine Reisesituation oder Notfall‑Sätze üben?';
+        if (level.includes('intermediate')) return 'Möchtest du Meeting, Café, Reise oder Notfall üben?';
+        return 'Willst du Meeting, Café, Reise oder Notfall üben?';
+      };
+
+      if (matchedCategory) {
+        const assistantMsg: ChatMessage = {
+          id: `intent-${Date.now()}`,
+          role: 'assistant',
+          content: makeGerman(matchedCategory),
+          timestamp: new Date().toISOString()
+        };
+        setChatMessages(prev => [...prev, assistantMsg]);
+
+        // Provide quick replies
+        const subtopicsMap: {[k: string]: string[]} = {
+          Meeting: ['Vorstellungen', 'Agenda besprechen', 'Feedback geben'],
+          'Café': ['Bestellen', 'Nach der Speisekarte fragen', 'Die Rechnung'],
+          Station: ['Ticket kaufen', 'Nach dem Gleis fragen', 'Zugzeiten'],
+          Airport: ['Boarding', 'Gepäck aufgeben', 'Zum Gate finden'],
+          Emergency: ['Hilfe rufen', 'Polizei kontaktieren', 'Zum Krankenhaus']
+        };
+        setSuggestedReplies(subtopicsMap[matchedCategory] || []);
+        return;
+      } else {
+        const assistantMsg: ChatMessage = {
+          id: `intent-${Date.now()}`,
+          role: 'assistant',
+          content: fallbackGerman(),
+          timestamp: new Date().toISOString()
+        };
+        setChatMessages(prev => [...prev, assistantMsg]);
+        setSuggestedReplies(['Meeting', 'Café', 'Reise', 'Notfall']);
+        return;
+      }
+    }
+    // reset one-shot skip flag if it was set
+    if (skipIntentOnce) setSkipIntentOnce(false);
 
     // Check for language mismatch in typed text
     const detectedLanguage = detectLanguage(trimmedInput);
@@ -1699,11 +4183,12 @@ export default function Dashboard({ user }: DashboardProps) {
       return; // Don't proceed with normal processing
     }
 
-    // Collapse toolbar when conversation starts (first user message)
-    if (chatMessages.length <= 1) { // Only AI greeting message exists
-      setToolbarCollapsed(true);
-      console.log('Collapsing toolbar - first user message');
-    }
+    // Don't collapse toolbar automatically - let vocabulary additions control it
+    // The toolbar will auto-expand when words are added to vocabulary
+    // if (chatMessages.length <= 1) { // Only AI greeting message exists
+    //   setToolbarCollapsed(true);
+    //   console.log('Collapsing toolbar - first user message');
+    // }
 
     // Check if this is a retry attempt - be more robust in detection
     const isRetry = Boolean(activeMessageId);
@@ -1777,6 +4262,18 @@ export default function Dashboard({ user }: DashboardProps) {
         console.log('Previous messages count:', prev.length);
         const newMessages = [...prev, userMessage];
         console.log('New messages count:', newMessages.length);
+        
+        // Track first message for chat hints
+        if (!hasSentFirstMessage && prev.length <= 1) {
+          setHasSentFirstMessage(true);
+          if (!hintsDismissed && showHints === false) {
+            // Show chat hints after a short delay
+            setTimeout(() => {
+              setShowChatHints(true);
+            }, 1000);
+          }
+        }
+        
         return newMessages;
       });
 
@@ -1785,6 +4282,16 @@ export default function Dashboard({ user }: DashboardProps) {
         ...prev,
         [messageId]: userMessage.content
       }));
+      
+      // Enhance conversation context with user message
+      if (selectedConversation && trimmedInput) {
+        await enhanceConversationContext(selectedConversation, trimmedInput);
+      }
+    }
+    
+    // Enhance context on retry if it's a correction
+    if (isRetry && selectedConversation && trimmedInput) {
+      await enhanceConversationContext(selectedConversation, trimmedInput);
     }
 
     // Process text message (EXACT SAME AS VOICE)
@@ -1859,8 +4366,14 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('📚 === ADDING TO PERSISTENT VOCAB IMMEDIATELY ===');
     console.log('New vocab item:', newVocabItem);
     
-    // Add to persistent vocabulary immediately (for session persistence)
+    // Add to persistent vocabulary immediately (for session persistence) - check for duplicates
     setPersistentVocab(prev => {
+      // Check if word already exists
+      const exists = prev.some(item => item.word === word);
+      if (exists) {
+        console.log('📚 === WORD ALREADY EXISTS IN PERSISTENT VOCAB, SKIPPING ===');
+        return prev;
+      }
       const updated = [newVocabItem, ...prev];
       console.log('📚 === UPDATED PERSISTENT VOCAB ===');
       console.log('New persistent vocab count:', updated.length);
@@ -1869,9 +4382,22 @@ export default function Dashboard({ user }: DashboardProps) {
       return updated;
     });
     
-    // Also add to new vocab items for Toolbar processing (when toolbar is open)
+    // Track vocabulary addition in session data
+    updateSessionData(prev => ({
+      ...prev,
+      wordsLearned: [...prev.wordsLearned, word]
+    }));
+    console.log('📊 Session data updated: word added to wordsLearned');
+    
+    // Also add to new vocab items for Toolbar processing (when toolbar is open) - check for duplicates
     console.log('📚 === ADDING TO NEW VOCAB ITEMS FOR TOOLBAR ===');
     setNewVocabItems(prev => {
+      // Check if word already exists
+      const exists = prev.some(item => item.word === word);
+      if (exists) {
+        console.log('📚 === WORD ALREADY EXISTS IN NEW VOCAB ITEMS, SKIPPING ===');
+        return prev;
+      }
       const updated = [...prev, newVocabItem];
       console.log('📚 === UPDATED NEW VOCAB ITEMS ===');
       console.log('New vocab items count:', updated.length);
@@ -1879,9 +4405,69 @@ export default function Dashboard({ user }: DashboardProps) {
       return updated;
     });
     
+    // Auto-open the toolbar and switch to vocab tab
+    console.log('📚 === AUTO-OPENING TOOLBAR AND SWITCHING TO VOCAB TAB ===');
+    console.log('Before - toolbarCollapsed:', toolbarCollapsed);
+    console.log('Before - toolbarActiveTab:', toolbarActiveTab);
+    console.log('Before - showToolbar:', showToolbar);
+    
+    // Use setTimeout to ensure state updates happen after any other pending updates
+    setTimeout(() => {
+      setShowToolbar(true);
+      setToolbarCollapsed(false);
+      setToolbarActiveTab('vocab');
+      console.log('📚 === TOOLBAR STATE UPDATED (AFTER TIMEOUT) ===');
+      console.log('After setting - toolbarCollapsed should be false');
+      console.log('After setting - toolbarActiveTab should be vocab');
+    }, 100);
+    
     console.log('📚 === DASHBOARD HANDLE ADD TO VOCAB COMPLETED ===');
   };
 
+  // Handle pronunciation completion - track pronunciation scores
+  const handlePronunciationComplete = (
+    score: number,
+    text: string,
+    type: 'word' | 'sentence' = 'sentence'
+  ) => {
+    const successThreshold = 65;
+    updateSessionData(prev => {
+      const timestamp = new Date().toISOString();
+
+      const updatedAttempts = [
+        ...prev.pronunciationAttempts,
+        {
+          word: text,
+          score,
+          timestamp,
+          isSuccess: score >= successThreshold
+        }
+      ];
+
+      let updatedSentenceScores = prev.sentencePronunciationScores;
+      let updatedLastSentenceScore = prev.lastSentencePronunciationScore;
+
+      if (type === 'sentence') {
+        updatedSentenceScores = [
+          ...prev.sentencePronunciationScores,
+          {
+            sentence: text,
+            score,
+            timestamp
+          }
+        ];
+        updatedLastSentenceScore = score;
+      }
+
+      return {
+        ...prev,
+        pronunciationAttempts: updatedAttempts,
+        sentencePronunciationScores: updatedSentenceScores,
+        lastSentencePronunciationScore: updatedLastSentenceScore
+      };
+    });
+    console.log('📊 Session data updated: pronunciation attempt added', { text, score, type });
+  };
 
   // Handle word selection in sentence - no API calls in modal
   const toggleWordSelection = (word: string) => {
@@ -1991,19 +4577,41 @@ export default function Dashboard({ user }: DashboardProps) {
     console.log('📚 === WORDS WITH MEANINGS GENERATED ===');
     console.log('Final words with meanings:', wordsWithMeanings);
     
-    // Add to persistent vocabulary with meanings
+    // Dedupe by word (case-insensitive) and exclude existing persistent vocab
+    const existingWordsLower = new Set(persistentVocab.map(v => v.word.toLowerCase()));
+    const seen = new Set<string>();
+    const uniqueWithMeanings = wordsWithMeanings.filter(item => {
+      const lower = item.word.toLowerCase();
+      if (seen.has(lower)) return false;
+      seen.add(lower);
+      return !existingWordsLower.has(lower);
+    });
+
+    // Add to persistent vocabulary with meanings (deduped)
     setPersistentVocab(prev => {
-      const updated = [...wordsWithMeanings, ...prev];
-      console.log('📚 === UPDATED PERSISTENT VOCAB WITH MEANINGS ===');
+      const updated = [...uniqueWithMeanings, ...prev];
+      console.log('📚 === UPDATED PERSISTENT VOCAB WITH MEANINGS (DEDUPED) ===');
       console.log('New persistent vocab count:', updated.length);
       console.log('New persistent vocab items:', updated);
       return updated;
     });
     
-    // Set new vocabulary items for the Toolbar (with meanings already generated)
-    console.log('📚 === SETTING NEW VOCAB ITEMS FOR TOOLBAR ===');
-    console.log('Items being sent to Toolbar:', wordsWithMeanings);
-    setNewVocabItems(wordsWithMeanings);
+    // Set new vocabulary items for the Toolbar (deduped and excluding existing)
+    console.log('📚 === SETTING NEW VOCAB ITEMS FOR TOOLBAR (DEDUPED) ===');
+    console.log('Items being sent to Toolbar:', uniqueWithMeanings);
+    setNewVocabItems(prev => {
+      const prevSeen = new Set((prev || []).map(i => i.word.toLowerCase()));
+      const merged = [...uniqueWithMeanings.filter(i => !prevSeen.has(i.word.toLowerCase())), ...(prev || [])];
+      // Final dedupe on merge
+      const finalSeen = new Set<string>();
+      const final = merged.filter(i => {
+        const lower = i.word.toLowerCase();
+        if (finalSeen.has(lower)) return false;
+        finalSeen.add(lower);
+        return true;
+      });
+      return final;
+    });
     
     // Open toolbox with vocab tab active
     setToolbarActiveTab('vocab');
@@ -2028,6 +4636,7 @@ export default function Dashboard({ user }: DashboardProps) {
     setLoadingMeanings(new Set());
   };
 
+
   // Clear new vocabulary items after they've been processed
   useEffect(() => {
     if (newVocabItems.length > 0) {
@@ -2046,6 +4655,7 @@ export default function Dashboard({ user }: DashboardProps) {
       return () => clearTimeout(timer);
     }
   }, [newVocabItems.length]); // Only depend on length, not the entire array
+
 
   // Close language menu when clicking outside
   useEffect(() => {
@@ -2162,12 +4772,12 @@ Keep it simple and conversational. Just respond with the German translation, not
         console.error('API call failed with status:', response.status);
         console.error('Error response:', errorText);
         console.error('Response headers:', response.headers);
-        setGermanSuggestion(simpleFallback);
+        setGermanSuggestion('Das ist interessant.');
       }
     } catch (error) {
       console.error('Network error generating German suggestion:', error);
-      console.error('Error details:', error.message);
-      setGermanSuggestion(simpleFallback);
+      console.error('Error details:', (error as Error).message);
+      setGermanSuggestion('Das ist interessant.');
     }
   };
 
@@ -2401,35 +5011,14 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             errorMessage += `📚 Vocabulary: ${vocabErrors}\n`;
             console.log('Vocabulary errors detected:', data.corrections.vocabulary);
             
-            // Auto-add vocabulary corrections (only for current session and avoid duplicates)
+            // Auto-add vocabulary corrections from grammar is disabled for vocabulary isolation
             if (selectedConversation) {
-              console.log('📚 === AUTO-ADDING VOCABULARY FROM ERRORS ===');
+              console.log('📚 === AUTO-ADDING VOCABULARY FROM ERRORS (DISABLED) ===');
               console.log('Vocabulary corrections count:', data.corrections.vocabulary.length);
               console.log('Current persistent vocab count:', persistentVocab.length);
               console.log('Current vocabAdditionTracker:', Array.from(vocabAdditionTracker));
               console.log('Timestamp:', new Date().toISOString());
               console.log('Stack trace:', new Error().stack);
-              
-              data.corrections.vocabulary.forEach((v: any, index: number) => {
-                console.log(`📚 Processing vocabulary ${index + 1}:`, v.correct, v.meaning);
-                // Check if word already exists in persistent vocab to avoid duplicates
-                const wordExists = persistentVocab.some(item => item.word === v.correct);
-                console.log(`📚 Word "${v.correct}" exists:`, wordExists);
-                console.log(`📚 Current persistent vocab words:`, persistentVocab.map(item => item.word));
-                
-                // Also check if word is already in tracker
-                const wordKey = `${v.correct}-${selectedConversation}`;
-                const inTracker = vocabAdditionTracker.has(wordKey);
-                console.log(`📚 Word "${v.correct}" in tracker:`, inTracker);
-                console.log(`📚 Word key:`, wordKey);
-                
-                if (!wordExists && !inTracker) {
-                  console.log(`📚 Adding word "${v.correct}" to vocabulary`);
-                  handleAddToVocab(v.correct, v.meaning);
-                } else {
-                  console.log(`📚 Skipping duplicate word "${v.correct}" - exists: ${wordExists}, in tracker: ${inTracker}`);
-                }
-              });
             }
           }
           
@@ -2525,20 +5114,98 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         console.log('errorMessages:', errorMessages);
         console.log('userAttempts:', userAttempts);
         return data;
+      } else {
+        // Handle non-ok response
+        console.error('❌ === COMPREHENSIVE ANALYSIS API ERROR ===');
+        console.error('Response status:', response.status);
+        console.error('Response status text:', response.statusText);
+        
+        // Return fallback analysis instead of null to prevent error message
+        console.log('🔄 === RETURNING FALLBACK ANALYSIS FOR API ERROR ===');
+        
+        const fallbackAnalysis = {
+          hasErrors: false,
+          errorTypes: {
+            grammar: false,
+            vocabulary: false,
+            pronunciation: false
+          },
+          corrections: {
+            grammar: null,
+            vocabulary: [],
+            pronunciation: null
+          },
+          suggestions: {
+            grammar: null,
+            vocabulary: null,
+            pronunciation: null
+          },
+          wordsForPractice: [],
+          message: message,
+          timestamp: new Date().toISOString()
+        };
+        
+        // Store the fallback analysis
+        setComprehensiveAnalysis(prev => ({
+          ...prev,
+          [messageId]: fallbackAnalysis
+        }));
+        
+        return fallbackAnalysis;
       }
     } catch (error) {
       console.error('Error in comprehensive analysis:', error instanceof Error ? error.message : 'Unknown error');
-      return null;
+      console.error('Full error details:', error);
+      
+      // Instead of returning null (which causes the error message), return a fallback analysis
+      // that indicates no errors were found, allowing the conversation to continue
+      console.log('🔄 === RETURNING FALLBACK ANALYSIS ===');
+      console.log('Providing fallback analysis to prevent error message display');
+      
+      const fallbackAnalysis = {
+        hasErrors: false,
+        errorTypes: {
+          grammar: false,
+          vocabulary: false,
+          pronunciation: false
+        },
+        corrections: {
+          grammar: null,
+          vocabulary: [],
+          pronunciation: null
+        },
+        suggestions: {
+          grammar: null,
+          vocabulary: null,
+          pronunciation: null
+        },
+        wordsForPractice: [],
+        message: message,
+        timestamp: new Date().toISOString()
+      };
+      
+      // Store the fallback analysis
+      setComprehensiveAnalysis(prev => ({
+        ...prev,
+        [messageId]: fallbackAnalysis
+      }));
+      
+      return fallbackAnalysis;
     }
   };
 
   // Recording functions
   const startRecording = async () => {
     try {
+      console.log('🎤 === STARTING RECORDING ===');
+      // Clear previous mic message ID when starting new recording
+      setCurrentMicMessageId(null);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('✅ Microphone access granted');
+      
       const recorder = new MediaRecorder(stream);
       const chunks: Blob[] = [];
-      let recordingStartTime = Date.now();
+      const recordingStartTime = Date.now();
 
       // Start duration tracking
       const durationInterval = setInterval(() => {
@@ -2551,6 +5218,164 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         }
       }, 1000);
 
+      // Request data periodically to ensure chunks are collected
+      const dataInterval = setInterval(() => {
+        if (recorder.state === 'recording') {
+          recorder.requestData();
+          console.log('📊 Requested data from recorder, chunks count:', chunks.length);
+        }
+      }, 100); // Request data every 100ms
+
+      recorder.ondataavailable = (event) => {
+        console.log('📦 Data available:', event.data.size, 'bytes');
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+          console.log('✅ Chunk added, total chunks:', chunks.length);
+        } else {
+          console.warn('⚠️ Empty chunk received');
+        }
+      };
+
+      recorder.onerror = (event) => {
+        console.error('❌ MediaRecorder error:', event);
+        clearInterval(durationInterval);
+        clearInterval(dataInterval);
+        setIsRecording(false);
+        alert('Recording error occurred. Please try again.');
+      };
+
+      recorder.onstop = async () => {
+        console.log('🛑 === RECORDING STOPPED ===');
+        clearInterval(durationInterval);
+        clearInterval(dataInterval);
+        setRecordingDuration(0);
+        
+        console.log('📊 Total chunks collected:', chunks.length);
+        console.log('📊 Total data size:', chunks.reduce((sum, chunk) => sum + chunk.size, 0), 'bytes');
+        
+        if (chunks.length === 0) {
+          console.error('❌ No chunks collected during recording!');
+          alert('No audio data was recorded. Please try again.');
+          stream.getTracks().forEach(track => track.stop());
+          setIsRecording(false);
+          return;
+        }
+        
+        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+        console.log('✅ Audio blob created:', audioBlob.size, 'bytes');
+        console.log('✅ Audio blob type:', audioBlob.type);
+        
+        // Store audio blob for pronunciation analysis
+        setMicRecordingBlob(audioBlob);
+        // Reset transcription state
+        setMicRecordingTranscription(null);
+        
+        // Process audio in background (don't await - let it run async)
+        processAudioMessage(audioBlob).catch(error => {
+          console.error('Error processing audio message:', error);
+        });
+        
+        stream.getTracks().forEach(track => track.stop());
+        console.log('✅ Media stream tracks stopped');
+      };
+
+      console.log('🎤 Starting MediaRecorder...');
+      recorder.start();
+      console.log('✅ MediaRecorder started, state:', recorder.state);
+      setMediaRecorder(recorder);
+      setIsRecording(true);
+      console.log('✅ Recording state set to true');
+    } catch (error) {
+      console.error('❌ Error starting recording:', error);
+      setIsRecording(false);
+      alert('Microphone access denied. Please allow microphone access to use voice input.');
+    }
+  };
+
+  const stopRecording = () => {
+    console.log('🛑 === STOP RECORDING CALLED ===');
+    console.log('MediaRecorder exists:', !!mediaRecorder);
+    console.log('Is recording:', isRecording);
+    console.log('MediaRecorder state:', mediaRecorder?.state);
+    
+    if (mediaRecorder && isRecording) {
+      console.log('✅ Stopping MediaRecorder...');
+      try {
+        if (mediaRecorder.state === 'recording') {
+          mediaRecorder.stop();
+          console.log('✅ MediaRecorder.stop() called');
+        } else {
+          console.warn('⚠️ MediaRecorder is not in recording state:', mediaRecorder.state);
+        }
+        setIsRecording(false);
+        console.log('✅ Recording state set to false');
+      } catch (error) {
+        console.error('❌ Error stopping recorder:', error);
+        setIsRecording(false);
+      }
+    } else {
+      console.warn('⚠️ Cannot stop recording - mediaRecorder or isRecording is false');
+    }
+  };
+
+  // Stop practice recording handler for suggested responses
+  const handleStopPracticeResponse = (responseId: string, responseText: string) => {
+    console.log('🛑 === STOP PRACTICE RESPONSE CLICKED ===');
+    console.log('Response ID:', responseId);
+    console.log('Response Text:', responseText);
+    
+    const recorder = practiceRecorders[responseId];
+    if (recorder && recorder.state !== 'inactive') {
+      console.log('🛑 Stopping recorder for response:', responseId);
+      recorder.stop();
+      // The recorder.onstop handler will set showAnalyze to true
+    } else {
+      console.log('⚠️ No active recorder found for response:', responseId);
+      // Manually set states if recorder not found
+      setResponseRecordingState(prev => ({
+        ...prev,
+        [responseId]: false
+      }));
+    }
+  };
+
+  // Practice recording handlers for suggested responses
+  const handlePracticeResponse = async (responseId: string, responseText: string) => {
+    console.log('🎤 === PRACTICE RESPONSE CLICKED ===');
+    console.log('Response ID:', responseId);
+    console.log('Response Text:', responseText);
+
+    // Check if already recording - stop recording
+    if (responseRecordingState[responseId]) {
+      const recorder = practiceRecorders[responseId];
+      if (recorder && recorder.state !== 'inactive') {
+        recorder.stop();
+      }
+      return;
+    }
+
+    // Reset hasBeenAnalyzed when starting a new practice (Practice Again)
+    // This allows the Analyse button to be enabled again after recording
+    setResponseHasBeenAnalyzed(prev => ({
+      ...prev,
+      [responseId]: false
+    }));
+
+    // Reset showAnalyze initially, will be set to true after recording stops
+    setResponseShowAnalyze(prev => ({
+      ...prev,
+      [responseId]: false
+    }));
+    
+    // Ensure Analyze button is NOT shown while recording
+    console.log('🔄 Reset showAnalyze for response:', responseId, '- Analyze button will be enabled after Stop');
+
+    // Start recording
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           chunks.push(event.data);
@@ -2558,27 +5383,318 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       };
 
       recorder.onstop = async () => {
-        clearInterval(durationInterval);
-        setRecordingDuration(0);
         const audioBlob = new Blob(chunks, { type: 'audio/webm' });
-        await processAudioMessage(audioBlob);
+        console.log('🎤 === RECORDING STOPPED FOR RESPONSE ===');
+        console.log('Audio blob size:', audioBlob.size, 'bytes');
+        
+        // Store audio blob
+        setRecordedAudioBlobs(prev => {
+          const newMap = new Map(prev);
+          newMap.set(responseId, { blob: audioBlob, text: responseText });
+          return newMap;
+        });
+
+        // Show Analyze button - enable it after recording stops
+        setResponseShowAnalyze(prev => {
+          const newState = {
+            ...prev,
+            [responseId]: true
+          };
+          console.log('✅ Analyze button enabled for response:', responseId);
+          console.log('📊 Updated responseShowAnalyze:', newState);
+          return newState;
+        });
+
+        // Stop recording state
+        setResponseRecordingState(prev => ({
+          ...prev,
+          [responseId]: false
+        }));
+
+        // Clean up recorder
+        setPracticeRecorders(prev => {
+          const newRecorders = { ...prev };
+          delete newRecorders[responseId];
+          return newRecorders;
+        });
+
+        // Stop all tracks
         stream.getTracks().forEach(track => track.stop());
       };
 
       recorder.start();
-      setMediaRecorder(recorder);
-      setIsRecording(true);
+      
+      // Update state
+      setResponseRecordingState(prev => ({
+        ...prev,
+        [responseId]: true
+      }));
+      
+      setPracticeRecorders(prev => ({
+        ...prev,
+        [responseId]: recorder
+      }));
     } catch (error) {
-      console.error('Error starting recording:', error);
+      console.error('❌ Error starting practice recording:', error);
       alert('Microphone access denied. Please allow microphone access to use voice input.');
     }
   };
 
-  const stopRecording = () => {
-    if (mediaRecorder && isRecording) {
-      mediaRecorder.stop();
-      setIsRecording(false);
+  // Analyze handler - navigates to pronunciation tab
+  const handleAnalyzeResponse = (responseId: string, responseText: string) => {
+    console.log('🔍 === ANALYZE RESPONSE CLICKED ===');
+    console.log('Response ID:', responseId);
+    console.log('Response Text:', responseText);
+
+    const audioData = recordedAudioBlobs.get(responseId);
+    if (!audioData) {
+      console.error('❌ No audio blob found for response:', responseId);
+      alert('Please record audio first before analyzing.');
+      return;
     }
+
+    // Set pending analysis
+    setPendingPronunciationAnalysis({
+      audioBlob: audioData.blob,
+      text: responseText,
+      responseId
+    });
+
+    // Navigate to pronunciation tab - ensure toolbar is visible and expanded
+    setToolbarActiveTab('pronunciation');
+    setShowToolbar(true);
+    setToolbarCollapsed(false);
+
+    // Mark as analyzed
+    setResponseHasBeenAnalyzed(prev => ({
+      ...prev,
+      [responseId]: true
+    }));
+  };
+
+  // Helper function to re-transcribe audio blob using Whisper API
+  const reTranscribeAudio = async (audioBlob: Blob): Promise<string | null> => {
+    console.log('🔄 === RE-TRANSCRIBING AUDIO ===');
+    console.log('Audio blob size:', audioBlob.size, 'bytes');
+    
+    try {
+      // Convert blob to base64
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      // Convert to base64 in chunks
+      let binaryString = '';
+      const chunkSize = 8192;
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.slice(i, i + chunkSize);
+        binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      
+      const base64Audio = btoa(binaryString);
+      console.log('Base64 audio length:', base64Audio.length);
+      
+      // Call Whisper API
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whisper`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audioData: base64Audio,
+          language: recordingLanguage === 'german' ? 'de' : 'en',
+          storeForAnalysis: true
+        }),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Re-transcription failed:', response.status, errorText);
+        return null;
+      }
+      
+      const data = await response.json();
+      
+      if (data.transcription && typeof data.transcription === 'string') {
+        const transcription = data.transcription.trim();
+        console.log('✅ Re-transcription successful:', transcription);
+        return transcription;
+      } else {
+        console.error('❌ Invalid re-transcription response:', data);
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ Re-transcription error:', error);
+      return null;
+    }
+  };
+
+  // Message-level Analyse handler - navigates to pronunciation tab with mic recording
+  const handleMessageAnalyse = async (messageId: string) => {
+    console.log('🔍 === MESSAGE ANALYSE CLICKED ===');
+    console.log('Message ID:', messageId);
+    console.log('Current micRecordingBlob:', micRecordingBlob ? `exists (${micRecordingBlob.size} bytes)` : 'null');
+    console.log('Current micRecordingTranscription:', micRecordingTranscription);
+    
+    if (!micRecordingBlob) {
+      console.error('❌ No mic recording blob found');
+      alert('No audio recording available for analysis.');
+      return;
+    }
+
+    // Get transcript from message content or stored transcription
+    const message = chatMessages.find(msg => msg.id === messageId);
+    const transcription = micRecordingTranscription || (message?.content && message.content !== '🎤 Recording...' && message.content !== '🎤 Voice message' ? message.content : null);
+    
+    if (!transcription || transcription.trim().length === 0) {
+      console.error('❌ No transcription available');
+      alert('No transcription available. Please wait for transcription to complete.');
+      return;
+    }
+
+    // Validate transcript has letters
+    const hasLetters = /[a-zA-ZäöüÄÖÜß]/.test(transcription);
+    if (!hasLetters) {
+      console.error('❌ Transcription does not contain letters:', transcription);
+      alert('Invalid transcription - no readable text detected.');
+      return;
+    }
+
+    console.log('✅ Using transcription for pronunciation analysis:', transcription);
+
+    // Set pending analysis with mic recording
+    const responseId = `mic-${messageId}-${Date.now()}`;
+    console.log('📝 Setting pendingPronunciationAnalysis with:');
+    console.log('  - audioBlob:', micRecordingBlob.size, 'bytes');
+    console.log('  - text:', transcription);
+    console.log('  - responseId:', responseId);
+    
+    setPendingPronunciationAnalysis({
+      audioBlob: micRecordingBlob,
+      text: transcription.trim(),
+      responseId: responseId
+    });
+
+    // Navigate to pronunciation tab - ensure toolbar is visible and expanded
+    setToolbarActiveTab('pronunciation');
+    setShowToolbar(true);
+    setToolbarCollapsed(false);
+    
+    console.log('✅ Navigation to pronunciation tab completed');
+  };
+
+  // Mic button Analyze handler - navigates to pronunciation tab with mic recording (kept for backward compatibility)
+  const handleMicAnalyze = async () => {
+    console.log('🔍 === MIC ANALYZE CLICKED ===');
+    console.log('Current micRecordingBlob:', micRecordingBlob ? `exists (${micRecordingBlob.size} bytes)` : 'null');
+    console.log('Current micRecordingTranscription:', micRecordingTranscription);
+    console.log('Current micRecordingTranscription type:', typeof micRecordingTranscription);
+    
+    if (!micRecordingBlob) {
+      console.error('❌ No mic recording blob found');
+      alert('Please record audio first before analyzing.');
+      return;
+    }
+
+    // Check if we have a transcription and if it's valid
+    let transcription = micRecordingTranscription ? micRecordingTranscription.trim() : null;
+    let needsReTranscription = false;
+    
+    // If no transcription exists, or if it's invalid/gibberish, re-transcribe
+    if (!transcription || transcription.length === 0) {
+      console.log('🔄 No transcription available - re-transcribing...');
+      needsReTranscription = true;
+    } else {
+      // Validate the existing transcription
+      const validationResult = validateTranscript(transcription);
+      if (!validationResult.isValid) {
+        console.log('🔄 Existing transcription is gibberish - re-transcribing...');
+        console.log('🔄 Validation reason:', validationResult.reason);
+        needsReTranscription = true;
+      }
+    }
+
+    // Re-transcribe if needed
+    if (needsReTranscription) {
+      console.log('🔄 === RE-TRANSCRIBING AUDIO FOR ANALYSIS ===');
+      console.log('🔄 Re-transcribing audio blob to get valid transcription...');
+      
+      // Show loading state
+      const reTranscribedText = await reTranscribeAudio(micRecordingBlob);
+      
+      if (!reTranscribedText || reTranscribedText.trim().length === 0) {
+        console.error('❌ Re-transcription failed or returned empty');
+        alert('Unable to transcribe the audio. Please try recording again.');
+        return;
+      }
+      
+      // Validate the re-transcribed text
+      const reValidationResult = validateTranscript(reTranscribedText);
+      if (!reValidationResult.isValid) {
+        console.error('❌ Re-transcription still returned gibberish:', reTranscribedText);
+        console.error('❌ Validation reason:', reValidationResult.reason);
+        alert('Unable to get a valid transcription from the audio. Please try recording again with clearer speech.');
+        return;
+      }
+      
+      // Use the re-transcribed text
+      transcription = reTranscribedText;
+      console.log('✅ Using re-transcribed text for analysis:', transcription);
+      
+      // Update the stored transcription
+      setMicRecordingTranscription(transcription);
+    } else {
+      console.log('✅ Using existing valid transcription:', transcription);
+    }
+
+    // Final validation: Ensure transcription has content and letters
+    if (!transcription || transcription.length === 0) {
+      console.error('❌ Final transcription is empty');
+      alert('No transcription available. Please record again.');
+      return;
+    }
+
+    const hasLetters = /[a-zA-ZäöüÄÖÜß]/.test(transcription);
+    if (!hasLetters) {
+      console.error('❌ Transcription does not contain letters:', transcription);
+      alert('Invalid transcription - no readable text detected. Please speak clearly and record again.');
+      return;
+    }
+
+    console.log('✅ Using transcription for pronunciation analysis:', transcription);
+    console.log('✅ Transcription length:', transcription.length);
+
+    // Clear any previous pronunciation analysis results before setting new pending analysis
+    console.log('🧹 Clearing previous pronunciation analysis');
+    
+    // Set pending analysis with mic recording - this overwrites any previous pending analysis
+    const micResponseId = `mic-${Date.now()}`;
+    console.log('📝 Setting pendingPronunciationAnalysis with:');
+    console.log('  - audioBlob:', micRecordingBlob.size, 'bytes');
+    console.log('  - text:', transcription);
+    console.log('  - responseId:', micResponseId);
+    
+    setPendingPronunciationAnalysis({
+      audioBlob: micRecordingBlob,
+      text: transcription,
+      responseId: micResponseId
+    });
+
+    // Navigate to pronunciation tab - ensure toolbar is visible and expanded
+    setToolbarActiveTab('pronunciation');
+    setShowToolbar(true);
+    setToolbarCollapsed(false);
+
+    // Hide the Analyse button after clicking
+    setShowMicAnalyzeButton(false);
+    
+    console.log('✅ Navigation to pronunciation tab completed');
   };
 
   // Modal recording functions
@@ -2587,7 +5703,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
       const chunks: Blob[] = [];
-      let recordingStartTime = Date.now();
+      const recordingStartTime = Date.now();
 
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -2634,45 +5750,71 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
   const processConversationInputRecording = async (audioBlob: Blob) => {
     console.log('🎤 === PROCESSING CONVERSATION INPUT RECORDING ===');
+    console.log('Audio blob size:', audioBlob.size, 'bytes');
+    console.log('Audio blob type:', audioBlob.type);
+    console.log('Recording language:', recordingLanguage);
     
     setIsTranscribing(true);
     
     try {
       // Convert blob to base64
       const reader = new FileReader();
+      reader.onerror = (error) => {
+        console.error('FileReader error:', error);
+        alert('Failed to read audio file. Please try again.');
+        setIsTranscribing(false);
+      };
+      
       reader.onload = async () => {
-        const base64Audio = reader.result as string;
-        const base64Data = base64Audio.split(',')[1];
-        
-        console.log('Base64 audio length:', base64Data.length);
-        
         try {
+          const base64Audio = reader.result as string;
+          if (!base64Audio || !base64Audio.includes(',')) {
+            console.error('Invalid base64 audio data');
+            alert('Failed to process recording. Please try again.');
+            setIsTranscribing(false);
+            return;
+          }
+          
+          const base64Data = base64Audio.split(',')[1];
+          console.log('Base64 audio length:', base64Data.length);
+          
           const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whisper`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
             },
-            body: JSON.stringify({ audioData: base64Data })
+            body: JSON.stringify({ 
+              audioData: base64Data,
+              language: recordingLanguage === 'german' ? 'de' : 'en'
+            })
           });
+
+          console.log('Whisper response status:', response.status);
 
           if (response.ok) {
             const data = await response.json();
+            console.log('Whisper response data:', data);
             
-            if (data.transcription) {
-              const transcription = data.transcription;
-              console.log('Conversation input transcription:', transcription);
+            if (data.transcription && data.transcription.trim()) {
+              const transcription = data.transcription.trim();
+              console.log('✅ Conversation input transcription received:', transcription);
+              console.log('🎯 Setting this transcription to conversationInput field');
               
               // Set the transcription as the conversation input
               setConversationInput(transcription);
               setIsTranscribing(false);
+              
+              console.log('✅ Transcription set in conversationInput');
             } else {
-              console.error('No transcription received');
+              console.error('No transcription or empty transcription received');
+              console.error('Response data:', data);
               alert('No speech detected. Please try again.');
               setIsTranscribing(false);
             }
           } else {
-            console.error('Transcription failed:', response.status);
+            const errorText = await response.text();
+            console.error('Transcription failed:', response.status, errorText);
             alert('Failed to process your recording. Please try again.');
             setIsTranscribing(false);
           }
@@ -2709,7 +5851,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
           },
-          body: JSON.stringify({ audioData: base64Data })
+          body: JSON.stringify({ 
+            audioData: base64Data,
+            language: recordingLanguage === 'german' ? 'de' : 'en'
+          })
         });
 
         if (response.ok) {
@@ -2731,9 +5876,21 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               if (mismatchMessageId) {
                 setChatMessages(prev => prev.map(msg =>
                   msg.id === mismatchMessageId
-                    ? { ...msg, content: transcription }
+                    ? { ...msg, content: transcription, isAudio: true }
                     : msg
                 ));
+                
+                // Store the German voice message for pronunciation analysis
+                setLastGermanVoiceMessage({
+                  transcription: transcription,
+                  audioData: base64Data,
+                  messageId: mismatchMessageId
+                });
+                
+                console.log('🎤 === STORED GERMAN VOICE MESSAGE FOR PRONUNCIATION ANALYSIS ===');
+                console.log('Transcription:', transcription);
+                console.log('Message ID:', mismatchMessageId);
+                console.log('Audio data length:', base64Data.length);
                 
                 // Process the German message normally
                 await processTextMessage(transcription, mismatchMessageId, false);
@@ -2816,15 +5973,22 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     }
   };
 
-  const processAudioMessage = async (audioBlob: Blob) => {
+  const processAudioMessage = async (audioBlob: Blob, preExistingMessageId?: string) => {
     // Store audio blob for practice modal use
     setPracticeAudioBlob(audioBlob);
+    
+    // If messageId was passed directly (from stopRecording), use it
+    // Otherwise check state for pre-existing message
+    if (!preExistingMessageId) {
+      preExistingMessageId = currentMicMessageId;
+    }
     
     // Check if we're in a retry state - be more robust in detection
     const isRetry = Boolean(activeMessageId);
     const existingMessageId = activeMessageId;
 
     console.log('🎤 === PROCESSING AUDIO MESSAGE ===');
+    console.log('Pre-existing message ID (from parameter or state):', preExistingMessageId);
     console.log('Is retry:', isRetry);
     console.log('Existing message ID:', existingMessageId);
     console.log('Waiting for correction:', waitingForCorrection);
@@ -2839,6 +6003,39 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     console.log('errorMessages values:', Object.values(errorMessages));
     
     let messageId = '';
+    
+    // If message was already created in stopRecording, use that messageId
+    if (preExistingMessageId) {
+      console.log('✅ Using pre-existing message ID from mic recording:', preExistingMessageId);
+      messageId = preExistingMessageId;
+      // Wait a moment for React state to update (message was just added in stopRecording)
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Verify message exists using functional state access
+      let messageFound = false;
+      setChatMessages(currentMessages => {
+        const messageExists = currentMessages.find(msg => msg.id === preExistingMessageId);
+        if (messageExists) {
+          messageFound = true;
+          console.log('✅ Message found in chatMessages:', preExistingMessageId);
+        } else {
+          console.error('❌ Message not found in chatMessages:', preExistingMessageId);
+          console.log('Current message IDs:', currentMessages.map(m => m.id));
+        }
+        return currentMessages; // Don't modify, just read
+      });
+      
+      if (messageFound) {
+        // Process audio in background - message already exists, just need to transcribe
+        await transcribeAudio(audioBlob, messageId, false);
+        // Clear after transcription completes
+        setCurrentMicMessageId(null);
+        return;
+      } else {
+        // If message still doesn't exist, fall through to create new message
+        console.warn('⚠️ Message not found after wait, falling through to create new message');
+      }
+    }
     
     if (isRetry && existingMessageId) {
       // This is a retry - update existing message
@@ -2890,27 +6087,38 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         console.log('- existingMessageId:', existingMessageId);
         console.log('- waitingForCorrection:', waitingForCorrection);
         
+        const audioUrl = URL.createObjectURL(audioBlob);
+        console.log('✅ Audio URL created:', audioUrl);
+        console.log('✅ Audio blob size:', audioBlob.size, 'bytes');
+        console.log('✅ Audio blob type:', audioBlob.type);
+        
         const audioMessage: ChatMessage = {
           id: Date.now().toString(), // Always create new ID to avoid duplicates
           role: 'user',
-          content: showLanguageMismatchModal ? '🎤 Voice message' : '🎤 Voice message',
+          content: '🎤 Voice message',
           timestamp: new Date().toISOString(),
-          audioUrl: URL.createObjectURL(audioBlob),
-          isAudio: true,
+          audioUrl: audioUrl, // Set audioUrl immediately for play button
+          isAudio: true, // Mark as audio message
           isTranscribing: true
         };
         
         messageId = audioMessage.id;
+        console.log('✅ Message created with ID:', messageId);
+        console.log('✅ Message audioUrl:', audioMessage.audioUrl);
+        console.log('✅ Message isAudio:', audioMessage.isAudio);
 
         updateMessageStatus(messageId, 'checking');
+        console.log('✅ Message status set to "checking"');
         
         // Add to chat immediately
         setChatMessages(prev => {
           console.log('🆕 === ADDING NEW MESSAGE TO CHAT ===');
           console.log('New message ID:', messageId);
           console.log('Previous messages count:', prev.length);
+          console.log('Audio URL in message:', audioMessage.audioUrl);
           const newMessages = [...prev, audioMessage];
           console.log('New messages count:', newMessages.length);
+          console.log('✅ Message added to chat - play button should be enabled');
           return newMessages;
         });
       }
@@ -2920,6 +6128,62 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     await transcribeAudio(audioBlob, messageId, isRetry);
   };
 
+  // Comprehensive transcript validation function
+  // Tests and confirms transcript is valid before displaying
+  const validateTranscript = (transcript: string): { isValid: boolean; reason?: string } => {
+    const trimmed = transcript.trim();
+    
+    // Check if transcript is empty
+    if (!trimmed || trimmed.length === 0) {
+      return { isValid: false, reason: 'empty' };
+    }
+    
+    // Comprehensive gibberish pattern detection
+    const invalidPatterns = [
+      /^🎤/i,  // Placeholder like "🎤 Voice message"
+      /^Recording/i,  // Placeholder like "Recording retry..."
+      /^Untertitel/i,  // "Untertitel" at start
+      /Untertitel der/i,  // "Untertitel der" anywhere
+      /Untertitel der.*Amara/i,  // "Untertitel der Amara" pattern
+      /Untertitel im Auftrag/i,  // "Untertitel im Auftrag" pattern
+      /Untertitel im Auftrag des ZDF/i,  // "Untertitel im Auftrag des ZDF" pattern
+      /Amara\.org/i,  // "Amara.org" anywhere
+      /Amara\.org-Community/i,  // "Amara.org-Community" pattern
+      /Amara-Community/i,  // "Amara-Community" pattern
+      /im Auftrag/i,  // "im Auftrag" pattern
+      /für funk/i,  // "für funk" pattern
+      /^\d{4}$/,  // Just year numbers like "2017"
+      /Community.*Untertitel/i,  // "Community Untertitel" pattern
+      /der.*Amara/i,  // "der Amara" pattern
+      /ZDF.*funk/i,  // "ZDF für funk" pattern
+    ];
+    
+    const isGibberishPattern = invalidPatterns.some(pattern => pattern.test(trimmed));
+    if (isGibberishPattern) {
+      return { isValid: false, reason: 'gibberish_pattern' };
+    }
+    
+    // Check if transcript has meaningful content (letters)
+    const hasLetters = /[a-zA-ZäöüÄÖÜß]/.test(trimmed);
+    if (!hasLetters) {
+      return { isValid: false, reason: 'no_letters' };
+    }
+    
+    // Check transcript length (too short might be invalid)
+    if (trimmed.length < 2) {
+      return { isValid: false, reason: 'too_short' };
+    }
+    
+    // Check for too many repeated characters (might indicate corrupted transcription)
+    const repeatedChars = /(.)\1{4,}/.test(trimmed);
+    if (repeatedChars) {
+      return { isValid: false, reason: 'repeated_chars' };
+    }
+    
+    // All validation checks passed
+    return { isValid: true };
+  };
+  
   const transcribeAudio = async (audioBlob: Blob, messageId: string, isRetry: boolean = false) => {
     console.log('🎤 === TRANSCRIBE AUDIO START ===');
     console.log('Message ID:', messageId);
@@ -2935,14 +6199,26 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       console.log('Audio blob type:', audioBlob.type);
       console.log('Recording language:', recordingLanguage);
       
-      // Convert blob to base64
+      // Convert blob to base64 using a safer method for large files
       const arrayBuffer = await audioBlob.arrayBuffer();
-      const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      // Use a more robust base64 conversion that handles large arrays
+      let binaryString = '';
+      const chunkSize = 8192; // Process in 8KB chunks
+      
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.slice(i, i + chunkSize);
+        binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      
+      const base64Audio = btoa(binaryString);
       
       console.log('Base64 audio length:', base64Audio.length);
 
       // Try the whisper function first, fallback to chat function if not available
       let response;
+      let isWhisperResponse = false; // Track if response is from Whisper API
       try {
         // Use auto-detection instead of forcing a specific language
         // This allows Whisper to detect the actual language spoken
@@ -2959,18 +6235,19 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           },
           body: JSON.stringify({
             audioData: base64Audio,
-            // Don't specify language - let Whisper auto-detect
+            language: recordingLanguage === 'german' ? 'de' : 'en',
             storeForAnalysis: true
           }),
           signal: controller.signal
         });
         
+        isWhisperResponse = true; // Mark that this is from Whisper API
         clearTimeout(timeoutId);
       } catch (whisperError) {
         console.log('Whisper function error:', whisperError);
         
         // Check if it's a timeout or size issue
-        if (whisperError.name === 'AbortError') {
+        if ((whisperError as Error).name === 'AbortError') {
           console.log('Transcription timeout - audio might be too long');
           setChatMessages(prev => prev.map(msg => 
             msg.id === messageId 
@@ -3015,6 +6292,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             difficultyLevel: 'Intermediate'
           })
         });
+        
+        isWhisperResponse = false; // This is NOT from Whisper API
       }
 
       if (response.ok) {
@@ -3023,17 +6302,206 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         // Check if this is a whisper response or chat fallback
         if (data.transcription) {
           // Whisper function response
+          // CRITICAL: Use ONLY the transcription from Whisper API, never from any other source
           const transcription = data.transcription;
           
-          // Detect language mismatch
+          // CRITICAL VALIDATION: Ensure this transcription is from Whisper API, not from chat fallback
+          // Only store mic transcription if this is confirmed to be from Whisper API
+          if (!isWhisperResponse) {
+            console.warn('⚠️ Response is from chat fallback, not Whisper API - skipping mic transcription storage');
+            console.warn('⚠️ Transcription from fallback:', transcription);
+          }
+          
+          // Validate that transcription is actually from Whisper API and not a fallback
+          if (typeof transcription !== 'string') {
+            console.error('❌ Invalid transcription type from API:', typeof transcription);
+            setIsTranscribing(false);
+            return;
+          }
+          
+          console.log('🎤 === WHISPER API TRANSCRIPTION RECEIVED ===');
+          console.log('Raw transcription from API:', transcription);
+          console.log('Transcription type:', typeof transcription);
+          console.log('Transcription length:', transcription.length);
+          console.log('Is from Whisper API:', isWhisperResponse);
+          console.log('✅ Transcription received from Whisper API');
+          
+          // CRITICAL: Store transcription IMMEDIATELY for mic recordings if micRecordingBlob exists
+          // This ensures we capture the actual API transcription before any other processing
+          // Store it regardless of language detection - we'll validate later
+          // ONLY store if this is confirmed to be from Whisper API
+          if (micRecordingBlob && isWhisperResponse) {
+            const actualTranscription = transcription.trim();
+            if (actualTranscription && actualTranscription.length > 0) {
+              console.log('🎤 === STORING MIC RECORDING TRANSCRIPTION IMMEDIATELY ===');
+              console.log('✅ Storing actual API transcription immediately:', actualTranscription);
+              console.log('✅ Storing BEFORE language detection or any other processing');
+              console.log('✅ Confirmed source: Whisper API');
+              setMicRecordingTranscription(actualTranscription);
+              
+              // Verify storage
+              setTimeout(() => {
+                console.log('✅ Verification: micRecordingTranscription stored immediately as:', actualTranscription);
+              }, 0);
+            }
+          } else if (micRecordingBlob && !isWhisperResponse) {
+            console.warn('⚠️ NOT storing mic transcription - response is not from Whisper API');
+            console.warn('⚠️ Transcription would have been:', transcription);
+          }
+          
+          // VALIDATE transcript before displaying - test and confirm it's valid
+          const trimmedTranscription = transcription.trim();
+          
+          // Only check if transcription is truly empty (API failure case)
+          if (!trimmedTranscription || trimmedTranscription.length === 0) {
+            console.error('❌ Empty transcription from Whisper API:', transcription);
+            setChatMessages(prev => {
+              const updatedMessages = prev.map(msg => {
+                if (msg.id === messageId) {
+                  return { 
+                    ...msg, 
+                    content: '❌ Transcription failed - no audio detected', 
+                    isTranscribing: false 
+                  };
+                }
+                return msg;
+              });
+              return updatedMessages;
+            });
+            
+            setIsTranscribing(false);
+            updateMessageStatus(messageId, 'error');
+            
+            return;
+          }
+          
+          // TEST AND CONFIRM transcript is valid before displaying
+          const validationResult = validateTranscript(trimmedTranscription);
+          
+          console.log('🔍 === TRANSCRIPT VALIDATION ===');
+          console.log('Transcription:', trimmedTranscription);
+          console.log('Validation result:', validationResult);
+          
+          // Keep message with placeholder when gibberish detected - don't display gibberish transcript
+          if (!validationResult.isValid) {
+            console.error('❌ Invalid transcript detected - keeping message with placeholder:', trimmedTranscription);
+            console.error('❌ Validation reason:', validationResult.reason);
+            console.error('❌ Keeping message visible with placeholder "🎤 Voice message"');
+            
+            // Keep the message visible but with placeholder instead of gibberish
+            setChatMessages(prev => {
+              const updatedMessages = prev.map(msg => {
+                if (msg.id === messageId) {
+                  console.log('✅ KEEPING MESSAGE WITH PLACEHOLDER FOR GIBBERISH TRANSCRIPT');
+                  console.log('Original content:', msg.content);
+                  console.log('Keeping placeholder: 🎤 Voice message');
+                  
+                  return { 
+                    ...msg, 
+                    content: '🎤 Voice message',  // Keep placeholder instead of gibberish
+                    isTranscribing: false,
+                    audioUrl: msg.audioUrl, // Preserve existing audio URL for playback
+                    isAudio: true // Keep isAudio flag so play button displays
+                  };
+                }
+                return msg;
+              });
+              return updatedMessages;
+            });
+            
+            setIsTranscribing(false);
+            // Don't set error status - just keep placeholder message
+            
+            // Clear checking status to remove "Checking your message..." indicator
+            if (messageId) {
+              clearCheckingStatus(messageId);
+              console.log('✅ Cleared checking status for invalid transcript');
+            }
+            
+            // For gibberish transcripts, keep placeholder - Analyse button won't show until valid transcript
+            // User can still use Play button to listen to recording
+            console.log('⚠️ Invalid transcript - keeping placeholder, Analyse button will not appear');
+            
+            return; // Don't proceed with processing invalid transcript
+          }
+          
+          // VALID TRANSCRIPTION CONFIRMED - display the EXACT transcription from Whisper API word-for-word
+          console.log('✅ Valid transcription confirmed - displaying EXACT transcript word-for-word:', trimmedTranscription);
+          console.log('✅ Transcript length:', trimmedTranscription.length);
+          console.log('✅ Transcript is from Whisper API - no modifications applied');
+          
+          setChatMessages(prev => {
+            console.log('🔍 === UPDATING MESSAGE WITH TRANSCRIPT ===');
+            console.log('Looking for messageId:', messageId);
+            console.log('Current messages:', prev.map(m => ({ id: m.id, content: m.content.substring(0, 50) })));
+            const messageExists = prev.find(msg => msg.id === messageId);
+            console.log('Message found:', !!messageExists);
+            if (messageExists) {
+              console.log('Existing message content:', messageExists.content);
+            }
+            
+            const updatedMessages = prev.map(msg => {
+              if (msg.id === messageId) {
+                console.log('✅ UPDATING MESSAGE WITH EXACT TRANSCRIPTION FROM WHISPER API:', msg.id);
+                console.log('Original content:', msg.content);
+                console.log('New content (EXACT transcription from Whisper API):', trimmedTranscription);
+                console.log('✅ No modifications - displaying word-for-word as received from API');
+                
+                // Store transcribed text as original message for suggestion generation (voice input)
+                if (!isRetry) {
+                  console.log('📝 === STORING TRANSCRIBED TEXT AS ORIGINAL MESSAGE FOR VOICE INPUT ===');
+                  console.log('Message ID:', messageId);
+                  console.log('Transcribed text:', trimmedTranscription);
+                  setOriginalMessages(prev => ({
+                    ...prev,
+                    [messageId]: trimmedTranscription
+                  }));
+                }
+                
+                return { 
+                  ...msg, 
+                  content: trimmedTranscription,  // Display EXACT transcription word-for-word from Whisper API
+                  isTranscribing: false,
+                  audioUrl: msg.audioUrl, // Preserve existing audio URL for playback (set when message was created)
+                  isAudio: true // Mark as audio message for proper UI display
+                };
+              }
+              return msg;
+            });
+            console.log('✅ Message updated with exact transcript - transcript displayed in chat');
+            return updatedMessages;
+          });
+          
+          // Clear loading states
+          setIsTranscribing(false);
+          
+          // Clear checking status to remove "Checking your message..." indicator
+          if (messageId) {
+            clearCheckingStatus(messageId);
+            console.log('✅ Cleared checking status after valid transcription');
+          }
+          
+          // Detect language for Analyse button visibility and other processing
           const detectedLanguage = detectLanguage(transcription);
           console.log('🔍 === VOICE LANGUAGE DETECTION DEBUG ===');
           console.log('Transcription:', transcription);
           console.log('Detected language:', detectedLanguage);
           console.log('Selected language:', recordingLanguage);
-          console.log('Language mismatch:', detectedLanguage !== recordingLanguage);
-          console.log('Show language mismatch modal state:', showLanguageMismatchModal);
-          console.log('Has English words check:', /\b(the|and|or|but|in|on|at|to|for|of|with|by|this|that|these|those|what|where|when|why|how|hello|hi|how|are|you)\b/i.test(transcription));
+          
+          // Check if language is not German (for mic recordings in German mode)
+          const isNotGerman = micRecordingBlob && recordingLanguage === 'german' && detectedLanguage !== 'german';
+          
+          // Store transcription for Analyse button on message
+          // Analyse button will be shown on the message itself, not next to mic button
+          if (micRecordingBlob && validationResult.isValid) {
+            console.log('🎤 === STORING TRANSCRIPTION FOR MESSAGE ANALYSE BUTTON ===');
+            console.log('✅ Valid transcription completed:', trimmedTranscription);
+            console.log('✅ micRecordingBlob exists:', micRecordingBlob.size, 'bytes');
+            console.log('✅ Transcript stored - Analyse button will appear on message');
+            setMicRecordingTranscription(trimmedTranscription);
+          }
+          
+          console.log('✅ Transcription displayed from Whisper API');
           
           // Check if we're in practice modal mode
           if (showLanguageMismatchModal && germanSuggestion) {
@@ -3160,13 +6628,13 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     console.log('New transcription:', transcription);
                     console.log('Practice audio blob exists:', !!practiceAudioBlob);
                     
-                    const newMessage = {
+                    const newMessage: ChatMessage = {
                       ...msg,
                       content: transcription,
                       audioUrl: practiceAudioBlob ? URL.createObjectURL(practiceAudioBlob) : undefined,
                       isAudio: true,
                       isTranscribing: false,
-                      role: 'user',
+                      role: 'user' as const,
                       timestamp: new Date().toISOString()
                     };
                     console.log('✅ NEW MESSAGE CREATED:', JSON.stringify(newMessage, null, 2));
@@ -3286,41 +6754,13 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           } else {
             console.log('✅ === LANGUAGES MATCH - PROCEEDING WITH NORMAL PROCESSING ===');
             console.log('Detected language:', detectedLanguage, 'Recording language:', recordingLanguage);
+            
+            // Analyse button logic is already handled above in the main flow
+            // No need to duplicate here - transcription is already displayed
           }
           
-          // Update the audio message with transcription
-          setChatMessages(prev => {
-            console.log('🔄 === UPDATING MESSAGE WITH TRANSCRIPTION ===');
-            console.log('Message ID:', messageId);
-            console.log('Is Retry:', isRetry);
-            console.log('Transcription:', transcription);
-            console.log('Previous messages count:', prev.length);
-            
-            const updatedMessages = prev.map(msg => {
-              if (msg.id === messageId) {
-                console.log('✅ FOUND MESSAGE TO UPDATE:', msg.id);
-                console.log('Original content:', msg.content);
-                console.log('New content:', transcription);
-                
-                // Store transcribed text as original message for suggestion generation (voice input)
-                if (!isRetry) {
-                  console.log('📝 === STORING TRANSCRIBED TEXT AS ORIGINAL MESSAGE FOR VOICE INPUT ===');
-                  console.log('Message ID:', messageId);
-                  console.log('Transcribed text:', transcription);
-                  setOriginalMessages(prev => ({
-                    ...prev,
-                    [messageId]: transcription
-                  }));
-                }
-                
-                return { ...msg, content: transcription, isTranscribing: false };
-              }
-              return msg;
-            });
-            
-            console.log('Updated messages count:', updatedMessages.length);
-            return updatedMessages;
-          });
+          // Message content has already been updated above with transcription or error message
+          // No need to update again - skip to retry handling and processing
           
           // If this is a retry, clear previous error states for this message
           if (isRetry) {
@@ -3349,6 +6789,32 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             // For German recordings, run comprehensive analysis and get result immediately
             const analysis = await runComprehensiveAnalysis(transcription, messageId, true);
             
+            // Store the German voice message for pronunciation analysis
+            const audioArrayBuffer = await audioBlob.arrayBuffer();
+            const uint8Array = new Uint8Array(audioArrayBuffer);
+            let binaryString = '';
+            const chunkSize = 8192; // Process in 8KB chunks
+            
+            for (let i = 0; i < uint8Array.length; i += chunkSize) {
+              const chunk = uint8Array.slice(i, i + chunkSize);
+              binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+            }
+            
+            const audioBase64 = btoa(binaryString);
+            
+            console.log('🎤 === STORING GERMAN VOICE MESSAGE FOR PRONUNCIATION ===');
+            console.log('Message ID:', messageId);
+            console.log('Transcription:', transcription);
+            
+            setLastGermanVoiceMessage({
+              transcription: transcription,
+              audioData: audioBase64,
+              messageId: messageId
+            });
+            
+            console.log('✅ === GERMAN VOICE MESSAGE STORED ===');
+            console.log('lastGermanVoiceMessage should now have messageId:', messageId);
+            
             console.log('🔍 === CHECKING FOR ERRORS AFTER ANALYSIS ===');
             console.log('Analysis result:', analysis);
             console.log('Has errors:', analysis && analysis.hasErrors);
@@ -3361,12 +6827,47 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             console.log('Focusing on error correction instead of AI response');
             updateMessageStatus(messageId, 'needs_correction');
             return;
-          } else if (!analysis) {
+          } else if (!analysis || analysis === null) {
             // Analysis failed - don't proceed with AI response
             console.log('🚫 === ANALYSIS FAILED - NOT SENDING TO AI ===');
-            console.log('Analysis returned null, not proceeding with AI response');
-            updateMessageStatus(messageId, 'error');
-            return;
+            console.log('Analysis returned null or undefined, not proceeding with AI response');
+            console.log('Analysis value:', analysis);
+            console.log('Analysis type:', typeof analysis);
+            
+            // Instead of setting error status, try to get a fallback analysis
+            console.log('🔄 === ATTEMPTING FALLBACK ANALYSIS FOR VOICE ===');
+            const fallbackAnalysis = {
+              hasErrors: false,
+              errorTypes: {
+                grammar: false,
+                vocabulary: false,
+                pronunciation: false
+              },
+              corrections: {
+                grammar: null,
+                vocabulary: [],
+                pronunciation: null
+              },
+              suggestions: {
+                grammar: null,
+                vocabulary: null,
+                pronunciation: null
+              },
+              wordsForPractice: [],
+              message: transcription,
+              timestamp: new Date().toISOString()
+            };
+            
+            // Store the fallback analysis
+            setComprehensiveAnalysis(prev => ({
+              ...prev,
+              [messageId]: fallbackAnalysis
+            }));
+            
+            console.log('✅ === FALLBACK ANALYSIS STORED FOR VOICE - PROCEEDING TO AI ===');
+            // Continue with AI response instead of showing error
+            // updateMessageStatus(messageId, 'error'); // REMOVED - don't show error
+            // return; // REMOVED - continue with AI response
           }
             
             console.log('✅ === NO ERRORS DETECTED - PROCEEDING TO AI ===');
@@ -3436,10 +6937,22 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       } else {
         const errorText = await response.text();
         console.error('Transcription failed:', response.status, errorText);
+        
+        let errorMessage = '❌ Transcription failed';
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.error) {
+            errorMessage = `❌ ${errorData.error}`;
+          }
+        } catch (parseError) {
+          // If we can't parse the error, use the status code
+          errorMessage = `❌ Transcription failed (${response.status})`;
+        }
+        
         // Update message to show error with more details
         setChatMessages(prev => prev.map(msg =>
           msg.id === messageId
-            ? { ...msg, content: `❌ Transcription failed (${response.status})`, isTranscribing: false }
+            ? { ...msg, content: errorMessage, isTranscribing: false }
             : msg
         ));
         updateMessageStatus(messageId, 'error');
@@ -3447,33 +6960,57 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     } catch (error) {
       console.error('Error transcribing audio:', error);
 
-      // Check if it's a CORS or function not found error
-      if (error.message.includes('Failed to fetch') || error.message.includes('CORS')) {
-        // Update message to show function needs deployment
-        setChatMessages(prev => prev.map(msg => 
-          msg.id === messageId 
-            ? { 
-                ...msg, 
-                content: '⚠️ Whisper function not deployed. Audio recorded but transcription unavailable.', 
-                isTranscribing: false 
-              }
-            : msg
-        ));
-        updateMessageStatus(messageId, 'error');
+      // Only show error for actual API failures, not for transcription content
+      const errorMessage = '❌ Transcription failed - please try again';
+      
+      // Update message with error
+      setChatMessages(prev => {
+        const updatedMessages = prev.map(msg => {
+          if (msg.id === messageId) {
+            console.log('❌ Updating message with error due to transcription API failure');
+            return { 
+              ...msg, 
+              content: errorMessage, 
+              isTranscribing: false 
+            };
+          }
+          return msg;
+        });
+        return updatedMessages;
+      });
+      
+      // Clear loading states
+      setIsTranscribing(false);
+      updateMessageStatus(messageId, 'error');
+      
+      // Don't disable Analyse button if we have audio blob - user can still analyze
+      if (micRecordingBlob) {
+        console.log('✅ Keeping Analyse button enabled despite transcription error');
+        setShowMicAnalyzeButton(true);
       } else {
-        // Update message to show transcription failed
-        setChatMessages(prev => prev.map(msg =>
-          msg.id === messageId
-            ? { ...msg, content: '❌ Transcription failed', isTranscribing: false }
-            : msg
-        ));
-        updateMessageStatus(messageId, 'error');
+        setShowMicAnalyzeButton(false);
+      }
+      
+      // Clear checking status
+      if (messageId) {
+        clearCheckingStatus(messageId);
       }
     } finally {
-      console.log('🏁 === TRANSCRIBE AUDIO END (NORMAL PROCESSING) ===');
+      console.log('🏁 === TRANSCRIBE AUDIO END ===');
       console.log('Final showLanguageMismatchModal state:', showLanguageMismatchModal);
       console.log('Final chat messages count:', chatMessages.length);
+      console.log('Final isTranscribing state:', isTranscribing);
+      console.log('Final micRecordingBlob exists:', !!micRecordingBlob);
+      console.log('Final showMicAnalyzeButton:', showMicAnalyzeButton);
+      
+      // Ensure isTranscribing is always cleared
       setIsTranscribing(false);
+      
+      // Clear checking status if still checking
+      if (messageId && messageStatus[messageId] === 'checking') {
+        console.log('Clearing stuck checking status for message:', messageId);
+        clearCheckingStatus(messageId);
+      }
     }
   };
 
@@ -3635,6 +7172,12 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
     console.log('✅ === PROCEEDING WITH AI RESPONSE ===');
     clearCheckingStatus(messageId);
+    
+    // Enhance conversation context with voice transcription
+    if (selectedConversation && transcription) {
+      await enhanceConversationContext(selectedConversation, transcription);
+    }
+    
     setIsSending(true);
     setIsTyping(true);
 
@@ -3664,7 +7207,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
           contextLevel,
           difficultyLevel,
           systemInstruction: systemInstruction,
-          userProfile: onboardingData
+          userProfile: onboardingData,
+          conversationContext: transcription
         })
       });
 
@@ -3697,6 +7241,9 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
   };
 
   const startNewConversation = (conversationId: string) => {
+    // Clear the last German voice message when starting new conversation
+    setLastGermanVoiceMessage(null);
+    
     // Reset all states first
     resetConversationState();
     
@@ -3706,6 +7253,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
       setContextLevel(conversation.context_level);
       setDifficultyLevel(conversation.difficulty_level);
       setCurrentConversationContextLocked(conversation.context_locked);
+      setCurrentConversationDifficultyLocked(conversation.difficulty_locked);
     }
     
     // Start new conversation
@@ -3720,11 +7268,12 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     // Show toolbar but start collapsed
     setShowToolbar(true);
     setToolbarCollapsed(true);
-    setSidebarCollapsed(false);
+    // Don't collapse sidebar when starting new conversation - let user control it
+    // setSidebarCollapsed(false);
   };
 
-  // Reset all states when ending conversation
-  const resetConversationState = () => {
+  // Helper function to reset all conversation states (used by both end and new conversation)
+  const resetAllConversationStates = () => {
     // Reset conversation states
     setSelectedConversation(null);
     setChatMessages([]);
@@ -3734,6 +7283,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     // Reset context and difficulty states
     setContextLevel('Professional');
     setCurrentConversationContextLocked(false);
+    setCurrentConversationDifficultyLocked(false);
     setDifficultyLevel('Intermediate');
     
     // Reset toolbar states
@@ -3757,7 +7307,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     setShowTranslation({});
     setShowSuggestions({});
     setTranslatedMessages({});
+    setTranslationSources({});
+    setTranslatingMessages({});
     setSuggestedResponses({});
+    setShowSuggestionTranslation({});
     
     // Reset vocabulary states (conversation-specific)
     setPersistentVocab([]);
@@ -3773,6 +7326,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     // Reset comprehensive analysis
     setComprehensiveAnalysis({});
     
+    // Reset pronunciation-related states
+    setPhoneticBreakdowns({});
+    setShowPronunciationBreakdown({});
+    
     // Reset recording states
     setShowLanguageMenu(false);
     setShowLanguageMismatchModal(false);
@@ -3781,12 +7338,52 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     setMismatchMessageId('');
     setGermanSuggestion('');
     setPracticeAudioBlob(null);
+    setLastGermanVoiceMessage(null);
     setRecordingLanguage('german');
     setRecordingDuration(0);
     
     // Reset UI states
     setSidebarCollapsed(false);
     setCurrentView('dashboard');
+    
+    // Reset session data for new conversation
+    resetSessionData();
+    console.log('📊 Session data reset for new conversation');
+  };
+
+  // End conversation - shows summary modal
+  const endConversation = () => {
+    // Generate and show summary before resetting
+    console.log('📊 Generating conversation summary with session data:', sessionDataRef.current);
+    const summary = generateConversationSummary(sessionDataRef.current);
+    console.log('📊 Generated summary:', summary);
+    setConversationSummary(summary);
+    setShowSummaryModal(true);
+    console.log('📊 Conversation summary generated and modal shown');
+    
+    // Increment conversations completed and update streaks
+    const streakUpdate = updateStreakOnActivity();
+    console.log('🔥 Streak updated on conversation end:', streakUpdate);
+
+    setPlayerStats(prev => ({
+      ...prev,
+      conversationsCompleted: prev.conversationsCompleted + 1,
+      currentStreak: streakUpdate.current,
+      longestStreak: streakUpdate.longest,
+      streak: streakUpdate.current
+    }));
+    console.log('🎯 Conversations completed incremented');
+    
+    // Reset all states
+    resetAllConversationStates();
+  };
+
+  // Start new conversation - does NOT show summary modal
+  const resetConversationState = () => {
+    console.log('🆕 Starting new conversation without summary');
+    
+    // Just reset all states without showing summary
+    resetAllConversationStates();
   };
 
   const handleLogout = async () => {
@@ -3794,15 +7391,43 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
   };
 
   const handleOnboardingComplete = (data: OnboardingData) => {
-    setOnboardingData(data);
+    // Ensure all array fields are properly initialized (same as existing users)
+    const normalizedData: OnboardingData = {
+      ...data,
+      goals: Array.isArray(data.goals) ? data.goals : [],
+      personalityTraits: Array.isArray(data.personalityTraits) ? data.personalityTraits : [],
+      conversationTopics: Array.isArray(data.conversationTopics) ? data.conversationTopics : [],
+      germanLevel: data.germanLevel || 'beginner', // Default to beginner if not set
+      // Keep backward compatibility fields
+      motivations: Array.isArray(data.motivations) ? data.motivations : [],
+      hobbies: Array.isArray(data.hobbies) ? data.hobbies : [],
+      speakingFears: Array.isArray(data.speakingFears) ? data.speakingFears : [],
+    };
+    
+    setOnboardingData(normalizedData);
     setShowOnboarding(false);
     setIsNewUser(false);
-    setCurrentProfilePicture(data.profilePictureUrl || null);
-    localStorage.setItem(`onboarding_${user.id}`, JSON.stringify(data));
+    setCurrentProfilePicture(normalizedData.profilePictureUrl || null);
+    localStorage.setItem(`onboarding_${user.id}`, JSON.stringify(normalizedData));
+    
+    // Set context level based on focus group
+    if (normalizedData.focusGroup === 'travelers') {
+      setContextLevel('Casual');
+    } else if (normalizedData.focusGroup === 'business') {
+      setContextLevel('Professional');
+    }
     
     // 🎮 Give XP for completing onboarding
     addExperience(50, 'onboarding_complete');
     addAchievement('onboarding_complete', '🚀 Getting Started', 'Completed your profile setup!');
+    
+    // Show hints after onboarding achievement modal closes (if not already dismissed)
+    // Achievement modal auto-closes after 3000ms, so wait 4000ms to ensure it's fully closed and animations finished
+    setTimeout(() => {
+      if (!hintsDismissed) {
+        setShowHints(true);
+      }
+    }, 4000);
   };
 
   const handleProfilePictureUpdate = (newUrl: string | null) => {
@@ -3810,7 +7435,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     if (onboardingData) {
       const updatedData = {
         ...onboardingData,
-        profilePictureUrl: newUrl
+        profilePictureUrl: newUrl || undefined
       };
       setOnboardingData(updatedData);
       localStorage.setItem(`onboarding_${user.id}`, JSON.stringify(updatedData));
@@ -3819,6 +7444,47 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
   const handleRestartOnboarding = () => {
     setShowOnboarding(true);
+  };
+
+  // Hints handlers
+  const handleDismissHints = async () => {
+    setShowHints(false);
+    setHintsDismissed(true);
+    
+    // Save to database
+    try {
+      await supabase
+        .from('user_onboarding')
+        .update({ hints_dismissed: true })
+        .eq('user_id', user.id);
+    } catch (error) {
+      console.error('Error saving hints dismissal:', error);
+    }
+  };
+
+  const handleSkipAllHints = async () => {
+    setShowHints(false);
+    setShowChatHints(false);
+    setHintsDismissed(true);
+    
+    // Save to database
+    try {
+      await supabase
+        .from('user_onboarding')
+        .update({ hints_dismissed: true })
+        .eq('user_id', user.id);
+    } catch (error) {
+      console.error('Error saving hints dismissal:', error);
+    }
+  };
+
+  const handleShowHints = () => {
+    setShowHints(true);
+    setShowChatHints(false);
+  };
+
+  const handleDismissChatHints = () => {
+    setShowChatHints(false);
   };
 
   const deleteConversation = async (conversationId: string) => {
@@ -3853,7 +7519,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="h-8 w-8 text-blue-500 mx-auto mb-4 animate-spin" />
+          <Loader2 className="h-8 w-8 text-text500 mx-auto mb-4 animate-spin" />
           <p className="text-gray-600 text-sm">Loading your dashboard...</p>
         </div>
       </div>
@@ -3901,268 +7567,299 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
   };
 
   return (
-    <div className="h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex overflow-hidden">
-      {/* Sidebar */}
-      <div className={`${sidebarCollapsed ? 'w-16' : 'w-80'} bg-gradient-to-b from-white to-slate-50 border-r border-slate-200 flex flex-col transition-all duration-300 ease-in-out shadow-lg overflow-hidden`}>
+    <div className="h-screen bg-background flex overflow-hidden">
+      {/* Mobile Sidebar Overlay */}
+      {(mobileSidebarOpen && !sidebarCollapsed) && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar - Elingo Purple Theme - Wider for Conversations */}
+      <div className={`
+        ${sidebarCollapsed ? 'w-16' : 'w-[380px]'} 
+        ${mobileSidebarOpen ? 'fixed left-0 z-50 lg:relative lg:z-auto' : 'hidden lg:flex'}
+        border-r border-gray-200 flex flex-col transition-all duration-300 ease-in-out overflow-hidden shadow-sm
+        h-screen
+      `} style={{ backgroundColor: '#faf9ff' }}>
         {/* Sidebar Header */}
-        <div className="p-4 border-b border-slate-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+        <div className="p-4 border-b border-gray-200 relative" style={{ backgroundColor: '#faf9ff' }}>
           <div className="flex items-center justify-between mb-4">
             {!sidebarCollapsed && (
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-                  <Volume2 className="h-5 w-5 text-white" />
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-primary rounded-2xl flex items-center justify-center shadow-lg">
+                  <Volume2 className="h-6 w-6 text-white" />
                 </div>
-                <span className="text-lg font-display text-gradient-primary">TalkBuddy</span>
+                <span className="text-xl font-bold text-text font-display tracking-tight">TalkBuddy</span>
               </div>
             )}
             <div className="flex items-center space-x-2">
               {sidebarCollapsed && (
-                <Volume2 className="h-6 w-6 text-blue-500" />
+                <div className="w-10 h-10 bg-primary rounded-2xl flex items-center justify-center shadow-lg">
+                  <Volume2 className="h-6 w-6 text-white" />
+                </div>
               )}
-              <button
-                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-                title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              >
-                <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${sidebarCollapsed ? 'rotate-90' : '-rotate-90'}`} />
-              </button>
               {!sidebarCollapsed && (
                 <>
                   <button
                     onClick={() => setShowProfileModal(true)}
-                    className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 hover:border-blue-300 transition-colors"
+                    className="w-9 h-9 rounded-full overflow-hidden border-2 border-gray-200 hover:border-primary transition-all duration-200 shadow-sm hover:shadow-md"
                   >
                     {currentProfilePicture ? (
                       <img src={currentProfilePicture} alt="Profile" className="w-full h-full object-cover" />
                     ) : (
-                      <div className="w-full h-full bg-gray-100 flex items-center justify-center">
-                        <User className="h-4 w-4 text-gray-400" />
+                      <div className="w-full h-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
+                        <User className="h-4 w-4 text-primary" />
                       </div>
                     )}
                   </button>
                   <button
+                    onClick={handleShowHints}
+                    className="p-2 text-gray-400 hover:text-primary hover:bg-primary/10 rounded-xl transition-all duration-200"
+                    title="Show Hints"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                  </button>
+                  <button
                     onClick={handleRestartOnboarding}
-                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                    className="p-2 text-gray-400 hover:text-primary hover:bg-primary/10 rounded-xl transition-all duration-200"
+                    title="Settings"
                   >
                     <Settings className="h-4 w-4" />
                   </button>
                   <button
-                    onClick={handleLogout}
-                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                    onClick={() => setSidebarCollapsed(true)}
+                    className="p-2 text-gray-400 hover:text-primary hover:bg-primary/10 rounded-xl transition-all duration-200"
+                    title="Collapse sidebar"
                   >
-                    <LogOut className="h-4 w-4" />
+                    <ArrowLeft className="h-4 w-4" />
                   </button>
                 </>
               )}
             </div>
           </div>
 
-          {/* New Conversation Button */}
+          {/* New Conversation Button - Elingo Purple */}
           {!sidebarCollapsed && (
             <button 
               onClick={resetConversationState}
-              className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-4 py-2.5 flex items-center justify-center space-x-2 font-semibold mb-3 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
+              className="w-full btn-glossy flex items-center justify-center space-x-2 mb-4"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-5 w-5" />
               <span>New Conversation</span>
             </button>
           )}
           {sidebarCollapsed && (
             <button 
-              onClick={resetConversationState}
-              className="w-full apple-button p-2 flex items-center justify-center mb-3"
+              onClick={() => {
+                resetConversationState();
+                // Don't change sidebar state - preserve user preference
+              }}
+              className="w-full btn-glossy p-3 flex items-center justify-center mb-4 rounded-full"
               title="New Conversation"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-6 w-6 text-white font-bold flex-shrink-0" strokeWidth={3} />
             </button>
           )}
 
-          {/* 🎮 GAMIFICATION COMPONENTS */}
+          {/* 🎮 GAMIFICATION COMPONENTS - Collapsible for More Space */}
           {!sidebarCollapsed && (
-            <div className="mb-4">
-              {/* Player Stats Card */}
-              <div className="bg-gradient-to-br from-purple-500 via-pink-500 to-rose-500 rounded-xl p-4 text-white mb-3 shadow-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
-                      <span className="text-sm font-bold">🎮</span>
+            <div className="mb-3">
+              {/* Collapsible Header */}
+              <button
+                onClick={() => setStatsExpanded(!statsExpanded)}
+                className="w-full flex items-center justify-between p-2 hover:bg-primary/5 rounded-xl transition-all duration-200 mb-2"
+              >
+                <div className="flex items-center space-x-2">
+                  <div className="w-8 h-8 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center shadow-md">
+                    <span className="text-base">🎮</span>
+                  </div>
+                  <span className="text-xs font-bold text-text font-display">Level {playerStats.level}</span>
+                  <span className="text-xs text-primary font-semibold">{playerStats.totalPoints} XP</span>
+                  <span className="text-xs text-accent font-bold">🔥 {playerStats.currentStreak}</span>
+                </div>
+                <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform duration-200 ${statsExpanded ? 'rotate-180' : ''}`} />
+              </button>
+
+              {/* Collapsible Content */}
+              {statsExpanded && (
+                <div className="space-y-2 mb-3">
+                  {/* Compact Stats - Horizontal */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-white rounded-lg p-2.5 text-center border border-primary/40 shadow-sm">
+                      <div className="text-lg font-bold text-primary font-display">{playerStats.conversationsCompleted}</div>
+                      <div className="text-[10px] text-gray-700 font-body">Conversations</div>
                     </div>
-                    <div>
-                      <div className="text-sm font-medium">Level {playerStats.level}</div>
-                      <div className="text-xs opacity-90">{playerStats.totalPoints} XP</div>
+                    <div className="bg-white rounded-lg p-2.5 text-center border border-primary/40 shadow-sm">
+                      <div className="text-lg font-bold text-primary font-display">{playerStats.wordsLearned}</div>
+                      <div className="text-[10px] text-gray-700 font-body">Words Learned</div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-xs opacity-90">Streak</div>
-                    <div className="text-sm font-bold">{playerStats.currentStreak} 🔥</div>
+
+                  {/* Compact Experience Bar */}
+                  <div className="bg-white rounded-lg p-2.5 border border-primary/40 shadow-sm">
+                    <div className="w-full bg-gray-200 rounded-full h-1.5 mb-1 overflow-hidden">
+                      <div 
+                        className="bg-gradient-to-r from-primary to-accent rounded-full h-1.5 transition-all duration-500"
+                        style={{ width: `${(playerStats.experience % 100)}%` }}
+                      ></div>
+                    </div>
+                    <div className="text-[10px] text-gray-700 font-body">
+                      {100 - (playerStats.experience % 100)} XP to next level
+                    </div>
                   </div>
-                </div>
-                
-                {/* Experience Bar */}
-                <div className="w-full bg-white/20 rounded-full h-2 mb-2">
-                  <div 
-                    className="bg-white rounded-full h-2 transition-all duration-500"
-                    style={{ width: `${(playerStats.experience % 100)}%` }}
-                  ></div>
-                </div>
-                <div className="text-xs opacity-90">
-                  {100 - (playerStats.experience % 100)} XP to next level
-                </div>
-              </div>
 
-              {/* Quick Stats */}
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-3 text-center border border-blue-200">
-                  <div className="text-lg font-display text-blue-700">{playerStats.conversationsCompleted}</div>
-                  <div className="text-xs text-blue-600 font-caption">Conversations</div>
-                </div>
-                <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-3 text-center border border-green-200">
-                  <div className="text-lg font-display text-green-700">{playerStats.wordsLearned}</div>
-                  <div className="text-xs text-green-600 font-caption">Words Learned</div>
-                </div>
-              </div>
-
-              {/* Recent Achievements */}
-              {recentAchievements.length > 0 && (
-                <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-lg p-3 mb-3 border border-yellow-200">
-                  <div className="text-xs font-semibold text-amber-700 mb-2">🏆 Recent Achievements</div>
-                  <div className="space-y-1">
-                    {recentAchievements.map((achievement, index) => (
-                      <div key={index} className="text-xs text-amber-600 animate-pulse font-medium">
-                        ✨ Achievement unlocked!
+                  {/* Compact Achievements */}
+                  {recentAchievements.length > 0 && (
+                    <div className="bg-white rounded-lg p-2.5 border border-gray-200 shadow-sm">
+                      <div className="text-[10px] font-bold text-text mb-1 font-display">🏆 Achievements</div>
+                      <div className="space-y-0.5">
+                        {recentAchievements.slice(0, 2).map((achievement, index) => (
+                          <div key={index} className="text-[10px] text-primary font-semibold font-body flex items-center space-x-1">
+                            <span className="text-accent">✨</span>
+                            <span className="truncate">Achievement!</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           )}
 
-          {/* Navigation Links */}
+          {/* Navigation Links - Elingo Purple Theme - Compact */}
           {!sidebarCollapsed && (
-            <div className="flex space-x-1">
+            <div className="flex space-x-1.5">
               <button
                 onClick={() => setCurrentView('progress')}
-                className={`flex-1 px-3 py-2 text-sm font-semibold rounded-lg transition-all duration-200 ${
+                className={`flex-1 px-3 py-2 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center space-x-1.5 ${
                   currentView === 'progress'
-                    ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md' 
-                    : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100'
+                    ? 'bg-primary text-white shadow-lg shadow-primary/30 border border-primary'
+                    : 'text-gray-600 hover:text-primary hover:bg-primary/10 border border-primary/40'
                 }`}
               >
-                <BarChart3 className="h-4 w-4 inline mr-1" />
-                Progress
+                <BarChart3 className="h-3.5 w-3.5" />
+                <span>Progress</span>
               </button>
               <button
-                onClick={() => setCurrentView('vocab')}
-                className={`flex-1 px-3 py-2 text-sm font-semibold rounded-lg transition-all duration-200 ${
-                  currentView === 'vocab'
-                    ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md'
-                    : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100'
+                onClick={() => setShowPodcastsModal(true)}
+                className={`flex-1 px-3 py-2 text-xs font-bold rounded-xl transition-all duration-200 flex items-center justify-center space-x-1.5 ${
+                  showPodcastsModal
+                    ? 'bg-primary/10 text-primary border border-primary'
+                    : 'text-gray-600 hover:text-primary hover:bg-primary/10 border border-primary/40'
                 }`}
+                title="Podcasts"
               >
-                <BookOpen className="h-4 w-4 inline mr-1" />
-                Vocab List
+                <BookOpen className="h-3.5 w-3.5" />
+                <span>Podcasts</span>
               </button>
             </div>
           )}
           {sidebarCollapsed && (
-            <div className="flex flex-col space-y-1">
+            <div className="flex flex-col items-center space-y-2">
               <button
                 onClick={() => setCurrentView('progress')}
-                className={`p-2 text-sm font-medium rounded-lg transition-colors ${
+                className={`p-3 rounded-xl transition-all duration-200 flex items-center justify-center ${
                   currentView === 'progress'
-                    ? 'bg-blue-50 text-blue-600' 
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                    ? 'bg-primary text-white shadow-lg shadow-primary/30' 
+                    : 'text-gray-600 hover:text-primary hover:bg-primary/10'
                 }`}
                 title="Progress"
               >
-                <BarChart3 className="h-4 w-4" />
+                <BarChart3 className="h-5 w-5" />
               </button>
               <button
-                onClick={() => setCurrentView('vocab')}
-                className={`p-2 text-sm font-medium rounded-lg transition-colors ${
-                  currentView === 'vocab'
-                    ? 'bg-blue-50 text-blue-600'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                }`}
-                title="Vocab List"
+                onClick={() => setShowPodcastsModal(true)}
+                className="p-3 rounded-xl transition-all duration-200 text-gray-600 hover:text-primary hover:bg-primary/10 flex items-center justify-center"
+                title="Podcasts"
               >
-                <BookOpen className="h-4 w-4" />
+                <BookOpen className="h-5 w-5" />
               </button>
+              <div className="mt-8">
+                <button
+                  onClick={() => setSidebarCollapsed(false)}
+                  className="p-3 rounded-xl transition-all duration-200 text-gray-600 hover:text-primary hover:bg-primary/10 flex items-center justify-center"
+                  title="Expand Sidebar"
+                >
+                  <ArrowRight className="h-5 w-5" />
+                </button>
+              </div>
             </div>
           )}
         </div>
 
-        {/* Search */}
+        {/* Search and Conversations Section - For Hint Targeting */}
         {!sidebarCollapsed && (
-          <div className="p-4 border-b border-gray-100">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search conversations..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 apple-input text-sm"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Recent Conversations */}
-        {!sidebarCollapsed && (
-          <div className="flex-1 overflow-hidden flex flex-col bg-gradient-to-b from-slate-50/50 to-white min-h-0">
-          <div className="p-4 pb-2 bg-gradient-to-r from-slate-50 to-white">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-slate-800 font-heading">Recent Conversations</h3>
+          <div data-hint-target="conversation-sidebar" className="flex-1 overflow-hidden flex flex-col min-h-0">
+            {/* Search - Elingo Purple Theme - Compact */}
+            <div className="px-4 py-3 border-b border-gray-200" style={{ backgroundColor: '#faf9ff' }}>
               <div className="relative">
-                <button
-                  onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
-                  className="flex items-center space-x-1 text-xs text-gray-600 hover:text-gray-900 font-medium px-2 py-1 rounded-md hover:bg-gray-50 transition-colors"
-                >
-                  <span>{selectedCategory || 'All Categories'}</span>
-                  <ChevronDown className="h-3 w-3" />
-                </button>
-                {showCategoryDropdown && (
-                  <div className="absolute top-full right-0 mt-1 w-40 apple-card rounded-lg shadow-lg z-10 py-1">
-                    <button
-                      onClick={() => {
-                        setSelectedCategory(null);
-                        setShowCategoryDropdown(false);
-                      }}
-                      className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 transition-colors ${
-                        selectedCategory === null ? 'text-blue-600 font-medium' : 'text-gray-700'
-                      }`}
-                    >
-                      All Categories
-                    </button>
-                    {conversationCategories.map((category) => (
-                      <button
-                        key={category}
-                        onClick={() => {
-                          setSelectedCategory(selectedCategory === category ? null : category);
-                          setShowCategoryDropdown(false);
-                        }}
-                        className={`w-full text-left px-3 py-2 text-xs hover:bg-gray-50 transition-colors ${
-                          selectedCategory === category ? 'text-blue-600 font-medium' : 'text-gray-700'
-                        }`}
-                      >
-                        {category}
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search conversations..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-primary/40 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all duration-200 font-body placeholder:text-gray-500"
+                />
               </div>
             </div>
-          </div>
-          <div className="flex-1 overflow-y-auto px-4 pb-4 min-h-0">
-            {conversationsLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 text-gray-400 animate-spin" />
+
+            {/* Recent Conversations - Elingo Purple Theme - Maximized Space */}
+            <div className="flex-1 overflow-hidden flex flex-col min-h-0" style={{ backgroundColor: '#faf9ff' }}>
+              <div className="px-4 py-2.5 border-b border-gray-100" style={{ backgroundColor: '#faf9ff' }}>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-xs font-bold text-text font-display uppercase tracking-wide">Conversations</h3>
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
+                      className="flex items-center space-x-1 text-[10px] text-gray-600 hover:text-primary font-semibold px-2 py-1 rounded-lg hover:bg-primary/10 border border-gray-200 transition-all duration-200"
+                    >
+                      <span className="truncate max-w-[80px]">{selectedCategory || 'All'}</span>
+                      <ChevronDown className="h-3 w-3 flex-shrink-0" />
+                    </button>
+                    {showCategoryDropdown && (
+                      <div className="absolute top-full right-0 mt-2 w-44 bg-white rounded-xl shadow-lg border border-gray-200 z-10 py-2">
+                        <button
+                          onClick={() => {
+                            setSelectedCategory(null);
+                            setShowCategoryDropdown(false);
+                          }}
+                          className={`w-full text-left px-4 py-2 text-xs hover:bg-primary/10 transition-colors rounded-lg mx-1 ${
+                            selectedCategory === null ? 'text-primary font-bold bg-primary/10' : 'text-gray-700'
+                          }`}
+                        >
+                          All Categories
+                        </button>
+                        {conversationCategories.map((category) => (
+                          <button
+                            key={category}
+                            onClick={() => {
+                              setSelectedCategory(selectedCategory === category ? null : category);
+                              setShowCategoryDropdown(false);
+                            }}
+                            className={`w-full text-left px-4 py-2 text-xs hover:bg-primary/10 transition-colors rounded-lg mx-1 ${
+                              selectedCategory === category ? 'text-primary font-bold bg-primary/10' : 'text-gray-700'
+                            }`}
+                          >
+                            {category}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-            ) : filteredConversations.length > 0 ? (
-              <div className="space-y-1">
-                {filteredConversations.map((conversation) => (
+              <div className="flex-1 overflow-y-auto px-3 pb-3 min-h-0 scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-gray-100">
+                {conversationsLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-5 w-5 text-primary animate-spin" />
+                  </div>
+                ) : filteredConversations.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {filteredConversations.map((conversation) => (
                   <div
                     key={conversation.id}
                     className="relative group"
@@ -4170,20 +7867,27 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     onMouseLeave={() => setHoveredConversation(null)}
                   >
                     <button
-                      onClick={() => startNewConversation(conversation.id)}
-                      className={`w-full text-left p-3 rounded-lg transition-all duration-200 ${
+                      onClick={() => {
+                        startNewConversation(conversation.id);
+                        setMobileSidebarOpen(false); // Close mobile sidebar when selecting
+                      }}
+                      className={`w-full text-left p-2.5 rounded-xl transition-all duration-200 ${
                         selectedConversation === conversation.id
-                          ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 shadow-sm'
-                          : 'hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 border border-transparent hover:shadow-sm'
+                          ? 'bg-primary/10 border-2 border-primary shadow-sm'
+                          : 'hover:bg-primary/5 border border-transparent hover:border-primary/20'
                       }`}
                     >
-                      <div className="flex items-start justify-between mb-1">
-                        <h4 className="text-sm font-semibold truncate text-slate-800 font-heading">
+                      <div className="flex items-start justify-between mb-0.5">
+                        <h4 className={`text-xs font-bold truncate font-display flex-1 ${
+                          selectedConversation === conversation.id ? 'text-primary' : 'text-text'
+                        }`}>
                           {conversation.title}
                         </h4>
                       </div>
-                      <p className="text-xs text-slate-600 truncate mb-1 font-body">{conversation.preview}</p>
-                      <p className="text-xs text-slate-500 font-caption">{formatTime(conversation.updated_at)}</p>
+                      <p className={`text-[10px] truncate mb-0.5 font-body leading-tight ${
+                        selectedConversation === conversation.id ? 'text-primary/70' : 'text-gray-600'
+                      }`}>{conversation.preview}</p>
+                      <p className="text-[10px] text-gray-600 font-body">{formatTime(conversation.updated_at)}</p>
                     </button>
                     
                     {/* Delete button - appears on hover */}
@@ -4193,84 +7897,170 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                           e.stopPropagation();
                           deleteConversation(conversation.id);
                         }}
-                        className="absolute top-2 right-2 p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-md opacity-90 hover:opacity-100 transition-all duration-200 shadow-sm"
+                        className="absolute top-2 right-2 p-2 bg-red-500 hover:bg-red-600 text-white rounded-xl opacity-90 hover:opacity-100 transition-all duration-200 shadow-lg"
                         title="Delete conversation"
                       >
-                        <Trash2 className="h-3 w-3" />
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     )}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <div className="w-16 h-16 bg-gradient-to-br from-slate-100 to-slate-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <MessageCircle className="h-8 w-8 text-slate-400" />
+                    ))}
+                  </div>
+                ) : (
+              <div className="text-center py-12">
+                <div className="w-20 h-20 bg-gradient-to-br from-primary/20 to-accent/20 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
+                  <MessageCircle className="h-10 w-10 text-primary" />
                 </div>
-                <h3 className="text-lg font-bold text-slate-800 mb-2 font-heading">No Conversations Yet</h3>
-                <p className="text-sm text-slate-600 font-body">
+                <h3 className="text-lg font-bold text-text mb-2 font-display">No Conversations Yet</h3>
+                <p className="text-sm text-text-muted font-body">
                   {selectedCategory 
                     ? `No ${selectedCategory.toLowerCase()} conversations yet`
                     : 'Start your first conversation to begin learning!'
                   }
                 </p>
               </div>
-            )}
-          </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
-        {/* Settings */}
+        {/* Settings - Elingo Purple Theme */}
         {!sidebarCollapsed && (
-          <div className="p-4 border-t border-slate-200 bg-gradient-to-r from-slate-50 to-white">
-            <h3 className="text-sm font-semibold text-slate-800 mb-3 font-heading">Settings</h3>
-            <button
-              onClick={() => setShowProfileModal(true)}
-              className="flex items-center space-x-3 w-full text-left p-2 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 rounded-md transition-all duration-200"
-            >
-              {currentProfilePicture ? (
-                <img src={currentProfilePicture} alt="Profile" className="w-8 h-8 rounded-full object-cover" />
-              ) : (
-                <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-                  <User className="h-4 w-4 text-gray-400" />
+          <div className="p-4 border-t border-gray-200 bg-white">
+            <h3 className="text-sm font-bold text-text mb-3 font-display">Settings</h3>
+            <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-3 flex-1 text-left p-3">
+                {currentProfilePicture ? (
+                  <img src={currentProfilePicture} alt="Profile" className="w-10 h-10 rounded-full object-cover border-2 border-gray-200" />
+                ) : (
+                  <div className="w-10 h-10 bg-gradient-to-br from-primary/20 to-accent/20 rounded-full flex items-center justify-center border-2 border-gray-200">
+                    <User className="h-5 w-5 text-primary" />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-text font-display">{firstName}</p>
+                  <p className="text-xs text-gray-600 font-body">Profile Settings</p>
                 </div>
-              )}
-              <div>
-                <p className="text-sm font-semibold text-slate-800 font-heading">{firstName}</p>
-                <p className="text-xs text-slate-600 font-caption">Profile Settings</p>
               </div>
-            </button>
+              <button
+                onClick={handleLogout}
+                className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all duration-200"
+                title="Logout"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         )}
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col bg-gradient-to-br from-white to-slate-50 overflow-hidden">
-        {selectedConversation ? (
+      {/* Vocabulary Builder Panel - Conditionally Rendered */}
+      {showVocabBuilder && (
+        <VocabularyBuilderModal
+          isOpen={showVocabBuilder}
+          onClose={() => setShowVocabBuilder(false)}
+          myVocabWords={Array.from(new Set(JSON.parse(localStorage.getItem('myVocab') || '[]')))}
+          persistentVocab={persistentVocab}
+          onPlayAudio={(word) => {
+            if ('speechSynthesis' in window) {
+              const utterance = new SpeechSynthesisUtterance(word);
+              utterance.lang = 'de-DE';
+              const voices = window.speechSynthesis.getVoices();
+              const germanVoice = voices.find(voice => voice.lang === 'de-DE' || voice.lang.startsWith('de'));
+              if (germanVoice) {
+                utterance.voice = germanVoice;
+              }
+              window.speechSynthesis.speak(utterance);
+            }
+          }}
+          onUpdatePersistentVocab={(newVocab) => {
+            setPersistentVocab(newVocab);
+          }}
+          onTestComplete={(results) => {
+    updateSessionData(prev => {
+      const updatedTests = [...prev.vocabularyTests, results];
+      const updatedWordsFromTests = (prev.wordsLearnedFromTests || 0) + (results.correctWords || 0);
+      localStorage.setItem('wordsLearnedTotal', String(updatedWordsFromTests));
+      return {
+        ...prev,
+        vocabularyTests: updatedTests,
+        wordsLearnedFromTests: updatedWordsFromTests
+      };
+    });
+            if (results.correctWords) {
+              triggerWordLearned(results.correctWords);
+            }
+            console.log('📊 Session data updated: test results added');
+          }}
+        />
+      )}
+
+      {/* Podcasts Panel */}
+      {showPodcastsModal && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-black/50"
+            style={{ marginLeft: sidebarCollapsed ? '64px' : '380px', width: `calc(100% - ${sidebarCollapsed ? 64 : 380}px)` }}
+            onClick={() => setShowPodcastsModal(false)}
+          />
+          <div
+            className="fixed inset-y-0 right-0 z-50"
+            style={{ width: `calc(100% - ${sidebarCollapsed ? 64 : 380}px)` }}
+          >
+            <PodcastsPanel onClose={() => setShowPodcastsModal(false)} />
+          </div>
+        </>
+      )}
+
+      {/* Main Content - Hidden when vocab builder is open - Elingo Purple Theme */}
+      {!showVocabBuilder && (
+        <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'linear-gradient(135deg, #faf9ff 0%, #f5f5f5 100%)' }}>
+          {selectedConversation ? (
           // Conversation View
           <div className="flex-1 flex h-full overflow-hidden">
             {/* Main Chat Area */}
             <div className="flex-1 flex flex-col h-full overflow-hidden">
 
-            {/* German Partner Display */}
-            <div className="bg-gradient-to-r from-white to-slate-50 border-b border-slate-200 px-4 py-3 shadow-sm">
+            {/* German Partner Display - Elingo Purple Theme */}
+            <div className="border-b border-gray-200 px-4 py-4 lg:pl-4 pl-16 shadow-sm relative" style={{ backgroundColor: 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(10px)' }}>
+              {/* Mobile Menu Button */}
+              <button
+                onClick={() => setMobileSidebarOpen(true)}
+                className="lg:hidden fixed top-4 left-4 z-30 p-2.5 bg-primary text-white rounded-xl shadow-lg hover:bg-primary/90 transition-all duration-200"
+                title="Open sidebar"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+              
+              {/* Desktop Sidebar Toggle - Show when collapsed - Vertically Centered to Avoid Overlap */}
+              {sidebarCollapsed && (
+                <button
+                  onClick={() => setSidebarCollapsed(false)}
+                  className="hidden lg:flex fixed left-2 z-30 p-2.5 bg-primary text-white rounded-xl shadow-lg hover:bg-primary/90 transition-all duration-200"
+                  style={{ top: '50%', transform: 'translateY(-50%)', marginTop: 0 }}
+                  title="Expand sidebar"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              )}
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                   <div className="relative">
-                    <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                    <div className="w-12 h-12 bg-gradient-to-br from-primary to-accent rounded-2xl flex items-center justify-center text-white font-bold text-lg shadow-lg">
                       {germanPartnerName.charAt(0)}
                     </div>
-                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></div>
+                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full shadow-sm"></div>
                   </div>
                   <div>
-                    <div className="flex items-center space-x-2">
-                      <h3 className="font-semibold text-gray-900">{germanPartnerName}</h3>
-                      {/* Context Indicator Badge */}
+                    <div className="flex items-center space-x-2 flex-wrap gap-1">
+                      <h3 className="font-bold text-text font-display text-lg">{germanPartnerName}</h3>
+                      {/* Context Indicator Badge - Elingo Purple */}
                       {selectedConversation && (
-                        <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                        <div className={`inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-bold ${
                           contextLevel === 'Professional' 
-                            ? 'bg-blue-100 text-blue-800' 
-                            : 'bg-green-100 text-green-800'
+                            ? 'bg-primary/20 text-primary border border-primary/30' 
+                            : 'bg-accent/20 text-accent border border-accent/30'
                         }`}>
                           <span className="mr-1">
                             {contextLevel === 'Professional' ? '💼' : '😊'}
@@ -4281,34 +8071,52 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                           )}
                         </div>
                       )}
+                      {/* Difficulty Level Badge - Elingo Purple */}
+                      {selectedConversation && (
+                        <div className={`inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-bold ${
+                          difficultyLevel === 'Beginner' 
+                            ? 'bg-accent/20 text-accent border border-accent/30' 
+                            : difficultyLevel === 'Intermediate'
+                            ? 'bg-primary/20 text-primary border border-primary/30'
+                            : 'bg-primary/30 text-primary border border-primary/40'
+                        }`}>
+                          <span className="mr-1">
+                            {difficultyLevel === 'Beginner' ? '🌱' : difficultyLevel === 'Intermediate' ? '📚' : '🎯'}
+                          </span>
+                          {difficultyLevel}
+                          {currentConversationDifficultyLocked && (
+                            <span className="ml-1">🔒</span>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <div className="flex items-center space-x-1">
-                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        <span className="text-xs text-green-600 font-medium">Online</span>
+                    <div className="flex items-center space-x-2 mt-1">
+                      <div className="flex items-center space-x-1.5">
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                        <span className="text-xs text-primary font-semibold">Online</span>
                       </div>
-                      <span className="text-xs text-gray-500">•</span>
-                      <span className="text-xs text-gray-500">Last seen {lastSeenTime}</span>
+                      <span className="text-xs text-text-muted">•</span>
+                      <span className="text-xs text-text-muted font-body">Last seen {lastSeenTime}</span>
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center space-x-3">
-                  <div className="text-right">
-                    <p className="text-xs text-gray-500">German Language Partner</p>
-                    <p className="text-xs text-gray-400">Native Speaker</p>
+                  <div className="text-right hidden sm:block">
+                    <p className="text-xs text-text-muted font-body">German Language Partner</p>
+                    <p className="text-xs text-primary font-semibold">Native Speaker</p>
                   </div>
                   <button 
-                    onClick={resetConversationState}
-                    className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+                    onClick={endConversation}
+                    className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl text-sm font-bold transition-all duration-200 shadow-sm hover:shadow-md"
                   >
-                    End Conversation
+                    End
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* Conversation Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0 bg-gradient-to-b from-slate-50/50 to-white scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100">
+            {/* Conversation Messages - Elingo Purple Theme */}
+            <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-4 min-h-0 scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-gray-100" style={{ backgroundColor: '#faf9ff' }}>
               {chatMessages.map((message) => {
                 // Debug logging for grammar help button
                 if (message.role === 'user') {
@@ -4324,9 +8132,9 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       <div className="flex items-center mr-2 z-10">
                         <button
                           onClick={() => handleErrorCorrection(message.id)}
-                          className={`group relative p-2 rounded-full shadow-lg transition-all duration-200 hover:scale-110 cursor-pointer ${
+                          className={`group relative p-2.5 rounded-xl shadow-lg transition-all duration-200 hover:scale-105 cursor-pointer ${
                             activeHelpButton === message.id 
-                              ? 'bg-blue-500 hover:bg-blue-600' 
+                              ? 'bg-primary hover:bg-primary/90' 
                               : 'bg-red-500 hover:bg-red-600'
                           } text-white`}
                           title="Click to understand the mistake and get grammar help"
@@ -4335,98 +8143,159 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                             <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                           </svg>
                           {/* Tooltip */}
-                          <div className="absolute right-full mr-2 top-1/2 transform -translate-y-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap">
+                          <div className="absolute right-full mr-2 top-1/2 transform -translate-y-1/2 bg-primary text-white text-xs px-3 py-1.5 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap shadow-lg">
                             Click to understand the mistake
                           </div>
                         </button>
                       </div>
                     )}
                     
-                    <div className={`max-w-sm lg:max-w-lg px-4 py-3 rounded-2xl ${
+                    <div className={`max-w-sm lg:max-w-lg px-4 py-3 rounded-2xl shadow-sm ${
                       message.role === 'user'
-                        ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-tr-md shadow-md'
-                        : 'bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-tl-md shadow-sm'
+                        ? 'bg-primary text-white rounded-tr-md'
+                        : 'bg-white border border-gray-200 rounded-tl-md'
                     }`}>
                       {message.role === 'assistant' && (
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center space-x-2">
-                            <Bot className="h-4 w-4 text-blue-500" />
-                            <span className="text-xs font-medium text-blue-600">{germanPartnerName}</span>
+                            <div className="w-6 h-6 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center">
+                              <Bot className="h-3.5 w-3.5 text-white" />
+                            </div>
+                            <span className="text-xs font-bold text-primary font-display">{germanPartnerName}</span>
                           </div>
-                          <div className="flex items-center space-x-1">
+                          <div className="flex items-center space-x-1.5">
                             <button
                               onClick={async () => await speakText(message.content)}
-                              className="p-1 hover:bg-gray-100 rounded transition-colors"
+                              className="p-1.5 hover:bg-primary/10 rounded-lg transition-all duration-200"
                               title="Listen"
+                              data-hint-target="listen-button"
                             >
-                              <svg className="h-3 w-3 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+                              <svg className="h-4 w-4 text-primary" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.617.816L4.846 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.846l3.537-3.816a1 1 0 011.617.816zM16 8a2 2 0 11-4 0 2 2 0 014 0zM14 8a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
                               </svg>
                             </button>
                             <button
                               onClick={() => toggleTranslation(message.id)}
-                              className={`p-1 hover:bg-gray-100 rounded transition-colors text-xs ${
-                                showTranslation[message.id] ? 'text-blue-600 bg-blue-50' : 'text-gray-500'
+                              className={`p-1.5 rounded-lg transition-all duration-200 text-xs font-bold ${
+                                showTranslation[message.id] ? 'text-white bg-primary' : 'text-primary hover:bg-primary/10'
                               }`}
                               title="Translate"
+                              data-hint-target="translation-toggle"
                             >
                               EN
                             </button>
                             <button
                               onClick={() => toggleSuggestions(message.id)}
-                              className="p-1 hover:bg-gray-100 rounded transition-colors"
+                              className="p-1.5 hover:bg-primary/10 rounded-lg transition-all duration-200"
                               title="Suggest responses"
+                              data-hint-target="suggested-answers"
                             >
-                              <svg className="h-3 w-3 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+                              <svg className="h-4 w-4 text-primary" fill="currentColor" viewBox="0 0 20 20">
                                 <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
                               </svg>
                             </button>
                             <button
                               onClick={() => handleHelpClick(message.content, message.id)}
-                              className={`p-1 rounded transition-colors ${
+                              className={`p-1.5 rounded-lg transition-all duration-200 ${
                                 activeHelpButton === message.id 
-                                  ? 'bg-blue-100' 
-                                  : 'hover:bg-gray-100'
+                                  ? 'bg-primary text-white' 
+                                  : 'hover:bg-primary/10 text-primary'
                               }`}
                               title="Get Grammar Help"
                             >
-                              <BookOpen className={`h-3 w-3 ${
-                                activeHelpButton === message.id 
-                                  ? 'text-blue-500' 
-                                  : 'text-gray-500'
-                              }`} />
+                              <BookOpen className="h-4 w-4" />
                             </button>
                           </div>
                         </div>
                       )}
-                      <div className={`text-sm ${
+                      <div className={`text-sm font-body leading-relaxed ${
                         message.role === 'user' 
                           ? 'text-white' 
-                          : 'apple-text-primary'
+                          : 'text-text'
                       }`}>
                         {message.isAudio ? (
-                          <div className="flex items-center space-x-3">
-                            <button 
-                              onClick={() => {
-                                if (message.audioUrl) {
-                                  const audio = new Audio(message.audioUrl);
-                                  audio.play();
-                                }
-                              }}
-                              className="flex items-center space-x-2 px-3 py-2 bg-white bg-opacity-20 rounded-lg hover:bg-opacity-30 transition-colors"
-                            >
-                              <Play className="h-4 w-4" />
-                              <span className="text-sm">Play</span>
-                            </button>
-                            <span>{message.content}</span>
-                            {message.isTranscribing && (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            )}
+                          <div>
+                            <div className="mb-2">
+                              <span>{message.content}</span>
+                              {message.isTranscribing && (
+                                <Loader2 className="h-4 w-4 animate-spin inline-block ml-2" />
+                              )}
+                            </div>
+                            {/* Play and Analyse buttons at bottom */}
+                            <div className="flex items-center justify-between mt-2 pt-2 border-t border-opacity-20 border-white">
+                              {/* Play button on left */}
+                              <button 
+                                onClick={async () => {
+                                  if (message.audioUrl) {
+                                    try {
+                                      console.log('▶️ Playing audio from URL:', message.audioUrl);
+                                      const audio = new Audio(message.audioUrl);
+                                      audio.onerror = (e) => {
+                                        console.error('❌ Audio playback error:', e);
+                                        alert('Error playing audio. The recording may have expired.');
+                                      };
+                                      await audio.play();
+                                      console.log('✅ Audio playback started successfully');
+                                    } catch (error) {
+                                      console.error('❌ Error playing audio:', error);
+                                      alert('Error playing audio. Please try again.');
+                                    }
+                                  } else {
+                                    console.warn('⚠️ No audioUrl available for message:', message.id);
+                                  }
+                                }}
+                                disabled={!message.audioUrl}
+                                className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg transition-colors ${
+                                  !message.audioUrl
+                                    ? 'bg-white bg-opacity-10 text-white opacity-50 cursor-not-allowed'
+                                    : 'bg-white bg-opacity-20 hover:bg-opacity-30 text-white'
+                                }`}
+                                title="Play recording"
+                              >
+                                <Play className="h-4 w-4" />
+                                <span className="text-xs">Play</span>
+                              </button>
+                              {/* Analyse button on right - only show when transcript is ready */}
+                              {!message.isTranscribing && 
+                               message.content !== '🎤 Recording...' && 
+                               message.content !== '🎤 Voice message' && 
+                               message.content.trim().length > 0 &&
+                               /[a-zA-ZäöüÄÖÜß]/.test(message.content) && 
+                               micRecordingBlob && (
+                                <button
+                                  onClick={() => handleMessageAnalyse(message.id)}
+                                  className="flex items-center space-x-1 px-3 py-1.5 bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded-lg transition-colors"
+                                  title="Analyze pronunciation"
+                                >
+                                  <Target className="h-4 w-4" />
+                                  <span className="text-xs">Analyse</span>
+                                </button>
+                              )}
+                            </div>
                           </div>
                         ) : (
                           message.content
                         )}
                       </div>
+
+                      {/* Pronunciation Badge for German Voice Messages (keep for other use cases) */}
+                      {message.role === 'user' && message.isAudio && lastGermanVoiceMessage && lastGermanVoiceMessage.messageId === message.id && !message.isTranscribing && message.content === '🎤 Voice message' && (
+                        <div className="mt-2 flex justify-end">
+                          <button
+                            onClick={() => {
+                              setToolbarActiveTab('pronunciation');
+                              setToolbarCollapsed(false);
+                              setShowToolbar(true);
+                            }}
+                            className="flex items-center space-x-1 px-2 py-1 bg-primary-100 hover:bg-primary-200 text-text700 rounded-full text-xs font-medium transition-colors"
+                            title="Analyze pronunciation"
+                          >
+                            <Volume2 className="h-3 w-3" />
+                            <span>Analyze</span>
+                          </button>
+                        </div>
+                      )}
+
                   </div>
                 </div>
 
@@ -4482,7 +8351,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                         <div className="text-xs font-medium text-gray-600 mb-1">Suggested answer:</div>
                         <button
                           onClick={() => handleSuggestedAnswerClick(message.id, suggestedAnswers[message.id])}
-                          className="block w-full text-left bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors"
+                          className="block w-full text-left bg-primary-50 hover:bg-primary-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors"
                         >
                           <div className="font-medium">{suggestedAnswers[message.id]}</div>
                         </button>
@@ -4493,7 +8362,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   {/* Motivation animation for wrong answers - Hide when max attempts reached */}
                   {message.role === 'user' && comprehensiveAnalysis[message.id] && comprehensiveAnalysis[message.id].hasErrors && userAttempts[message.id] < 2 && (
                     <div className="flex justify-end mt-2">
-                      <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-lg p-3 max-w-sm">
+                      <div className="bg-background-light border border-gray-200 rounded-lg p-3 max-w-sm">
                         <div className="flex items-center space-x-2">
                           <div className="animate-bounce">
                             <svg className="h-5 w-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
@@ -4510,18 +8379,33 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   )}
                   
                   {/* Translation */}
-                  {message.role === 'assistant' && showTranslation[message.id] && translatedMessages[message.id] && (
+                  {message.role === 'assistant' && showTranslation[message.id] && (
                     <div className="ml-4 mt-2 max-w-sm lg:max-w-lg">
-                      <div className="bg-gray-100 px-3 py-2 rounded-lg text-xs text-gray-700">
-                        <span className="font-medium">Translation: </span>
-                        {translatedMessages[message.id]}
-                      </div>
-                      <button
-                        onClick={() => extractVocabularyFromText(message.content)}
-                        className="mt-2 text-xs text-blue-600 hover:text-blue-800 hover:underline transition-colors"
-                      >
-                        📚 Add words to vocab
-                      </button>
+                      {translatingMessages[message.id] ? (
+                        <div className="bg-gray-100 px-3 py-2 rounded-lg text-xs text-gray-700">
+                          <div className="flex items-center space-x-2">
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <span>Translating...</span>
+                          </div>
+                        </div>
+                      ) : translatedMessages[message.id] ? (
+                        <>
+                          <div className="bg-gray-100 px-3 py-2 rounded-lg text-xs text-gray-700">
+                            <span className="font-medium">Translation: </span>
+                            {translatedMessages[message.id]}
+                          </div>
+                          <button
+                            onClick={() => extractVocabularyFromText(message.content)}
+                            className="mt-2 text-xs text-text600 hover:text-text800 hover:underline transition-colors"
+                          >
+                            📚 Add words to vocab
+                          </button>
+                        </>
+                      ) : (
+                        <div className="bg-red-50 px-3 py-2 rounded-lg text-xs text-red-700">
+                          Translation unavailable. Please try again.
+                        </div>
+                      )}
                     </div>
                   )}
                   
@@ -4529,27 +8413,39 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                   {message.role === 'assistant' && showSuggestions[message.id] && (
                     <div className="ml-4 mt-2 max-w-sm lg:max-w-lg space-y-1">
                       <div className="text-xs font-medium text-gray-600 mb-1">Suggested responses:</div>
-                      {suggestedResponses[message.id] ? (
-                        suggestedResponses[message.id].map((suggestion, index) => {
+                      {(() => {
+                        const suggestionKey = getSuggestionKey(selectedConversation, message.id);
+                        const suggestionsForMessage = suggestedResponses[suggestionKey];
+                        return suggestionsForMessage ? (
+                        suggestionsForMessage.map((suggestion, index) => {
+                          const responseId = `${message.id}-${index}`;
                           const suggestionText = typeof suggestion === 'string' ? suggestion : suggestion.german;
-                          const suggestionTranslation = typeof suggestion === 'object' ? suggestion.english : null;
+                          // For suggestion translations, always prefer per-suggestion English text.
+                          // If a suggestion is still a plain string (no object with .english yet),
+                          // we skip showing a translation rather than reusing the message translation.
+                          const suggestionTranslation = typeof suggestion === 'string' 
+                            ? '' 
+                            : suggestion.english;
                           
                           return (
-                            <button
-                              key={index}
-                              onClick={() => useSuggestedResponse(suggestionText)}
-                              className="block w-full text-left bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg text-xs text-gray-700 transition-colors"
-                            >
-                              <div className="font-medium">{suggestionText}</div>
-                              {showTranslation[message.id] && suggestionTranslation && (
-                                <div className="text-gray-500 text-xs mt-1">{suggestionTranslation}</div>
-                              )}
-                            </button>
+                            <SuggestedResponseCard
+                              key={responseId}
+                              response={suggestionText}
+                              translation={suggestionTranslation}
+                              responseId={responseId}
+                              onPractice={handlePracticeResponse}
+                              onStop={handleStopPracticeResponse}
+                              isRecording={responseRecordingState[responseId] || false}
+                              isAnalyzing={responseAnalyzingState[responseId] || false}
+                              showAnalyze={responseShowAnalyze[responseId] || false}
+                              hasBeenAnalyzed={responseHasBeenAnalyzed[responseId] || false}
+                              onAnalyze={handleAnalyzeResponse}
+                            />
                           );
-                        })
-                      ) : (
+                        })) : (
                         <div className="text-xs text-gray-500 italic">Loading suggestions...</div>
-                      )}
+                      );
+                      })()}
                     </div>
                   )}
                   
@@ -4577,17 +8473,19 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               
               {isTyping && (
                 <div className="flex justify-start">
-                  <div className="apple-card rounded-2xl rounded-tl-md px-4 py-3 max-w-sm lg:max-w-lg">
+                  <div className="border border-gray-200 rounded-2xl rounded-tl-md px-4 py-3 max-w-sm lg:max-w-lg shadow-sm" style={{ backgroundColor: '#ffffff' }}>
                     <div className="flex items-center space-x-2 mb-2">
-                      <Bot className="h-4 w-4 text-blue-500" />
-                      <span className="text-xs font-medium text-blue-600">{germanPartnerName}</span>
+                      <div className="w-5 h-5 bg-gradient-to-br from-primary to-accent rounded-lg flex items-center justify-center">
+                        <Bot className="h-3 w-3 text-white" />
+                      </div>
+                      <span className="text-xs font-bold text-primary font-display">{germanPartnerName}</span>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <span className="text-sm text-gray-600">{germanPartnerName} ist typing</span>
+                      <span className="text-sm text-text-muted font-body">{germanPartnerName} ist typing</span>
                       <div className="flex space-x-1">
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                        <div className="w-2 h-2 bg-primary rounded-full animate-bounce"></div>
+                        <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                        <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                       </div>
                     </div>
                   </div>
@@ -4598,56 +8496,84 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Message Input */}
-            <div className="bg-gradient-to-r from-white to-slate-50 border-t border-slate-200 p-4 shadow-lg">
-              <div className="flex items-center space-x-3">
+            {/* Message Input - Elingo Purple Theme */}
+            <div className="border-t border-gray-200 p-4 lg:p-6 shadow-lg" style={{ backgroundColor: 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(10px)' }}>
+              <div className="flex items-end space-x-3">
                 <div className="flex-1 relative">
+                  {/* Intent quick replies (only when provided) */}
+                  {suggestedReplies.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-2">
+                      {suggestedReplies.map((reply, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => {
+                            setMessageInput(reply);
+                            setSuggestedReplies([]);
+                            setSkipIntentOnce(true);
+                            sendMessage();
+                          }}
+                          className="btn-glossy px-3 py-1 rounded-full text-xs"
+                        >
+                          {reply}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <input
                     type="text"
-                    placeholder="Type your message..."
+                    placeholder="Type your message in German..."
                     value={messageInput}
                     onChange={(e) => setMessageInput(e.target.value)}
                     onKeyPress={handleKeyPress}
                     disabled={isSending}
-                    className="w-full px-4 py-3 border border-slate-300 rounded-full text-sm bg-white shadow-sm focus:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                    className="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-200 font-body placeholder:text-gray-400"
                   />
-                </div>
-                <button 
-                  onClick={sendMessage}
-                  disabled={!messageInput.trim() || isSending}
-                  className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white p-3 rounded-full disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg transition-all duration-200"
-                >
-                  {isSending ? (
-                    <Loader2 className="h-4 w-4 text-white animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4 text-white" />
-                  )}
-                </button>
-                <div className="flex items-center space-x-2">
                   {isRecording && (
-                    <div className="text-sm text-gray-600">
-                      {recordingDuration}s
-                      {recordingDuration >= 25 && (
-                        <span className="text-orange-500 ml-1">⚠️</span>
-                      )}
+                    <div className="absolute right-4 top-1/2 transform -translate-y-1/2 flex items-center space-x-2">
+                      <div className="flex items-center space-x-1.5 bg-red-50 px-2.5 py-1 rounded-xl border border-red-200">
+                        <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                        <span className="text-xs font-bold text-red-600">{recordingDuration}s</span>
+                        {recordingDuration >= 25 && (
+                          <span className="text-orange-500">⚠️</span>
+                        )}
+                      </div>
                     </div>
                   )}
-                  {/* Record Button - German by default */}
+                </div>
+                
+                {/* Action Buttons - Elingo Purple Theme */}
+                <div className="flex items-center space-x-2">
+                  {/* Send Button */}
+                  <button 
+                    onClick={sendMessage}
+                    disabled={!messageInput.trim() || isSending}
+                    className="btn-glossy p-4 rounded-2xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl"
+                    title="Send message"
+                  >
+                    {isSending ? (
+                      <Loader2 className="h-5 w-5 text-white animate-spin" />
+                    ) : (
+                      <Send className="h-5 w-5 text-white" />
+                    )}
+                  </button>
+                  
+                  {/* Record Button - Elingo Purple Theme */}
                   <button 
                     onClick={isRecording ? stopRecording : startRecording}
                     disabled={isTranscribing}
-                    className={`p-3 rounded-full transition-colors ${
+                    className={`p-4 rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl ${
                       isRecording 
                         ? 'bg-red-500 hover:bg-red-600 text-white' 
-                        : 'bg-green-500 hover:bg-green-600 text-white'
+                        : 'bg-accent hover:bg-accent/90 text-white'
                     } ${isTranscribing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    title={isRecording ? "Stop recording" : "Start recording"}
                   >
                     {isTranscribing ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2 className="h-5 w-5 animate-spin" />
                     ) : isRecording ? (
-                      <MicOff className="h-4 w-4" />
+                      <MicOff className="h-5 w-5" />
                     ) : (
-                      <Mic className="h-4 w-4" />
+                      <Mic className="h-5 w-5" />
                     )}
                   </button>
                 </div>
@@ -4655,46 +8581,41 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             </div>
             </div>
             
-            {/* Right Sidebar - Collapsible Toolbar */}
-            <div className={`${toolbarCollapsed ? 'w-12' : 'w-96'} bg-white border-l border-gray-200 flex flex-col h-full transition-all duration-300 ease-in-out`}>
-              {/* Toolbar Header */}
-              <div className="p-4 border-b border-gray-100 flex-shrink-0">
-                <div className="flex items-center justify-between">
-                  {!toolbarCollapsed && (
-                    <div className="flex items-center space-x-2">
-                      <BookOpen className="h-5 w-5 text-blue-500" />
-                      <span className="text-sm font-semibold text-gray-900">Learning Tools</span>
+            {/* Right Sidebar - Collapsible Toolbar - White & Subtle */}
+            <div className={`${toolbarCollapsed ? 'w-12' : 'w-[600px] lg:w-[700px]'} border-l border-gray-200 flex flex-col h-full transition-all duration-300 ease-in-out shadow-sm bg-white`}>
+              {/* Toolbar Header - Elingo Purple Theme */}
+              {!toolbarCollapsed && (
+                <div className="p-4 border-b border-primary/20 flex-shrink-0 bg-white">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center shadow-md">
+                        <BookOpen className="h-5 w-5 text-white" />
+                      </div>
+                      <div>
+                        <span className="text-sm font-bold text-text font-display block">Learning Tools</span>
+                        <span className="text-xs text-text-muted font-body">Vocabulary • Grammar • Pronunciation</span>
+                      </div>
                     </div>
-                  )}
-                  <div className="flex items-center space-x-2">
-                    {toolbarCollapsed && (
-                      <BookOpen className="h-5 w-5 text-blue-500" />
-                    )}
                     <button
                       onClick={() => {
                         setToolbarCollapsed(!toolbarCollapsed);
-                        // Auto-analyze grammar when expanding toolbar
-                        if (toolbarCollapsed && currentAIMessage) {
-                          console.log('Auto-analyzing grammar for:', currentAIMessage);
-                          // The comprehensive analysis should already be available
-                          // Just make sure the toolbar shows the analysis
-                        }
                       }}
-                      className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-                      title={toolbarCollapsed ? "Expand toolbar" : "Collapse toolbar"}
+                      className="p-2 text-primary/60 hover:text-primary hover:bg-primary/10 rounded-xl transition-all duration-200"
+                      title="Collapse toolbar"
                     >
-                      <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${toolbarCollapsed ? 'rotate-90' : '-rotate-90'}`} />
+                      <ChevronDown className="h-4 w-4 transition-transform duration-200 -rotate-90" />
                     </button>
                   </div>
                 </div>
-              </div>
+              )}
               
               {/* Toolbar Content */}
               {!toolbarCollapsed ? (
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 overflow-y-auto bg-white">
                   <Toolbar
                     isVisible={true}
                     currentMessage={currentAIMessage}
+                    currentMessageId={activeHelpButton || undefined}
                     onAddToVocab={handleAddToVocab}
                     autoLoadExplanations={toolbarOpenedViaHelp}
                     comprehensiveAnalysis={activeHelpButton ? comprehensiveAnalysis[activeHelpButton] : null}
@@ -4702,6 +8623,30 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     onTabChange={setToolbarActiveTab}
                     newVocabItems={newVocabItems}
                     persistentVocab={persistentVocab}
+                    lastGermanVoiceMessage={lastGermanVoiceMessage}
+                    phoneticBreakdowns={phoneticBreakdowns}
+                    onPlayWordAudio={playWordAudio}
+                    globalPlaybackSpeed={globalPlaybackSpeed}
+                    onSpeedChange={setGlobalPlaybackSpeed}
+                    onAddExperience={addExperience}
+                    onWordLearned={(word?: string) => {
+                      setPlayerStats(prev => ({
+                        ...prev,
+                        wordsLearned: prev.wordsLearned + 1
+                      }));
+                      console.log('🎯 Words learned incremented from Dashboard');
+                      
+                      // Track deleted word as learned in session data
+                      if (word) {
+        updateSessionData(prev => ({
+          ...prev,
+          wordsDeleted: [...prev.wordsDeleted, word]
+        }));
+                        console.log('📊 Session data updated: word added to wordsDeleted');
+                      }
+                    }}
+                    onPronunciationComplete={handlePronunciationComplete}
+                    pendingPronunciationAnalysis={pendingPronunciationAnalysis}
                     onUpdatePersistentVocab={(newVocab) => {
                       console.log('📚 === DASHBOARD ONUPDATE PERSISTENT VOCAB CALLED ===');
                       console.log('New vocab received:', newVocab);
@@ -4718,11 +8663,12 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       setPersistentVocab(newVocab);
                       console.log('📚 === PERSISTENT VOCAB UPDATED ===');
                     }}
+                    onOpenVocabularyBuilder={() => setShowVocabBuilder(true)}
                   />
                 </div>
               ) : (
-                /* Collapsed State - Show expand button */
-                <div className="flex-1 flex flex-col items-center justify-center space-y-4 p-2">
+                /* Collapsed State - Interactive Arrow Only */
+                <div className="flex-1 flex items-center justify-center bg-white">
                   <button
                     onClick={() => {
                       setToolbarCollapsed(false);
@@ -4733,14 +8679,11 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                         // Just make sure the toolbar shows the analysis
                       }
                     }}
-                    className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-                    title="Expand toolbar"
+                    className="p-2 text-primary/60 hover:text-primary hover:bg-primary/10 rounded-xl transition-all duration-200 group"
+                    title="Click to expand Learning Tools"
                   >
-                    <ChevronDown className="h-6 w-6 rotate-90" />
+                    <ChevronDown className="h-5 w-5 rotate-90 group-hover:scale-110 transition-transform duration-200" />
                   </button>
-                  <div className="text-xs text-gray-500 text-center">
-                    Click to expand<br />Learning Tools
-                  </div>
                 </div>
               )}
             </div>
@@ -4751,9 +8694,9 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             <div className="max-w-4xl mx-auto">
               <div className="mb-8">
                 <h1 className="text-3xl font-display text-gradient-primary mb-2">
-                  🎮 Your Gaming Progress
+                  🎯 Your German Progress
                 </h1>
-                <p className="text-xl text-slate-600 font-body">
+                <p className="text-xl text-text600 font-body">
                   Level up your German skills with achievements and rewards!
                 </p>
               </div>
@@ -4761,52 +8704,75 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               {/* 🎮 GAMIFIED STATS */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
                 {/* Level Card */}
-                <div className="bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl p-6 text-white">
+                <div className="bg-background-light border border-gray-200 rounded-lg p-6">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium opacity-90">Level</h3>
+                    <h3 className="text-sm font-medium text-text-muted font-body">Level</h3>
                     <span className="text-2xl">🎮</span>
                   </div>
-                  <p className="text-3xl font-bold">{playerStats.level}</p>
-                  <div className="text-xs opacity-90 mt-1">
+                  <p className="text-3xl font-bold text-text font-display">{playerStats.level}</p>
+                  <div className="text-xs text-text-muted mt-1 font-body">
                     {playerStats.experienceToNext} XP to next level
                   </div>
                 </div>
                 
                 {/* Experience Card */}
-                <div className="bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-xl p-6 shadow-sm">
+                <div className="bg-background-light border border-gray-200 rounded-lg p-6">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-semibold text-slate-600 font-heading">Total XP</h3>
+                    <h3 className="text-sm font-semibold text-text-muted font-display">Total XP</h3>
                     <span className="text-xl">⭐</span>
                   </div>
-                  <p className="text-2xl font-display text-slate-800">{playerStats.totalPoints}</p>
+                  <p className="text-2xl font-display text-text font-bold">{playerStats.totalPoints}</p>
                   <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
                     <div 
-                      className="bg-gradient-to-r from-purple-500 to-pink-500 h-2 rounded-full transition-all duration-500"
+                      className="bg-text h-2 rounded-full transition-all duration-500"
                       style={{ width: `${(playerStats.experience % 100)}%` }}
                     ></div>
                   </div>
                 </div>
                 
                 {/* Streak Card */}
-                <div className="bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-xl p-6 shadow-sm">
+                <div className="bg-background-light border border-gray-200 rounded-lg p-6">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-semibold text-slate-600 font-heading">Streak</h3>
+                    <h3 className="text-sm font-semibold text-text-muted font-display">Streak</h3>
                     <span className="text-xl">🔥</span>
                   </div>
-                  <p className="text-2xl font-display text-slate-800">{playerStats.currentStreak}</p>
-                  <div className="text-xs text-slate-500 mt-1 font-caption">
+                  <p className="text-2xl font-display text-text font-bold">{playerStats.currentStreak}</p>
+                  <div className="text-xs text-text-muted mt-1 font-body">
                     Best: {playerStats.longestStreak} days
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    {streakDataRef.current.weeklyStreakEarned ? (
+                      <div className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
+                        <span>✅</span> Weekly streak achieved
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-text-muted">
+                        {Math.max(0, 7 - playerStats.currentStreak)} days to weekly streak
+                      </div>
+                    )}
+                    {streakDataRef.current.monthlyStreakEarned ? (
+                      <div className="text-xs font-semibold text-indigo-600 flex items-center gap-1">
+                        <span>🌙</span> Monthly streak secured
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-text-muted">
+                        {Math.max(
+                          0,
+                          (streakDataRef.current.monthDaysTarget || getDaysInMonth(new Date())) - playerStats.currentStreak
+                        )} days to monthly streak
+                      </div>
+                    )}
                   </div>
                 </div>
                 
                 {/* Conversations Card */}
-                <div className="bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-xl p-6 shadow-sm">
+                <div className="bg-background-light border border-gray-200 rounded-lg p-6">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-semibold text-slate-600 font-heading">Conversations</h3>
-                    <MessageCircle className="h-5 w-5 text-blue-500" />
+                    <h3 className="text-sm font-semibold text-text-muted font-display">Conversations</h3>
+                    <MessageCircle className="h-5 w-5 text-text" />
                   </div>
-                  <p className="text-2xl font-display text-slate-800">{playerStats.conversationsCompleted}</p>
-                  <div className="text-xs text-slate-500 mt-1 font-caption">
+                  <p className="text-2xl font-display text-text font-bold">{playerStats.conversationsCompleted}</p>
+                  <div className="text-xs text-text-muted mt-1 font-body">
                     {playerStats.wordsLearned} words learned
                   </div>
                 </div>
@@ -4891,7 +8857,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                         <div className="flex space-x-2 ml-4">
                           <button
                             onClick={() => setSelectedConversation(conversation.id)}
-                            className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
+                            className="px-3 py-1 text-sm bg-primary-100 text-text700 rounded-full hover:bg-primary-200 transition-colors"
                           >
                             Review
                           </button>
@@ -4901,7 +8867,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                               startNewConversation(conversation.id);
                               setCurrentView('dashboard');
                             }}
-                            className="px-3 py-1 text-sm bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors"
+                            className="px-3 py-1 text-sm bg-green-100 text-green-700 rounded-full hover:bg-green-200 transition-colors"
                           >
                             Re-practice
                           </button>
@@ -4934,7 +8900,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
                       <div 
-                        className="bg-blue-500 h-2 rounded-full transition-all duration-300" 
+                        className="bg-primary-500 h-2 rounded-full transition-all duration-300" 
                         style={{ 
                           width: `${Math.min(100, (conversations.filter(conv => {
                             const weekAgo = new Date();
@@ -4960,36 +8926,91 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             </div>
           </div>
         ) : currentView === 'vocab' ? (
-          // Vocab List View
-          <div className="flex-1 flex items-center justify-center p-8 overflow-y-auto">
+          // Vocab List View - Elingo Purple Theme
+          <div className="flex-1 flex items-center justify-center p-8 overflow-y-auto bg-white" style={{ backgroundColor: '#f5f5f5' }}>
             <div className="text-center">
-              <BookOpen className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-              <h2 className="text-2xl font-semibold apple-text-primary mb-2">Vocabulary List</h2>
-              <p className="text-lg apple-text-secondary">Your saved words and phrases will appear here</p>
+              <div className="w-20 h-20 bg-gradient-to-br from-primary/20 to-accent/20 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm">
+                <BookOpen className="h-10 w-10 text-primary" />
+              </div>
+              <h2 className="text-3xl font-bold text-text font-display mb-3">Vocabulary List</h2>
+              <p className="text-lg text-text-muted font-body">Your saved words and phrases will appear here</p>
             </div>
           </div>
         ) : (
-          // Welcome Screen
-          <div className="flex-1 flex items-center justify-center p-8 bg-gradient-to-br from-slate-50 to-white overflow-y-auto">
-            <div className="max-w-2xl w-full">
+          // Welcome Screen - Elingo Purple Theme with Animated Background
+          <div className="flex-1 flex items-center justify-center p-8 overflow-y-auto relative" style={{ backgroundColor: '#f5f5f5' }}>
+            {/* Animated Background - Fun & Engaging for Professional Learners */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+              {/* Animated Grid Pattern */}
+              <div className="absolute inset-0 opacity-20" style={{
+                backgroundImage: `
+                  linear-gradient(rgba(105, 73, 255, 0.1) 1px, transparent 1px),
+                  linear-gradient(90deg, rgba(105, 73, 255, 0.1) 1px, transparent 1px)
+                `,
+                backgroundSize: '50px 50px',
+                animation: 'grid-move 20s linear infinite'
+              }}></div>
+              
+              {/* Dynamic Floating Geometric Shapes */}
+              <div className="absolute top-20 left-20 w-16 h-16 bg-primary/30 rounded-2xl rotate-45 animate-bounce-slow shadow-lg"></div>
+              <div className="absolute top-40 right-32 w-12 h-12 bg-accent/35 rounded-full animate-bounce-medium shadow-lg" style={{ animationDelay: '0.5s' }}></div>
+              <div className="absolute bottom-32 left-32 w-20 h-20 bg-primary/25 rounded-lg rotate-12 animate-bounce-slow shadow-lg" style={{ animationDelay: '1s' }}></div>
+              <div className="absolute bottom-24 right-24 w-14 h-14 bg-accent/30 rounded-3xl rotate-45 animate-bounce-medium shadow-lg" style={{ animationDelay: '1.5s' }}></div>
+              <div className="absolute top-1/3 left-1/4 w-18 h-18 bg-primary/28 rounded-xl rotate-6 animate-bounce-medium shadow-lg" style={{ animationDelay: '2s' }}></div>
+              
+              {/* Animated Particles/Dots */}
+              <div className="absolute top-32 left-1/3 w-3 h-3 bg-primary rounded-full animate-particle-float shadow-md" style={{ animationDelay: '0s' }}></div>
+              <div className="absolute top-48 right-1/4 w-2 h-2 bg-accent rounded-full animate-particle-float shadow-md" style={{ animationDelay: '1s' }}></div>
+              <div className="absolute bottom-40 left-1/2 w-3 h-3 bg-primary rounded-full animate-particle-float shadow-md" style={{ animationDelay: '2s' }}></div>
+              <div className="absolute top-2/3 right-1/3 w-2.5 h-2.5 bg-accent rounded-full animate-particle-float shadow-md" style={{ animationDelay: '1.5s' }}></div>
+              <div className="absolute bottom-1/3 left-1/5 w-2 h-2 bg-primary rounded-full animate-particle-float shadow-md" style={{ animationDelay: '0.5s' }}></div>
+              
+              {/* Large Gradient Orbs with More Energy */}
+              <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-gradient-to-br from-primary/25 via-primary/15 to-transparent rounded-full blur-3xl animate-orb-drift"></div>
+              <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-gradient-to-tl from-accent/25 via-accent/15 to-transparent rounded-full blur-3xl animate-orb-drift" style={{ animationDelay: '2s' }}></div>
+              
+              {/* Pulsing Energy Rings */}
+              <div className="absolute top-1/2 left-1/2 w-64 h-64 border-2 border-primary/20 rounded-full animate-ring-pulse" style={{ transform: 'translate(-50%, -50%)' }}></div>
+              <div className="absolute top-1/2 left-1/2 w-80 h-80 border-2 border-accent/15 rounded-full animate-ring-pulse" style={{ transform: 'translate(-50%, -50%)', animationDelay: '1s' }}></div>
+              
+              {/* Floating Connection Lines */}
+              <svg className="absolute inset-0 w-full h-full opacity-10">
+                <path d="M 100 200 Q 300 100 500 250" stroke="url(#gradient1)" strokeWidth="2" fill="none" className="animate-draw-line" />
+                <path d="M 800 300 Q 600 200 400 350" stroke="url(#gradient2)" strokeWidth="2" fill="none" className="animate-draw-line" style={{ animationDelay: '1s' }} />
+                <defs>
+                  <linearGradient id="gradient1" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="rgba(105, 73, 255, 0.3)" />
+                    <stop offset="100%" stopColor="rgba(255, 193, 7, 0.3)" />
+                  </linearGradient>
+                  <linearGradient id="gradient2" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="rgba(255, 193, 7, 0.3)" />
+                    <stop offset="100%" stopColor="rgba(105, 73, 255, 0.3)" />
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
+
+            <div className="max-w-2xl w-full relative z-10">
               <div className="text-center mb-8">
-                <h1 className="text-3xl font-display text-gradient-primary mb-2">
-                  Hello {firstName}!
+                <h1 className="text-4xl font-display text-text font-bold mb-3">
+                  Hello {firstName}! 👋
                 </h1>
-                <p className="text-xl text-slate-600 font-body">
+                <p className="text-lg text-gray-600 font-body">
                   What would you like to practice in German today?
                 </p>
               </div>
 
-              {/* Enhanced Conversation Input */}
-              <div className="bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-2xl p-6 shadow-lg">
+              {/* Enhanced Conversation Input - Elingo Purple Theme */}
+              <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm relative backdrop-blur-sm bg-white/95">
                 {/* Text Input */}
                 <div className="mb-6">
+                  <label className="block text-sm font-semibold text-text800 mb-2 font-heading">Context</label>
                   <textarea
                     placeholder="My left knee is injured and I want to visit a doctor."
                     value={conversationInput}
                     onChange={(e) => setConversationInput(e.target.value)}
-                    className="w-full px-4 py-4 border border-slate-300 rounded-xl text-base resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm focus:shadow-md transition-all duration-200 font-body"
+                    data-hint-target="text-input"
+                    className="w-full px-5 py-4 border-2 border-gray-200 rounded-2xl text-base resize-none focus:ring-2 focus:ring-primary focus:border-primary bg-gray-50 transition-all duration-200 font-body placeholder:text-gray-400"
                     rows={4}
                   />
                 </div>
@@ -4998,17 +9019,18 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 <div className="flex space-x-4 mb-6">
                   {/* Context Level */}
                   <div className="flex-1 relative">
-                    <label className="block text-sm font-semibold text-slate-800 mb-2 font-heading">Context</label>
+                    <label className="block text-sm font-semibold text-text800 mb-2 font-heading">Style</label>
                     <button
                       onClick={() => !currentConversationContextLocked && setShowContextDropdown(!showContextDropdown)}
                       disabled={currentConversationContextLocked}
-                      className={`w-full border border-slate-300 rounded-lg px-4 py-3 text-left flex items-center justify-between shadow-sm transition-all duration-200 ${
+                      data-hint-target="context-switcher"
+                      className={`w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-left flex items-center justify-between shadow-sm transition-all duration-200 ${
                         currentConversationContextLocked 
                           ? 'bg-gray-100 cursor-not-allowed opacity-60' 
-                          : 'bg-white hover:shadow-md'
+                          : 'bg-white hover:shadow-md hover:border-primary/30'
                       }`}
                     >
-                      <span className="text-sm font-semibold text-slate-800 font-heading flex items-center">
+                      <span className="text-sm font-semibold text-text800 font-heading flex items-center">
                         {contextLevel}
                         {currentConversationContextLocked && (
                           <span className="ml-2 text-xs">🔒</span>
@@ -5017,7 +9039,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       <ChevronDown className={`h-4 w-4 ${currentConversationContextLocked ? 'text-gray-300' : 'text-gray-400'}`} />
                     </button>
                     {showContextDropdown && !currentConversationContextLocked && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-lg shadow-lg z-10">
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-gradient-to-br from-white to-slate-50 border border-gray-200 rounded-lg shadow-lg z-10">
                         {contextLevels.map((level) => (
                           <button
                             key={level}
@@ -5025,7 +9047,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                               setContextLevel(level);
                               setShowContextDropdown(false);
                             }}
-                            className="w-full text-left px-4 py-3 text-sm hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 first:rounded-t-lg last:rounded-b-lg text-slate-800 font-body transition-all duration-200"
+                            className="w-full text-left px-4 py-3 text-sm hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 first:rounded-t-lg last:rounded-b-lg text-text800 font-body transition-all duration-200"
                           >
                             {level}
                           </button>
@@ -5036,16 +9058,25 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
 
                   {/* Difficulty Level */}
                   <div className="flex-1 relative">
-                    <label className="block text-sm font-semibold text-slate-800 mb-2 font-heading">Level</label>
+                    <label className="block text-sm font-semibold text-text800 mb-2 font-heading">Level</label>
                     <button
-                      onClick={() => setShowDifficultyDropdown(!showDifficultyDropdown)}
-                      className="w-full border border-slate-300 rounded-lg px-4 py-3 text-left flex items-center justify-between bg-white shadow-sm hover:shadow-md transition-all duration-200"
+                      onClick={() => !currentConversationDifficultyLocked && setShowDifficultyDropdown(!showDifficultyDropdown)}
+                      disabled={currentConversationDifficultyLocked}
+                      className={`w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-left flex items-center justify-between bg-white shadow-sm transition-all duration-200 ${
+                        currentConversationDifficultyLocked 
+                          ? 'opacity-50 cursor-not-allowed' 
+                          : 'hover:shadow-md hover:border-primary/30'
+                      }`}
                     >
-                      <span className="text-sm font-semibold text-slate-800 font-heading">{difficultyLevel}</span>
-                      <ChevronDown className="h-4 w-4 text-gray-400" />
+                      <span className="text-sm font-semibold text-text800 font-heading">{difficultyLevel}</span>
+                      {currentConversationDifficultyLocked ? (
+                        <Lock className="h-4 w-4 text-gray-400" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4 text-gray-400" />
+                      )}
                     </button>
-                    {showDifficultyDropdown && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-gradient-to-br from-white to-slate-50 border border-slate-200 rounded-lg shadow-lg z-10">
+                    {showDifficultyDropdown && !currentConversationDifficultyLocked && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-gradient-to-br from-white to-slate-50 border border-gray-200 rounded-lg shadow-lg z-10">
                         {difficultyLevels.map((level) => (
                           <button
                             key={level}
@@ -5053,7 +9084,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                               setDifficultyLevel(level);
                               setShowDifficultyDropdown(false);
                             }}
-                            className="w-full text-left px-4 py-3 text-sm hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 first:rounded-t-lg last:rounded-b-lg text-slate-800 font-body transition-all duration-200"
+                            className="w-full text-left px-4 py-3 text-sm hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100 first:rounded-t-lg last:rounded-b-lg text-text800 font-body transition-all duration-200"
                           >
                             {level}
                           </button>
@@ -5071,10 +9102,12 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     <button 
                       onClick={isModalRecording ? stopModalRecording : () => startModalRecording(true)}
                       disabled={isTranscribing}
-                      className={`p-3 rounded-full transition-colors ${
+                      title={isModalRecording ? "Stop recording" : "Start recording"}
+                      data-hint-target="voice-input"
+                      className={`p-3 rounded-2xl transition-all duration-200 shadow-lg hover:shadow-xl ${
                         isModalRecording 
                           ? 'bg-red-500 hover:bg-red-600 text-white' 
-                          : 'bg-green-500 hover:bg-green-600 text-white'
+                          : 'bg-accent hover:bg-accent/90 text-white'
                       } ${isTranscribing ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       {isTranscribing ? (
@@ -5088,10 +9121,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     <button 
                       onClick={createNewConversation}
                       disabled={!conversationInput.trim()}
-                      className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white px-8 py-3 rounded-full flex items-center space-x-2 font-semibold disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg transition-all duration-200"
+                      className="btn-glossy px-8 py-3 rounded-2xl flex items-center space-x-2 font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transition-all duration-200"
                     >
                       <Play className="h-4 w-4" />
-                      <span>Start Chat</span>
+                      <span>Start Conversation</span>
                     </button>
                   </div>
                 </div>
@@ -5099,7 +9132,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             </div>
           </div>
         )}
-      </div>
+        </div>
+      )}
 
       <ProfilePictureModal
         isOpen={showProfileModal}
@@ -5134,8 +9168,8 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                           onClick={() => toggleWordSelection(cleanWord)}
                           className={`inline-block px-2 py-1 mx-1 my-1 rounded-lg transition-all duration-200 ${
                             isSelected 
-                              ? 'bg-blue-500 text-white shadow-md' 
-                              : 'bg-white text-gray-700 hover:bg-blue-100 border border-gray-200'
+                              ? 'bg-primary-500 text-white shadow-md' 
+                              : 'bg-white text-gray-700 hover:bg-primary-100 border border-gray-200'
                           }`}
                         >
                           {cleanWord}
@@ -5153,10 +9187,10 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                 <div className="space-y-2">
                   <h4 className="font-semibold text-gray-900 text-sm">Selected words:</h4>
                   {Array.from(selectedWords).map((word, index) => (
-                    <div key={index} className="flex items-center justify-between bg-blue-50 rounded-lg p-3">
+                    <div key={index} className="flex items-center justify-between bg-primary-50 rounded-lg p-3">
                       <div className="flex-1">
-                        <span className="font-semibold text-blue-900">{word}</span>
-                        <span className="text-blue-600 ml-2 text-sm">Meanings will be generated in vocab tab</span>
+                        <span className="font-semibold text-text900">{word}</span>
+                        <span className="text-text600 ml-2 text-sm">Meanings will be generated in vocab tab</span>
                       </div>
                       <button
                         onClick={() => toggleWordSelection(word)}
@@ -5180,7 +9214,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
               <button
                 onClick={addSelectedVocab}
                 disabled={selectedWords.size === 0}
-                className="flex-1 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white rounded-xl transition-colors disabled:cursor-not-allowed"
+                className="flex-1 py-3 bg-primary-500 hover:bg-primary-600 disabled:bg-gray-300 text-white rounded-xl transition-colors disabled:cursor-not-allowed"
               >
                 Add {selectedWords.size} word{selectedWords.size !== 1 ? 's' : ''}
               </button>
@@ -5207,7 +9241,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             
             {/* German Suggestion */}
             <div className="mb-6">
-              <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6 mb-4">
+              <div className="bg-primary-50 border-2 border-blue-200 rounded-lg p-6 mb-4">
                 <div className="text-center">
                   <div className="text-2xl font-semibold text-gray-900 mb-4">
                     {germanSuggestion || 'Loading...'}
@@ -5223,7 +9257,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                     disabled={!germanSuggestion}
                     className={`px-6 py-3 rounded-lg transition-colors flex items-center space-x-2 mx-auto ${
                       germanSuggestion 
-                        ? 'bg-blue-500 hover:bg-blue-600 text-white' 
+                        ? 'bg-primary-500 hover:bg-primary-600 text-white' 
                         : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                     }`}
                   >
@@ -5262,7 +9296,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
                       disabled={!modalInput.trim()}
                       className={`px-4 py-2 rounded-lg transition-colors ${
                         modalInput.trim()
-                          ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                          ? 'bg-primary-500 hover:bg-primary-600 text-white'
                           : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                       }`}
                     >
@@ -5340,7 +9374,7 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
             </div>
             <button
               onClick={() => setShowLevelUp(false)}
-              className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-lg font-medium transition-colors"
+              className="w-full bg-primary-500 hover:bg-primary-600 text-white py-3 rounded-lg font-medium transition-colors"
             >
               Awesome!
             </button>
@@ -5348,26 +9382,63 @@ Keep it short and helpful. Don't repeat the same phrase multiple times.`
         </div>
       )}
 
-      {/* Achievement Modal */}
-      {showAchievement && (
+      {/* Achievement Modal - Purple Theme */}
+      {showAchievement && achievementData && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-8 max-w-md w-full text-center animate-pulse">
-            <div className="text-6xl mb-4">🏆</div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">Achievement Unlocked!</h2>
-            <p className="text-gray-600 mb-4">You've earned a new achievement!</p>
-            <div className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-lg p-4 mb-4">
-              <div className="text-sm opacity-90">Achievement</div>
-              <div className="text-xl font-bold">🎉 First Conversation</div>
-              <div className="text-sm opacity-90">Completed your first German conversation!</div>
+          <div className="card-glass p-8 max-w-md w-full text-center shadow-figma-hero">
+            <div className="text-6xl mb-4 animate-bounce">🏆</div>
+            <h2 className="text-2xl font-bold text-text mb-2">Achievement Unlocked!</h2>
+            <p className="text-text-muted mb-6">You've earned a new achievement!</p>
+            <div className="bg-gradient-to-r from-primary via-primary/90 to-accent text-white rounded-2xl p-6 mb-6 shadow-lg">
+              <div className="text-sm opacity-90 mb-2">Achievement</div>
+              <div className="text-2xl font-bold mb-2">{achievementData.title}</div>
+              <div className="text-sm opacity-90">{achievementData.description}</div>
             </div>
             <button
-              onClick={() => setShowAchievement(null)}
-              className="w-full bg-green-500 hover:bg-green-600 text-white py-3 rounded-lg font-medium transition-colors"
+              onClick={() => {
+                setShowAchievement(null);
+                setAchievementData(null);
+              }}
+              className="btn-glossy w-full"
             >
               Amazing!
             </button>
           </div>
         </div>
+      )}
+
+      {/* Conversation Summary Modal */}
+      {showSummaryModal && conversationSummary && (
+        <ConversationSummaryModal
+          isOpen={showSummaryModal}
+          onClose={() => {
+            setShowSummaryModal(false);
+            setConversationSummary(null);
+          }}
+          summary={conversationSummary}
+        />
+      )}
+
+      {/* Onboarding Hints - Dashboard */}
+      {showHints && (
+        <OnboardingHints
+          isVisible={showHints}
+          onDismiss={handleDismissHints}
+          onSkipAll={handleSkipAllHints}
+          hints={dashboardHints}
+          startIndex={0}
+        />
+      )}
+
+      {/* Onboarding Hints - Chat Bubbles */}
+      {showChatHints && selectedConversation && (
+        <OnboardingHints
+          isVisible={showChatHints}
+          onDismiss={handleDismissChatHints}
+          onSkipAll={handleSkipAllHints}
+          hints={chatBubbleHints}
+          startIndex={0}
+        />
       )}
     </div>
   );

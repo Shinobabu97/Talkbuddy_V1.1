@@ -10,10 +10,22 @@ import {
   Star,
   ChevronDown,
   Menu,
-  X
+  X,
+  Briefcase,
+  GraduationCap,
+  Languages,
+  Globe,
+  UserCircle,
+  Sparkles,
+  MessageCircle,
+  FileCheck,
+  Bookmark
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { supabase, AuthUser } from './lib/supabase';
 import AuthModal from './components/AuthModal';
+import WaitlistModal from './components/WaitlistModal';
+import WaitlistSuccessModal from './components/WaitlistSuccessModal';
 import Dashboard from './components/Dashboard';
 
 function App() {
@@ -21,6 +33,9 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
+  const [waitlistModalOpen, setWaitlistModalOpen] = useState(false);
+  const [waitlistSuccessOpen, setWaitlistSuccessOpen] = useState(false);
+  const [waitlistSuccessEmail, setWaitlistSuccessEmail] = useState<string | null>(null);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [openFAQ, setOpenFAQ] = useState<number | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -62,27 +77,27 @@ function App() {
 
   const steps = [
     {
-      number: "1",
+      icon: UserCircle,
       title: "Tell Us About You",
       description: "Share your hobbies, interests, learning goals, and work background so your AI buddy gets to know the real you."
     },
     {
-      number: "2",
+      icon: Sparkles,
       title: "Get Your Personal Topic Menu",
       description: "Based on what you shared, we create conversation topics that actually matter to you - from your career field to weekend hobbies."
     },
     {
-      number: "3",
+      icon: MessageCircle,
       title: "Choose & Start Speaking",
       description: "Pick any topic that sparks your interest and start talking out loud with your AI language partner who knows your context."
     },
     {
-      number: "4",
+      icon: FileCheck,
       title: "Review Your Speaking Session",
       description: "After each conversation, see your full speaking transcript with helpful corrections, better phrasing suggestions, and new vocabulary you could have used."
     },
     {
-      number: "5",
+      icon: Bookmark,
       title: "Save Your Progress",
       description: "Bookmark useful sentences and vocab words to review later, building your personal speaking library as you go."
     }
@@ -252,10 +267,10 @@ function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center" style={{ backgroundColor: '#f5f5f5' }}>
         <div className="text-center">
-          <Mic className="h-12 w-12 text-orange-600 mx-auto mb-4 animate-pulse" />
-          <p className="text-gray-600">Loading TalkBuddy...</p>
+          <Mic className="h-12 w-12 text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent mx-auto mb-4 animate-pulse" />
+          <p className="text-text-muted">Loading TalkBuddy...</p>
         </div>
       </div>
     );
@@ -268,27 +283,27 @@ function App() {
   return (
     <div className="min-h-screen bg-continuous-hero">
 
-      {/* Header */}
-      <header className="relative z-50 header-glossy-light sticky top-0">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div className="flex items-center space-x-2">
-              <Mic className="h-8 w-8 text-blue-600" />
-              <span className="text-2xl font-bold text-gray-900">TalkBuddy</span>
+      {/* Header - Anabolio minimal style */}
+      <header className="relative z-50 bg-white border-b border-gray-200 sticky top-0 shadow-sm">
+        <div className="max-w-6xl mx-auto px-6 lg:px-8">
+          <div className="flex justify-between items-center py-6">
+            <div className="flex flex-col space-y-1">
+              <span className="text-3xl md:text-4xl font-bold text-text font-extrabold tracking-tight">TalkBuddy</span>
+              <span className="text-xs md:text-sm text-text font-body">Your AI-Powered Language Coach</span>
             </div>
             
             <nav className="hidden md:flex items-center space-x-8">
-              <a href="#home" className="text-gray-700 hover:text-blue-600 transition-all duration-300 font-medium">Home</a>
-              <a href="#benefits" className="text-gray-700 hover:text-blue-600 transition-all duration-300 font-medium">Benefits</a>
-              <a href="#how-it-works" className="text-gray-700 hover:text-blue-600 transition-all duration-300 font-medium">How It Works</a>
-              <a href="#testimonials" className="text-gray-700 hover:text-blue-600 transition-all duration-300 font-medium">Reviews</a>
-              <a href="#faq" className="text-gray-700 hover:text-blue-600 transition-all duration-300 font-medium">FAQ</a>
+              <a href="#home" className="text-text hover:text-primary-600 transition-colors font-body text-xs md:text-sm">Home</a>
+              <a href="#benefits" className="text-text hover:text-primary-600 transition-colors font-body text-xs md:text-sm">Benefits</a>
+              <a href="#how-it-works" className="text-text hover:text-primary-600 transition-colors font-body text-xs md:text-sm">How It Works</a>
+              <a href="#testimonials" className="text-text hover:text-primary-600 transition-colors font-body text-xs md:text-sm">Reviews</a>
+              <a href="#faq" className="text-text hover:text-primary-600 transition-colors font-body text-xs md:text-sm">FAQ</a>
             </nav>
 
             <div className="flex items-center space-x-4">
               <button 
                 onClick={() => handleAuthModal('login')}
-                className="hidden md:inline-flex px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                className="hidden md:inline-flex btn-glossy px-4 md:px-6 py-2 md:py-3 rounded-full font-bold text-sm md:text-base"
               >
                 Login
               </button>
@@ -307,14 +322,14 @@ function App() {
         {isMenuOpen && (
           <div className="md:hidden glass-strong border-t border-white/20" style={{ background: 'rgba(255, 255, 255, 0.4)' }}>
             <div className="px-2 py-2 space-y-2">
-              <a href="#home" className="block py-2 text-gray-700 hover:text-blue-600 transition-colors font-medium">Home</a>
-              <a href="#benefits" className="block py-2 text-gray-700 hover:text-blue-600 transition-colors font-medium">Benefits</a>
-              <a href="#how-it-works" className="block py-2 text-gray-700 hover:text-blue-600 transition-colors font-medium">How It Works</a>
-              <a href="#testimonials" className="block py-2 text-gray-700 hover:text-blue-600 transition-colors font-medium">Reviews</a>
-              <a href="#faq" className="block py-2 text-gray-700 hover:text-blue-600 transition-colors font-medium">FAQ</a>
+              <a href="#home" className="block py-2 text-text hover:text-primary-600 transition-colors font-medium text-sm">Home</a>
+              <a href="#benefits" className="block py-2 text-text hover:text-primary-600 transition-colors font-medium text-sm">Benefits</a>
+              <a href="#how-it-works" className="block py-2 text-text hover:text-primary-600 transition-colors font-medium text-sm">How It Works</a>
+              <a href="#testimonials" className="block py-2 text-text hover:text-primary-600 transition-colors font-medium text-sm">Reviews</a>
+              <a href="#faq" className="block py-2 text-text hover:text-primary-600 transition-colors font-medium text-sm">FAQ</a>
               <button 
                 onClick={() => handleAuthModal('login')}
-                className="w-full mt-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                className="w-full mt-2 btn-glossy px-6 py-3 rounded-full font-bold text-sm md:text-base"
               >
                 Login
               </button>
@@ -323,56 +338,72 @@ function App() {
         )}
       </header>
 
-      {/* Hero Section */}
-      <section id="home" className="relative overflow-hidden py-20 lg:py-28 section-divider">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
+      {/* Hero Section - Anabolio style */}
+      <section id="home" className="relative overflow-hidden py-24 lg:py-32">
+        <div className="max-w-6xl mx-auto px-6 lg:px-8">
+          <div className="grid lg:grid-cols-2 gap-16 items-center">
             <div className="space-y-8">
-              <div className="space-y-4">
-                <p className="text-blue-600 font-semibold uppercase tracking-wide">
-                  Introducing Your Personal AI Language Coach
-                </p>
-                <h1 className="text-4xl lg:text-6xl font-bold text-gray-900 leading-tight">
+              <div className="space-y-6">
+                <h1 className="text-3xl md:text-4xl lg:text-5xl font-extrabold text-text leading-relaxed tracking-tight">
                   The Language Partner Who Actually Listens
                 </h1>
-                <p className="text-xl text-gray-700 leading-relaxed">
+                <p className="text-lg text-text leading-relaxed font-body max-w-xl">
                   Talk to an AI friend with infinite patience for your 'um's and 'uh's— one that adapts to your pace, cheers you on, and helps you build confidence before facing real conversations.
                 </p>
               </div>
               
-              <div className="flex flex-col sm:flex-row gap-4">
-                <button 
-                  onClick={() => handleAuthModal('signup')}
-                  className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-lg transition-colors shadow-lg"
-                >
-                  Try Your First Conversation
-                </button>
-                <div className="flex items-center space-x-2 text-gray-700">
-                  <div className="flex">
-                    {[...Array(5)].map((_, i) => (
-                      <Star key={i} className="h-5 w-5 text-yellow-400 fill-current" />
-                    ))}
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
+                  <div className="flex flex-col items-center sm:items-start gap-3">
+                    <div className="flex flex-col sm:flex-row items-center gap-4">
+                      <button 
+                        onClick={() => setWaitlistModalOpen(true)}
+                        className="btn-glossy px-6 py-3 rounded-full font-bold text-base"
+                      >
+                        Join the Wait List
+                      </button>
+                      <div className="flex items-center space-x-2 text-text-muted">
+                        <div className="flex">
+                          {[...Array(5)].map((_, i) => (
+                            <Star key={i} className="h-4 w-4 text-yellow-400 fill-current" />
+                          ))}
+                        </div>
+                        <span className="font-medium text-sm font-body">4.9/5 from 5,500+ users</span>
+                      </div>
+                    </div>
+                    
+                    {/* QR Code Section */}
+                    <div className="flex flex-col items-center gap-2">
+                      <QRCodeSVG 
+                        value={window.location.href}
+                        size={150}
+                        level="H"
+                        includeMargin={true}
+                        className="bg-white p-2 rounded-lg border border-gray-200"
+                      />
+                      <p className="text-xs text-text-muted font-body text-center">
+                        Scan to join the waitlist
+                      </p>
+                    </div>
                   </div>
-                  <span className="font-medium">4.9/5 from 5,500+ users</span>
                 </div>
               </div>
             </div>
 
             <div className="relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-100/60 to-indigo-100/60 rounded-full transform scale-110 opacity-40"></div>
-              <div className="relative card-glass rounded-2xl p-8 shadow-glass-xl">
+              <div className="relative card-glass rounded-2xl p-6 md:p-8">
                 <img 
-                  src="https://images.pexels.com/photos/3184360/pexels-photo-3184360.jpeg?auto=compress&cs=tinysrgb&w=600&h=400&fit=crop" 
+                  src="https://znwcnjxgkptaanfdsbfq.supabase.co/storage/v1/object/public/Landing%20Page%20Image/Landing%20page%20image.jpg" 
                   alt="Person learning language with blue-themed technology setup" 
-                  className="w-full h-64 object-cover rounded-lg mb-4"
+                  className="w-full h-48 md:h-56 object-cover rounded-lg mb-4"
                 />
                 <div className="space-y-3">
                   <div className="flex items-center space-x-2">
-                    <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
-                    <span className="text-sm text-gray-700 font-medium">AI Language Partner Active</span>
+                    <div className="w-2 h-2 bg-text rounded-full animate-pulse"></div>
+                    <span className="text-xs text-text-muted font-body">AI Language Partner Active</span>
                   </div>
-                  <div className="glass-subtle rounded-lg p-3">
-                    <p className="text-sm text-gray-700 italic">"Great! Let's practice your presentation skills. I'll ask you questions about your project..."</p>
+                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                    <p className="text-sm text-text-muted font-body">"Great! Let's practice your presentation skills. I'll ask you questions about your project..."</p>
                   </div>
                 </div>
               </div>
@@ -381,81 +412,90 @@ function App() {
         </div>
       </section>
 
-      {/* Social Proof */}
-      <section className="py-20 scroll-animate social-proof-highlight">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">
+      {/* Social Proof - Anabolio minimal style */}
+      <section className="py-24 scroll-animate">
+        <div className="max-w-6xl mx-auto px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl font-bold text-text font-extrabold mb-4">
               Trusted by Language Learners Worldwide
             </h2>
-            <p className="text-lg text-gray-700 max-w-2xl mx-auto">
+            <p className="text-base text-text-muted max-w-2xl mx-auto font-body">
               Join a community of over 5,500+ professionals, students, and language enthusiasts
             </p>
           </div>
           
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-12">
             <div className="text-center stagger-animate">
-              <div className="bg-white/80 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-white hover:scale-110 transition-all duration-300 shadow-lg">
-                <Users className="h-8 w-8 text-blue-600" />
+              <div className="bg-primary-500 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 shadow-lg">
+                <Briefcase className="h-8 w-8 text-white" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Working Professionals</h3>
-              <p className="text-gray-600 text-sm">Building confidence for meetings and presentations</p>
+              <h3 className="text-base font-semibold text-text mb-2 font-extrabold">Working Professionals</h3>
+              <p className="text-sm text-text-muted font-body">Building confidence for meetings and presentations</p>
             </div>
             
             <div className="text-center stagger-animate">
-              <div className="bg-white/80 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-white hover:scale-110 transition-all duration-300 shadow-lg">
-                <Target className="h-8 w-8 text-green-600" />
+              <div className="bg-primary-500 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 shadow-lg">
+                <GraduationCap className="h-8 w-8 text-white" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">University Students</h3>
-              <p className="text-gray-600 text-sm">Preparing for academic discussions and social interactions</p>
+              <h3 className="text-base font-semibold text-text mb-2 font-extrabold">University Students</h3>
+              <p className="text-sm text-text-muted font-body">Preparing for academic discussions and social interactions</p>
             </div>
             
             <div className="text-center stagger-animate">
-              <div className="bg-white/80 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-white hover:scale-110 transition-all duration-300 shadow-lg">
-                <Star className="h-8 w-8 text-yellow-600" />
+              <div className="bg-primary-500 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 shadow-lg">
+                <Languages className="h-8 w-8 text-white" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Language Enthusiasts</h3>
-              <p className="text-gray-600 text-sm">Passionate learners perfecting their speaking skills</p>
+              <h3 className="text-base font-semibold text-text mb-2 font-extrabold">Language Enthusiasts</h3>
+              <p className="text-sm text-text-muted font-body">Passionate learners perfecting their speaking skills</p>
             </div>
             
             <div className="text-center stagger-animate">
-              <div className="bg-white/80 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 hover:bg-white hover:scale-110 transition-all duration-300 shadow-lg">
-                <Shield className="h-8 w-8 text-purple-600" />
+              <div className="bg-primary-500 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4 shadow-lg">
+                <Globe className="h-8 w-8 text-white" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">International Teams</h3>
-              <p className="text-gray-600 text-sm">Improving cross-cultural communication</p>
+              <h3 className="text-base font-semibold text-text mb-2 font-extrabold">International Teams</h3>
+              <p className="text-sm text-text-muted font-body">Improving cross-cultural communication</p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Benefits Section */}
-      <section id="benefits" className="py-20 relative scroll-animate section-divider" style={{ marginTop: '0', paddingTop: '5rem' }}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/* Benefits Section - Anabolio card style */}
+      <section id="benefits" className="py-24 relative scroll-animate">
+        <div className="max-w-6xl mx-auto px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-gray-900 mb-4">
+            <h2 className="text-4xl font-bold text-text font-extrabold mb-4">
               Why TalkBuddy Works
             </h2>
-            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+            <p className="text-base text-text-muted max-w-2xl mx-auto font-body">
               Experience personalized language learning that adapts to your needs and builds real confidence
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {benefits.map((benefit, index) => {
               const Icon = benefit.icon;
               return (
                 <div 
                   key={index}
-                  className="bg-white/90 rounded-xl p-6 shadow-lg group stagger-animate hover:shadow-xl transition-all duration-300"
+                  className="card-glass rounded-2xl p-6 group stagger-animate"
                 >
                   <div className="mb-4">
-                    <Icon className="h-10 w-10 text-blue-600 mb-3 transition-colors duration-300" />
-                    <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-3 bg-gradient-to-br ${
+                      index % 6 === 0 ? 'from-primary-400 to-accent-400' :
+                      index % 6 === 1 ? 'from-purple-400 to-cyan-400' :
+                      index % 6 === 2 ? 'from-success-400 to-warning-400' :
+                      index % 6 === 3 ? 'from-accent-400 to-primary-400' :
+                      index % 6 === 4 ? 'from-cyan-400 to-purple-400' :
+                      'from-warning-400 to-success-400'
+                    } shadow-lg`}>
+                      <Icon className="h-6 w-6 text-white" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-text mb-2 font-extrabold">
                       {benefit.title}
                     </h3>
                   </div>
-                  <p className="text-gray-600 leading-relaxed">
+                  <p className="text-sm text-text-muted leading-relaxed font-body">
                     {benefit.description}
                   </p>
                 </div>
@@ -465,53 +505,56 @@ function App() {
         </div>
       </section>
 
-      {/* How It Works */}
-      <section id="how-it-works" className="py-20 scroll-animate section-divider">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/* How It Works - Anabolio minimal style */}
+      <section id="how-it-works" className="py-24 scroll-animate">
+        <div className="max-w-6xl mx-auto px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-gray-900 mb-4">
+            <h2 className="text-4xl font-bold text-text font-extrabold mb-4">
               How It Works
             </h2>
-            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+            <p className="text-base text-text-muted max-w-2xl mx-auto font-body">
               Get started in minutes and begin building your speaking confidence today
             </p>
           </div>
 
-          <div className="space-y-8">
-            {steps.map((step, index) => (
-              <div 
-                key={index}
-                className="bg-white/90 rounded-xl p-6 shadow-lg group stagger-animate hover:shadow-xl transition-all duration-300"
-              >
-                <div className="flex flex-col lg:flex-row items-center gap-8">
-                  <div className="flex-shrink-0">
-                    <div className="w-16 h-16 bg-blue-600 text-white rounded-full flex items-center justify-center text-2xl font-bold transition-all duration-300 shadow-lg">
-                      {step.number}
+          <div className="space-y-6">
+            {steps.map((step, index) => {
+              const Icon = step.icon;
+              return (
+                <div 
+                  key={index}
+                  className="card-glass rounded-2xl p-6 group stagger-animate"
+                >
+                  <div className="flex flex-col lg:flex-row items-start gap-6">
+                    <div className="flex-shrink-0">
+                      <div className="w-12 h-12 rounded-full flex items-center justify-center text-white shadow-lg bg-primary-500">
+                        <Icon className="h-6 w-6" />
+                      </div>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-xl font-semibold text-text mb-2 font-extrabold">
+                        {step.title}
+                      </h3>
+                      <p className="text-sm text-text-muted leading-relaxed font-body">
+                        {step.description}
+                      </p>
                     </div>
                   </div>
-                  <div className="flex-1 text-center lg:text-left">
-                    <h3 className="text-2xl font-semibold text-gray-900 mb-2">
-                      {step.title}
-                    </h3>
-                    <p className="text-gray-600 text-lg leading-relaxed">
-                      {step.description}
-                    </p>
-                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>
 
-      {/* Testimonials */}
-      <section id="testimonials" className="py-20 relative scroll-animate section-divider">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/* Testimonials - Anabolio minimal style */}
+      <section id="testimonials" className="py-24 relative scroll-animate">
+        <div className="max-w-6xl mx-auto px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-gray-900 mb-4">
+            <h2 className="text-4xl font-bold text-text font-extrabold mb-4">
               What Our Users Say
             </h2>
-            <p className="text-xl text-gray-600">
+            <p className="text-base text-text-muted font-body">
               Real stories from people who transformed their speaking confidence
             </p>
           </div>
@@ -523,20 +566,20 @@ function App() {
             >
               {testimonials.map((testimonial, index) => (
                 <div key={index} className="w-full flex-shrink-0 px-4">
-                  <div className="bg-white/90 rounded-xl p-8 shadow-lg max-w-2xl mx-auto">
+                  <div className="card-glass rounded-2xl p-8 max-w-2xl mx-auto border border-gray-200 hover:shadow-md transition-all duration-200">
                     <div className="flex mb-4">
                       {[...Array(testimonial.rating)].map((_, i) => (
                         <Star key={i} className="h-5 w-5 text-yellow-400 fill-current" />
                       ))}
                     </div>
-                    <blockquote className="text-lg text-gray-700 mb-6 italic">
+                    <blockquote className="text-base text-text mb-6 font-body leading-relaxed">
                       "{testimonial.text}"
                     </blockquote>
                     <div>
-                      <cite className="text-gray-900 font-semibold">
+                      <cite className="text-text font-semibold font-extrabold">
                         {testimonial.name}
                       </cite>
-                      <p className="text-gray-600 text-sm">
+                      <p className="text-text-muted text-sm font-body">
                         {testimonial.role}
                       </p>
                     </div>
@@ -550,8 +593,8 @@ function App() {
                 <button
                   key={index}
                   onClick={() => setCurrentTestimonial(index)}
-                  className={`w-3 h-3 rounded-full transition-all duration-300 ${
-                    index === currentTestimonial ? 'bg-blue-600' : 'bg-gray-300 hover:bg-gray-400'
+                  className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                    index === currentTestimonial ? 'bg-text' : 'bg-gray-300 hover:bg-gray-400'
                   }`}
                 />
               ))}
@@ -560,37 +603,37 @@ function App() {
         </div>
       </section>
 
-      {/* FAQ Section */}
-      <section id="faq" className="py-20 scroll-animate section-divider">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/* FAQ Section - Anabolio minimal style */}
+      <section id="faq" className="py-24 scroll-animate">
+        <div className="max-w-4xl mx-auto px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-gray-900 mb-4">
+            <h2 className="text-4xl font-bold text-text font-extrabold mb-4">
               Frequently Asked Questions
             </h2>
-            <p className="text-xl text-gray-600">
+            <p className="text-base text-text-muted font-body">
               Everything you need to know about TalkBuddy
             </p>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-3">
             {faqs.map((faq, index) => (
-              <div key={index} className="bg-white/90 rounded-lg shadow-lg transition-all duration-300">
+              <div key={index} className="bg-background-light rounded-xl transition-all duration-200 border border-gray-200 overflow-hidden hover:shadow-sm">
                 <button
                   onClick={() => toggleFAQ(index)}
-                  className="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-gray-50 transition-all duration-300 rounded-lg"
+                  className="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-gray-50 transition-all duration-200 rounded-lg"
                 >
-                  <span className="font-semibold text-gray-900 pr-4">
+                  <span className="font-semibold text-text pr-4 font-extrabold text-sm">
                     {faq.question}
                   </span>
                   <ChevronDown 
-                    className={`h-5 w-5 text-gray-600 transition-transform duration-300 ${
+                    className={`h-4 w-4 text-text-muted transition-transform duration-300 ${
                       openFAQ === index ? 'transform rotate-180' : ''
                     }`}
                   />
                 </button>
                 {openFAQ === index && (
                   <div className="px-6 pb-4">
-                    <p className="text-gray-600 leading-relaxed">
+                    <p className="text-text-muted leading-relaxed font-body text-sm">
                       {faq.answer}
                     </p>
                   </div>
@@ -601,72 +644,85 @@ function App() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="py-16 relative footer-dark section-top-divider">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      {/* Footer - Anabolio minimal style */}
+      <footer className="py-16 relative bg-background border-t border-gray-200">
+        <div className="max-w-6xl mx-auto px-6 lg:px-8">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold mb-4 text-white">
+            <h2 className="text-3xl font-bold mb-4 text-text font-extrabold">
               Ready to Start Speaking with Confidence?
             </h2>
-            <p className="text-xl mb-8 text-gray-300">
+            <p className="text-base mb-8 text-text-muted font-body">
               Join thousands of learners who've transformed their speaking skills with TalkBuddy
             </p>
             <button 
-              onClick={() => handleAuthModal('signup')}
-              className="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-lg transition-colors shadow-lg"
+              onClick={() => setWaitlistModalOpen(true)}
+                className="btn-glossy px-6 py-3 rounded-full font-bold text-base"
             >
-              Try Your First Conversation
+              Join the Wait List
             </button>
           </div>
 
-          <div className="border-t border-gray-300/30 pt-8">
+          <div className="border-t border-gray-200 pt-8">
             <div className="grid md:grid-cols-4 gap-8">
               <div className="md:col-span-2">
                 <div className="flex items-center space-x-2 mb-4">
-                  <Mic className="h-8 w-8 text-blue-400" />
-                  <span className="text-2xl font-bold text-white">TalkBuddy</span>
+                  <span className="text-xl font-bold text-text font-extrabold">TalkBuddy</span>
                 </div>
-                <p className="text-gray-300 leading-relaxed">
+                <p className="text-text-muted leading-relaxed text-sm font-body">
                   Your AI-powered language partner that helps you build real speaking confidence through personalized, judgment-free conversations.
                 </p>
               </div>
               
               <div>
-                <h3 className="font-semibold mb-4 text-white">Product</h3>
-                <ul className="space-y-2 text-gray-300">
-                  <li><a href="#" className="hover:text-white transition-colors">Features</a></li>
-                  <li><a href="#" className="hover:text-white transition-colors">Pricing</a></li>
-                  <li><a href="#" className="hover:text-white transition-colors">How It Works</a></li>
-                  <li><a href="#" className="hover:text-white transition-colors">Reviews</a></li>
+                <h3 className="font-semibold mb-4 text-text font-extrabold text-sm">Product</h3>
+                <ul className="space-y-2 text-text-muted">
+                  <li><a href="#" className="hover:text-text transition-colors text-sm font-body">Features</a></li>
+                  <li><a href="#" className="hover:text-text transition-colors text-sm font-body">Pricing</a></li>
+                  <li><a href="#" className="hover:text-text transition-colors text-sm font-body">How It Works</a></li>
+                  <li><a href="#" className="hover:text-text transition-colors text-sm font-body">Reviews</a></li>
                 </ul>
               </div>
               
               <div>
-                <h3 className="font-semibold mb-4 text-white">Legal</h3>
-                <ul className="space-y-2 text-gray-300">
-                  <li><a href="#" className="hover:text-white transition-colors">Privacy Policy</a></li>
-                  <li><a href="#" className="hover:text-white transition-colors">Terms of Service</a></li>
-                  <li><a href="#" className="hover:text-white transition-colors">Cookie Policy</a></li>
-                  <li><a href="#" className="hover:text-white transition-colors">Contact Us</a></li>
+                <h3 className="font-semibold mb-4 text-text font-extrabold text-sm">Legal</h3>
+                <ul className="space-y-2 text-text-muted">
+                  <li><a href="#" className="hover:text-text transition-colors text-sm font-body">Privacy Policy</a></li>
+                  <li><a href="#" className="hover:text-text transition-colors text-sm font-body">Terms of Service</a></li>
+                  <li><a href="#" className="hover:text-text transition-colors text-sm font-body">Cookie Policy</a></li>
+                  <li><a href="#" className="hover:text-text transition-colors text-sm font-body">Contact Us</a></li>
                 </ul>
               </div>
             </div>
             
-            <div className="border-t border-white/20 mt-8 pt-8 text-center text-gray-300">
-              <p>&copy; 2025 TalkBuddy. All rights reserved. Built for language learners who want to speak with confidence.</p>
+            <div className="border-t border-gray-200 mt-8 pt-8 text-center text-text-muted">
+              <p className="text-sm font-body">&copy; 2025 TalkBuddy. All rights reserved. Built for language learners who want to speak with confidence.</p>
             </div>
           </div>
         </div>
       </footer>
 
+      {/* SIGNUP DISABLED: onSignUpStart callback removed */}
+      {/* onSignUpStart={() => {
+        signingUpRef.current = true;
+      }} */}
       <AuthModal
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
         initialMode={authModalMode}
         showSuccessMessage={showSuccessMessage}
-        onSignUpStart={() => {
-          signingUpRef.current = true;
+      />
+      <WaitlistModal
+        isOpen={waitlistModalOpen}
+        onClose={() => setWaitlistModalOpen(false)}
+        onSuccess={(email) => {
+          setWaitlistSuccessEmail(email);
+          setWaitlistSuccessOpen(true);
         }}
+      />
+      <WaitlistSuccessModal
+        isOpen={waitlistSuccessOpen}
+        email={waitlistSuccessEmail}
+        onClose={() => setWaitlistSuccessOpen(false)}
       />
     </div>
   );

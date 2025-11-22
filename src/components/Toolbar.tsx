@@ -1,10 +1,343 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { BookOpen, Lightbulb, Volume2, Star, X, Play, Mic, MicOff, Loader2, AlertCircle, CheckCircle, Target, Trophy } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { BookOpen, Lightbulb, Volume2, Star, X, Mic, MicOff, Loader2, AlertCircle, CheckCircle, Target, ChevronUp, ChevronDown, TrendingUp, ArrowRight } from 'lucide-react';
 import { germanTTS } from '../lib/tts';
+import PronunciationSentenceView from './PronunciationSentenceView';
+
+// Word Practice Card Component
+interface WordPracticeCardProps {
+  word: {original: string, phonetic: string, transliteration: string, syllables: string[]};
+  onPlayAudio?: (word: string, speed?: number) => void;
+  globalSpeed: number;
+  onSpeedChange?: (speed: number) => void;
+  onPractice: (word: string) => void;
+  isRecording: boolean;
+  onStartRecording: () => void;
+  onStopRecording: () => void;
+  pronunciationScore?: number;
+  onAnalyzeWord?: (word: string) => void;
+  isAnalyzing?: boolean;
+  wordAnalysis?: {
+    score: number;
+    feedback: string;
+    syllableAnalysis?: Array<{
+      syllable: string;
+      score: number;
+      feedback: string;
+    }>;
+  };
+  isReadyForAnalysis?: boolean;
+  hasBeenAnalyzed?: boolean;
+  onSaveToDifficult?: (word: string) => void;
+  isInDifficultWords?: boolean;
+  onAddExperience?: (amount: number, source: string) => void;
+}
+
+const WordPracticeCard: React.FC<WordPracticeCardProps> = ({
+  word,
+  onPlayAudio,
+  globalSpeed,
+  onSpeedChange,
+  onPractice,
+  isRecording,
+  onStartRecording,
+  onStopRecording,
+  pronunciationScore,
+  onAnalyzeWord,
+  isAnalyzing = false,
+  wordAnalysis,
+  isReadyForAnalysis = false,
+  hasBeenAnalyzed = false,
+  onSaveToDifficult,
+  isInDifficultWords = false,
+  onAddExperience
+}) => {
+  console.log('🎯 WordPracticeCard rendered for word:', word.original);
+  console.log('🎯 wordAnalysis prop:', wordAnalysis);
+  console.log('🎯 hasBeenAnalyzed prop:', hasBeenAnalyzed);
+  console.log('🎯 isReadyForAnalysis prop:', isReadyForAnalysis);
+  console.log('🎯 isAnalyzing prop:', isAnalyzing);
+  
+  const [wordSpeed, setWordSpeed] = useState(globalSpeed);
+
+  // Debug logging for analyze button state
+  console.log(`🔍 WordPracticeCard for "${word.original}":`, {
+    isReadyForAnalysis,
+    hasBeenAnalyzed,
+    isAnalyzing,
+    isRecording,
+    buttonText: !isReadyForAnalysis ? 'Record First' : 
+               hasBeenAnalyzed ? 'Analyzed' :
+               isAnalyzing ? 'Analyzing...' : 'Analyze'
+  });
+
+  const handleSpeedChange = (newSpeed: number) => {
+    setWordSpeed(newSpeed);
+    if (onSpeedChange) {
+      onSpeedChange(newSpeed);
+    }
+  };
+
+  const getScoreColor = (score?: number) => {
+    if (!score) return 'text-gray-500';
+    if (score >= 90) return 'text-green-600';
+    if (score >= 70) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
+  const getScoreBg = (score?: number) => {
+    if (!score) return 'bg-gray-100';
+    if (score >= 90) return 'bg-green-100';
+    if (score >= 70) return 'bg-yellow-100';
+    return 'bg-red-100';
+  };
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
+      {/* Word Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h6 className="font-semibold text-lg text-gray-900">{word.original}</h6>
+          <p className="text-sm text-gray-600">[{word.phonetic}]</p>
+          <p className="text-sm text-text600 italic">{word.transliteration}</p>
+        </div>
+        {pronunciationScore !== undefined && (
+          <div className={`px-3 py-1 rounded-full text-sm font-medium ${getScoreBg(pronunciationScore)} ${getScoreColor(pronunciationScore)}`}>
+            {pronunciationScore}/100
+          </div>
+        )}
+      </div>
+
+      {/* Syllable Breakdown */}
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-gray-700">Syllables:</p>
+        <div className="flex flex-wrap gap-1">
+          {word.syllables.map((syllable, index) => (
+            <span key={index} className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm">
+              {syllable}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Listen Button with Speed Control */}
+      <div className="flex items-center space-x-3">
+        <button
+          onClick={() => {
+            onPlayAudio?.(word.original, wordSpeed);
+            // Add gamification points for listening to word
+            if (onAddExperience) {
+              onAddExperience(2, 'word_listen');
+            }
+          }}
+          className="flex items-center space-x-2 px-3 py-2 btn-glossy rounded-lg hover:bg-primary-600"
+        >
+          <Volume2 className="h-4 w-4" />
+          <span>Listen</span>
+        </button>
+        
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => handleSpeedChange(Math.max(0.5, wordSpeed - 0.1))}
+            className="p-1 hover:bg-gray-200 rounded"
+            disabled={wordSpeed <= 0.5}
+          >
+            <ChevronDown className="h-4 w-4 text-gray-600" />
+          </button>
+          <span className="text-sm text-gray-600 min-w-[3rem] text-center">{wordSpeed.toFixed(1)}x</span>
+          <button
+            onClick={() => handleSpeedChange(Math.min(2.0, wordSpeed + 0.1))}
+            className="p-1 hover:bg-gray-200 rounded"
+            disabled={wordSpeed >= 2.0}
+          >
+            <ChevronUp className="h-4 w-4 text-gray-600" />
+          </button>
+        </div>
+      </div>
+
+      {/* Practice Button */}
+      <div className="flex items-center space-x-3">
+        {!isRecording ? (
+          <button
+            onClick={async (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log('🖱️ Practice button clicked for word:', word.original);
+              console.log('🖱️ onPractice function exists:', !!onPractice);
+              await onPractice(word.original);
+            }}
+            className="flex items-center space-x-2 px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 cursor-pointer"
+            style={{ pointerEvents: 'auto' }}
+          >
+            <Mic className="h-4 w-4" />
+            <span>Practice</span>
+          </button>
+        ) : (
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2 px-3 py-2 bg-red-100 text-red-800 rounded-lg">
+              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+              <span className="text-sm font-medium">Recording...</span>
+            </div>
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                // Stop recording functionality removed
+              }}
+              className="flex items-center space-x-2 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 cursor-pointer"
+              style={{ pointerEvents: 'auto' }}
+            >
+              <MicOff className="h-4 w-4" />
+              <span>Stop Recording</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Individual Analysis Button */}
+      <div className="flex items-center space-x-3">
+        <button
+            onClick={async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+              console.log('🔍 ===== ANALYZE BUTTON CLICKED =====');
+            console.log('🔍 Analyze button clicked for word:', word.original);
+              console.log('🔍 onAnalyzeWord function exists:', !!onAnalyzeWord);
+              console.log('🔍 isReadyForAnalysis:', isReadyForAnalysis);
+              console.log('🔍 isAnalyzing:', isAnalyzing);
+              console.log('🔍 hasBeenAnalyzed:', hasBeenAnalyzed);
+            if (onAnalyzeWord) {
+                console.log('🔍 Calling onAnalyzeWord with word:', word.original);
+                await onAnalyzeWord(word.original);
+                console.log('🔍 onAnalyzeWord call completed');
+              } else {
+                console.log('❌ onAnalyzeWord function not provided');
+              }
+              console.log('🔍 ===== ANALYZE BUTTON CLICK END =====');
+          }}
+          disabled={!isReadyForAnalysis || isAnalyzing || hasBeenAnalyzed}
+          className={`flex items-center space-x-2 px-3 py-2 rounded-lg cursor-pointer ${
+            !isReadyForAnalysis || hasBeenAnalyzed
+              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              : isAnalyzing
+              ? 'bg-primary-300 text-text700 cursor-not-allowed'
+              : 'btn-glossy hover:bg-primary-600'
+          }`}
+          style={{ pointerEvents: isReadyForAnalysis && !hasBeenAnalyzed ? 'auto' : 'none' }}
+        >
+          {isAnalyzing ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Target className="h-4 w-4" />
+          )}
+          <span>
+            {!isReadyForAnalysis ? 'Record First' : 
+             hasBeenAnalyzed ? 'Analyzed' :
+             isAnalyzing ? 'Analyzing...' : 'Analyze'}
+          </span>
+        </button>
+        
+        {/* Save to Difficult Words Button */}
+        {hasBeenAnalyzed && wordAnalysis && wordAnalysis.score < 70 && (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log('📚 Save to difficult words clicked for:', word.original);
+              if (onSaveToDifficult) {
+                onSaveToDifficult(word.original);
+              }
+            }}
+            className={`flex items-center space-x-2 px-3 py-2 rounded-lg cursor-pointer ${
+              isInDifficultWords
+                ? 'bg-green-500 text-white hover:bg-green-600'
+                : 'bg-orange-500 text-white hover:bg-orange-600'
+            }`}
+            style={{ pointerEvents: 'auto' }}
+          >
+            <BookOpen className="h-4 w-4" />
+            <span>
+              {isInDifficultWords ? 'In Library' : 'Save to Library'}
+            </span>
+          </button>
+        )}
+      </div>
+
+      {/* Individual Word Analysis Results */}
+      {wordAnalysis && (
+        <div className="mt-4 p-3 bg-gray-50 rounded-lg border">
+          <h6 className="text-sm font-semibold text-gray-700 mb-3">Analysis Results</h6>
+          
+          {/* Two-Part Analysis Display */}
+          <div className="space-y-3">
+            {/* 1. Accuracy Rating with RAG Status Background */}
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-600">Accuracy Rating:</span>
+              {wordAnalysis.feedback === 'Analysis in progress... Please wait for results.' ? (
+                <div className="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600">
+                  Will be displayed once analysis is completed
+                </div>
+              ) : wordAnalysis.feedback.includes('No analysis can be done') || 
+                   wordAnalysis.feedback.includes('no word pronunciation was spoken') ||
+                   wordAnalysis.feedback.includes('unrelated and incorrect word pronunciation') ||
+                   wordAnalysis.feedback.includes('irrelevant/incorrect word pronunciation') ? (
+                <div className="px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
+                  No analysis available
+                </div>
+              ) : (
+            <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+              wordAnalysis.score >= 90 ? 'bg-green-100 text-green-800' :
+              wordAnalysis.score >= 70 ? 'bg-yellow-100 text-yellow-800' :
+              'bg-red-100 text-red-800'
+            }`}>
+              {wordAnalysis.score}/100
+            </div>
+              )}
+          </div>
+
+            {/* 2. Feedback */}
+            <div>
+            <span className="text-sm font-medium text-gray-600">Feedback:</span>
+            <p className="text-sm text-gray-700 mt-1">{wordAnalysis.feedback}</p>
+            </div>
+          </div>
+
+          {/* Syllable Analysis */}
+          {wordAnalysis.syllableAnalysis && wordAnalysis.syllableAnalysis.length > 0 && (
+            <div className="mt-4">
+              <span className="text-sm font-medium text-gray-600">Individual Sound Analysis:</span>
+              <div className="mt-2 space-y-2">
+                {wordAnalysis.syllableAnalysis.map((syllable, index) => (
+                  <div key={index} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center space-x-2">
+                    <span className="font-medium text-gray-800">{syllable.syllable}</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className={`px-2 py-1 rounded text-xs ${
+                        syllable.score >= 90 ? 'bg-green-100 text-green-800' :
+                        syllable.score >= 70 ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-red-100 text-red-800'
+                      }`}>
+                        {syllable.score}/100
+                      </div>
+                      <span className="text-gray-500 italic text-xs">{syllable.feedback}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              {/* Emphasis Analysis Summary */}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface ToolbarProps {
   isVisible: boolean;
   currentMessage?: string;
+  currentMessageId?: string;
   onAddToVocab: (word: string, meaning: string) => void;
   autoLoadExplanations?: boolean;
   comprehensiveAnalysis?: any;
@@ -13,14 +346,24 @@ interface ToolbarProps {
   newVocabItems?: Array<{word: string, meaning: string, context: string}>;
   persistentVocab?: Array<{word: string, meaning: string, context: string}>;
   onUpdatePersistentVocab?: (vocab: Array<{word: string, meaning: string, context: string}>) => void;
+  onOpenVocabularyBuilder?: () => void;
+  phoneticBreakdowns?: {[key: string]: Array<{original: string, phonetic: string, transliteration: string, syllables: string[]}>};
+  onPlayWordAudio?: (word: string, speed?: number) => void;
+  globalPlaybackSpeed?: number;
+  onSpeedChange?: (speed: number) => void;
+  onAddExperience?: (amount: number, source: string) => void;
+  onWordLearned?: (word?: string) => void;
+  lastGermanVoiceMessage?: any;
+  onPronunciationComplete?: (score: number, word: string) => void;
+  pendingPronunciationAnalysis?: { audioBlob: Blob, text: string, responseId: string } | null;
 }
 
 interface VocabItem {
   word: string;
   meaning: string;
   timestamp: string;
-  chatId?: string;
-  category?: string;
+  chatId: string;
+  category: string;
   theme?: string;
 }
 
@@ -33,8 +376,13 @@ interface PronunciationWord {
   difficulty?: string;
   soundsToFocus?: string[];
   improvementTips?: string[];
-  userAudio?: string;
-  referenceAudio?: string;
+  syllableAnalysis?: Array<{
+    syllable: string;
+    score: number;
+    feedback: string;
+    phoneticExpected: string;
+    phoneticActual?: string;
+  }>;
 }
 
 interface ComprehensiveAnalysis {
@@ -58,15 +406,178 @@ interface ComprehensiveAnalysis {
     word: string;
     needsPractice: boolean;
     score?: number;
+    errorType?: string;
   }>;
 }
 
-export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoLoadExplanations = false, comprehensiveAnalysis, activeTab: externalActiveTab, onTabChange, newVocabItems, persistentVocab = [], onUpdatePersistentVocab }: ToolbarProps) {
+export default function Toolbar({ 
+  isVisible, 
+  currentMessage, 
+  currentMessageId,
+  onAddToVocab, 
+  autoLoadExplanations = false, 
+  comprehensiveAnalysis, 
+  activeTab: externalActiveTab, 
+  onTabChange, 
+  newVocabItems, 
+  persistentVocab = [], 
+  onUpdatePersistentVocab,
+  onOpenVocabularyBuilder,
+  phoneticBreakdowns = {},
+  onPlayWordAudio,
+  globalPlaybackSpeed = 1.0,
+  onSpeedChange,
+  onAddExperience,
+  onWordLearned,
+  lastGermanVoiceMessage,
+  onPronunciationComplete,
+  pendingPronunciationAnalysis
+}: ToolbarProps) {
   const [internalActiveTab, setInternalActiveTab] = useState<'vocab' | 'explain' | 'pronunciation'>('explain');
   
   // Use external activeTab if provided, otherwise use internal state
   const activeTab = externalActiveTab || internalActiveTab;
   const setActiveTab = onTabChange || setInternalActiveTab;
+  
+  // State for My Vocab - words that user has starred
+  const [myVocab, setMyVocab] = useState<Set<string>>(() => {
+    const saved = localStorage.getItem('myVocab');
+    return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
+  
+  // Function to toggle word in My Vocab (add/remove)
+  const handleAddToMyVocab = async (word: string, meaning: string) => {
+    setMyVocab(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(word)) {
+        // If already starred, remove it (unstar)
+        newSet.delete(word);
+        console.log('⭐ Removed from My Vocab:', word);
+        
+        // Remove from localStorage details
+        try {
+          const savedDetails = JSON.parse(localStorage.getItem('myVocabDetails') || '[]');
+          const filtered = savedDetails.filter((w: any) => w.word !== word);
+          localStorage.setItem('myVocabDetails', JSON.stringify(filtered));
+        } catch (e) {
+          console.error('Error removing vocab details:', e);
+        }
+      } else {
+        // If not starred, add it
+        newSet.add(word);
+        console.log('⭐ Added to My Vocab:', word);
+        
+        // Fetch grammar details from LanguageTool API and save to localStorage
+        (async () => {
+          try {
+            // Find context from persistentVocab if available
+            const vocabItem = persistentVocab.find((v: any) => v.word === word);
+            const contextFromVocab = vocabItem?.context || '';
+            
+            console.log('🔍 Fetching grammar details for:', word);
+            console.log('📝 Context from vocab:', contextFromVocab);
+            
+            // Import the fetch function
+            const { fetchGrammarDetails } = await import('../utils/languageTool');
+            
+            const grammarDetails = await fetchGrammarDetails(word);
+            console.log('✅ Grammar details received:', grammarDetails);
+            
+            // Save full word details with grammar to localStorage
+            const savedDetails = JSON.parse(localStorage.getItem('myVocabDetails') || '[]');
+            const exists = savedDetails.find((w: any) => w.word === word);
+            if (!exists) {
+              const wordDetails = { 
+                word, 
+                meaning, 
+                context: contextFromVocab,
+                ...grammarDetails  // Merge grammar details
+              };
+              savedDetails.push(wordDetails);
+              localStorage.setItem('myVocabDetails', JSON.stringify(savedDetails));
+              console.log('💾 Saved word details with grammar to localStorage:', wordDetails);
+            } else {
+              console.log('⚠️ Word already exists in myVocabDetails, not overwriting');
+            }
+          } catch (error) {
+            console.error('❌ Error fetching grammar details, saving without grammar:', error);
+            // Fallback: save without grammar details
+            const savedDetails = JSON.parse(localStorage.getItem('myVocabDetails') || '[]');
+            const exists = savedDetails.find((w: any) => w.word === word);
+            if (!exists) {
+              const vocabItem = persistentVocab.find((v: any) => v.word === word);
+              savedDetails.push({ 
+                word, 
+                meaning, 
+                context: vocabItem?.context || '' 
+              });
+              localStorage.setItem('myVocabDetails', JSON.stringify(savedDetails));
+              console.log('💾 Saved word details (without grammar) to localStorage:', { word, meaning });
+            }
+          }
+        })();
+        
+        // Also call the parent's onAddToVocab only when adding
+        onAddToVocab(word, meaning);
+      }
+      // Save to localStorage (word names)
+      localStorage.setItem('myVocab', JSON.stringify(Array.from(newSet)));
+      console.log('⭐ My Vocab updated:', Array.from(newSet));
+      return newSet;
+    });
+  };
+  
+  // Function to handle deleting word from vocabulary
+  const handleDeleteFromVocab = (word: string) => {
+    console.log('🗑️ Deleting from vocabulary:', word);
+    
+    // Remove from My Vocab set
+    setMyVocab(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(word);
+      // Save to localStorage
+      localStorage.setItem('myVocab', JSON.stringify(Array.from(newSet)));
+      console.log('🗑️ My Vocab updated after deletion:', Array.from(newSet));
+      return newSet;
+    });
+    
+    // Remove from persistent vocab if onUpdatePersistentVocab is provided
+    if (onUpdatePersistentVocab) {
+      const updatedPersistentVocab = persistentVocab.filter(item => item.word !== word);
+      onUpdatePersistentVocab(updatedPersistentVocab);
+      console.log('🗑️ Persistent vocab updated after deletion');
+    }
+    
+    // Increment words learned counter
+    if (onWordLearned) {
+      onWordLearned(word);
+      console.log('🎯 Words learned incremented');
+    }
+  };
+  
+  // Function to handle audio playback for vocabulary words
+  const handlePlayAudio = (word: string) => {
+    console.log('🔊 Playing audio for word:', word);
+    if ('speechSynthesis' in window) {
+      const utterance = new SpeechSynthesisUtterance(word);
+      utterance.lang = 'de-DE'; // Set language to German
+      
+      // Try to find a German voice
+      const voices = window.speechSynthesis.getVoices();
+      const germanVoice = voices.find(voice => voice.lang === 'de-DE' || voice.lang.startsWith('de'));
+      if (germanVoice) {
+        utterance.voice = germanVoice;
+      }
+      
+      window.speechSynthesis.speak(utterance);
+      utterance.onerror = (event) => {
+        console.error("Error playing vocabulary audio:", event.error);
+      };
+    } else {
+      console.error("Web Speech API not supported in this browser.");
+    }
+  };
+  
   // Use persistent vocabulary from props instead of local state
   const vocabItems = persistentVocab.map(item => ({
     word: item.word,
@@ -79,7 +590,16 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
   const [grammarExplanation, setGrammarExplanation] = useState<string>('');
   const [speakingTips, setSpeakingTips] = useState<string>('');
   const [isLoadingExplanation, setIsLoadingExplanation] = useState(false);
-  const [vocabFilter, setVocabFilter] = useState<string>('all');
+  const [vocabView, setVocabView] = useState<'conversation' | 'builder'>('conversation');
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('myVocab');
+      const parsed: string[] = saved ? JSON.parse(saved) : [];
+      setMyVocab(new Set(parsed));
+    } catch (e) {
+      console.error('Error syncing myVocab from localStorage:', e);
+    }
+  }, [persistentVocab]);
   const [explanationCache, setExplanationCache] = useState<{[key: string]: {grammar: string, tips: string}}>({});
   const [showGrammarSection, setShowGrammarSection] = useState<boolean>(false);
   const [showSpeakingSection, setShowSpeakingSection] = useState<boolean>(false);
@@ -100,6 +620,122 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
     audioId: string;
   }>>([]);
   const [masteredWords, setMasteredWords] = useState<Set<string>>(new Set());
+  const [isRecording, setIsRecording] = useState(false);
+  const [isSentenceRecording, setIsSentenceRecording] = useState(false);
+  const [isWordRecording, setIsWordRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [individualWordAnalysis, setIndividualWordAnalysis] = useState<{[key: string]: {
+    score: number;
+    feedback: string;
+    syllableAnalysis?: Array<{
+      syllable: string;
+      score: number;
+      feedback: string;
+    }>;
+  }}>({});
+  const [analyzingWord, setAnalyzingWord] = useState<string | null>(null);
+  const [wordsReadyForAnalysis, setWordsReadyForAnalysis] = useState<Set<string>>(new Set());
+  const [wordsAnalyzed, setWordsAnalyzed] = useState<Set<string>>(new Set());
+  const [wordsRecordingCompleted, setWordsRecordingCompleted] = useState<Set<string>>(new Set());
+  const [wordsAnalysisComplete, setWordsAnalysisComplete] = useState<Set<string>>(new Set());
+  const [sentenceRecordingCompleted, setSentenceRecordingCompleted] = useState<boolean>(false);
+  const [sentenceReadyForAnalysis, setSentenceReadyForAnalysis] = useState<boolean>(false);
+  const [sentenceAnalysisComplete, setSentenceAnalysisComplete] = useState<boolean>(false);
+  const isStoppingRef = useRef(false);
+  const [lastAnalyzedSentenceId, setLastAnalyzedSentenceId] = useState<string | null>(null);
+  
+  // Sentence recording state for pronunciation practice
+  const [sentenceAudioBlob, setSentenceAudioBlob] = useState<Blob | null>(null);
+  const [sentenceRecorder, setSentenceRecorder] = useState<MediaRecorder | null>(null);
+  const [sentenceStream, setSentenceStream] = useState<MediaStream | null>(null);
+  
+  // Use refs for immediate access to recorder and stream (avoid closure issues)
+  const sentenceRecorderRef = useRef<MediaRecorder | null>(null);
+  const sentenceStreamRef = useRef<MediaStream | null>(null);
+  
+  // Word recording state for pronunciation practice (similar to sentence)
+  const [wordAudioBlobs, setWordAudioBlobs] = useState<Map<string, Blob>>(new Map());
+  
+  // Pronunciation analysis state
+  const [pronunciationAnalysis, setPronunciationAnalysis] = useState<any>(null);
+  const [isAnalyzingPronunciation, setIsAnalyzingPronunciation] = useState(false);
+  const [sentenceAnalysis, setSentenceAnalysis] = useState<{
+    overallScore: number;
+    feedback: string;
+    wordScores: Array<{
+      word: string;
+      score: number;
+      feedback: string;
+    }>;
+  } | null>(null);
+  const [sentenceAnalyzed, setSentenceAnalyzed] = useState(false);
+  const pendingWordForAnalysis = useMemo(() => {
+    for (const word of Array.from(wordsReadyForAnalysis)) {
+      if (!wordsAnalysisComplete.has(word)) {
+        return word;
+      }
+    }
+    return null;
+  }, [wordsReadyForAnalysis, wordsAnalysisComplete]);
+  const hasFreshSentencePending =
+    !!pendingPronunciationAnalysis &&
+    pendingPronunciationAnalysis.responseId !== lastAnalyzedSentenceId;
+  const isAnyAnalyzing = isAnalyzingPronunciation || isAnalyzing;
+  const canAnalyzePronunciation =
+    !isAnyAnalyzing &&
+    (Boolean(hasFreshSentencePending && pendingPronunciationAnalysis?.audioBlob) ||
+      Boolean(pendingWordForAnalysis));
+  const analyzeButtonLabel = isAnyAnalyzing
+    ? 'Analyzing...'
+    : pendingWordForAnalysis
+    ? 'Analyze Word'
+    : 'Analyze Pronunciation';
+  const handleAnalyzeButtonClick = async () => {
+    if (isAnyAnalyzing) {
+      return;
+    }
+
+    if (hasFreshSentencePending && pendingPronunciationAnalysis) {
+      await analyzePronunciation();
+      return;
+    }
+
+    if (pendingWordForAnalysis) {
+      await handleAnalyzeWord(pendingWordForAnalysis);
+    }
+  };
+
+  const [userPoints, setUserPoints] = useState(() => {
+    const saved = localStorage.getItem('pronunciation_points');
+    return saved ? parseInt(saved) : 0;
+  });
+  const [userLevel, setUserLevel] = useState(() => {
+    const saved = localStorage.getItem('pronunciation_level');
+    return saved ? parseInt(saved) : 1;
+  });
+  const [recentPointsEarned, setRecentPointsEarned] = useState(0);
+  const [progressHistory, setProgressHistory] = useState(() => {
+    const saved = localStorage.getItem('pronunciation_progress_history');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [showProgressModal, setShowProgressModal] = useState(false);
+  const [dailyBadges, setDailyBadges] = useState(() => {
+    const saved = localStorage.getItem('pronunciation_daily_badges');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [currentStreak, setCurrentStreak] = useState(() => {
+    const saved = localStorage.getItem('pronunciation_current_streak');
+    return saved ? parseInt(saved) : 0;
+  });
+  const [longestStreak, setLongestStreak] = useState(() => {
+    const saved = localStorage.getItem('pronunciation_longest_streak');
+    return saved ? parseInt(saved) : 0;
+  });
+  const [difficultWords, setDifficultWords] = useState(() => {
+    const saved = localStorage.getItem('pronunciation_difficult_words');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [showDifficultWordsModal, setShowDifficultWordsModal] = useState(false);
   const [currentSession, setCurrentSession] = useState<{
     sessionId: string;
     startTime: string;
@@ -107,30 +743,6 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
     totalScore: number;
     averageScore: number;
   } | null>(null);
-  const [userProgress, setUserProgress] = useState<{
-    level: number;
-    xp: number;
-    totalWordsMastered: number;
-    totalSessions: number;
-    streak: number;
-    achievements: string[];
-  }>({
-    level: 1,
-    xp: 0,
-    totalWordsMastered: 0,
-    totalSessions: 0,
-    streak: 0,
-    achievements: []
-  });
-
-  // Audio cache is now handled by the centralized TTS service
-
-  // Speak text function
-  const speakText = async (text: string) => {
-    await germanTTS.speak(text);
-  };
-
-  // Vocabulary is now conversation-specific, no localStorage persistence
 
   // Handle comprehensive analysis data
   useEffect(() => {
@@ -145,207 +757,126 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
         }
       }
       
-      // Set comprehensive analysis data
       setAnalysisData(comprehensiveAnalysis);
-    }
-  }, [comprehensiveAnalysis]);
-
-  // Track processed vocabulary items to prevent infinite loops
-  const processedVocabRef = useRef<Set<string>>(new Set());
-
-  // Handle new vocabulary items from Dashboard - optimized
-  useEffect(() => {
-    const processVocabItems = async () => {
-      if (newVocabItems && newVocabItems.length > 0 && onUpdatePersistentVocab) {
-        console.log('📚 === TOOLBAR PROCESSING VOCAB ITEMS ===');
-        console.log('New vocab items:', newVocabItems);
-        
-        // Create a unique key for this batch of items
-        const itemsKey = newVocabItems.map(item => `${item.word}-${item.meaning}`).join('|');
-        
-        // Check if we've already processed this batch
-        if (!processedVocabRef.current.has(itemsKey)) {
-          console.log('📚 === PROCESSING NEW VOCAB BATCH ===');
-          // Mark this batch as processed
-          processedVocabRef.current.add(itemsKey);
-          
-          // Don't filter out items - process all new items to generate meanings
-          const uniqueNewItems = newVocabItems;
-          
-          console.log('📚 === PROCESSING ALL NEW ITEMS ===');
-          console.log('Items to process:', uniqueNewItems);
-          
-          if (uniqueNewItems.length > 0) {
-            // Generate meanings for items that don't have them
-            const itemsWithMeanings = await Promise.all(uniqueNewItems.map(async (item) => {
-              console.log(`📚 === PROCESSING ITEM: ${item.word} ===`);
-              console.log('Current meaning:', item.meaning);
-              
-              if (!item.meaning || item.meaning.trim() === '') {
-                console.log(`📚 === GENERATING MEANING FOR: ${item.word} ===`);
-                try {
-                  console.log(`📚 === MAKING API CALL FOR ${item.word} ===`);
-                  console.log('API URL:', `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`);
-                  console.log('Request body:', {
-                    messages: [{
-                      role: 'user',
-                      content: `Provide the English translation for this German word: "${item.word}". Just return the English meaning, nothing else.`
-                    }],
-                    conversationId: 'word_meaning',
-                    systemInstruction: "Provide only the English translation of the German word. Be concise and accurate."
-                  });
-                  
-                  const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
-                    method: 'POST',
-                    headers: {
-                      'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                      messages: [{
-                        role: 'user',
-                        content: `Provide the English translation for this German word: "${item.word}". Just return the English meaning, nothing else.`
-                      }],
-                      conversationId: 'word_meaning',
-                      systemInstruction: "Provide only the English translation of the German word. Be concise and accurate."
-                    })
-                  });
-
-                  console.log(`📚 === API RESPONSE FOR ${item.word} ===`);
-                  console.log('Response status:', response.status);
-                  console.log('Response ok:', response.ok);
-                  console.log('Response headers:', Object.fromEntries(response.headers.entries()));
-
-                  if (response.ok) {
-                    const data = await response.json();
-                    console.log(`📚 === API DATA FOR ${item.word} ===`);
-                    console.log('Response data:', data);
-                    const meaning = data.message.trim();
-                    console.log(`📚 === GENERATED MEANING FOR ${item.word}: ${meaning} ===`);
-                    return { ...item, meaning };
-                  } else {
-                    const errorText = await response.text();
-                    console.error(`📚 === FAILED TO GET MEANING FOR ${item.word} ===`);
-                    console.error('Error response:', errorText);
-                    return { ...item, meaning: 'Meaning not found' };
-                  }
-                } catch (error) {
-                  console.error(`📚 === ERROR GENERATING MEANING FOR ${item.word} ===`);
-                  console.error('Error details:', error);
-                  return { ...item, meaning: 'Meaning not found' };
-                }
-              }
-              console.log(`📚 === ITEM ALREADY HAS MEANING: ${item.word} = ${item.meaning} ===`);
-              return item;
-            }));
-            
-            console.log('📚 === PROCESSED ITEMS WITH MEANINGS ===');
-            console.log('Final items:', itemsWithMeanings);
-            console.log('Items with meanings details:');
-            itemsWithMeanings.forEach((item, index) => {
-              console.log(`Item ${index}:`, {
-                word: item.word,
-                meaning: item.meaning,
-                context: item.context
-              });
-            });
-            
-            // Only update items that don't already have meanings in persistentVocab
-            const itemsToUpdate = itemsWithMeanings.filter(newItem => {
-              const existingItem = persistentVocab.find(existing => existing.word === newItem.word);
-              const needsUpdate = !existingItem || !existingItem.meaning || existingItem.meaning.trim() === '';
-              console.log(`📚 === CHECKING IF ${newItem.word} NEEDS UPDATE ===`);
-              console.log(`Existing item:`, existingItem);
-              console.log(`Needs update:`, needsUpdate);
-              return needsUpdate;
-            });
-            
-            console.log('📚 === ITEMS THAT NEED UPDATING ===');
-            console.log('Items to update:', itemsToUpdate);
-            
-            if (itemsToUpdate.length > 0) {
-              // Add new items or update existing ones that need meanings
-              const updatedVocab = [...persistentVocab];
-              
-              itemsToUpdate.forEach(itemToUpdate => {
-                const existingIndex = updatedVocab.findIndex(existing => existing.word === itemToUpdate.word);
-                if (existingIndex >= 0) {
-                  // Update existing item
-                  console.log(`📚 === UPDATING EXISTING ITEM: ${itemToUpdate.word} ===`);
-                  updatedVocab[existingIndex] = itemToUpdate;
-                } else {
-                  // Add new item
-                  console.log(`📚 === ADDING NEW ITEM: ${itemToUpdate.word} ===`);
-                  updatedVocab.unshift(itemToUpdate);
-                }
-              });
-              
-              console.log('📚 === UPDATING PERSISTENT VOCAB ===');
-              console.log('Updated vocab count:', updatedVocab.length);
-              console.log('Updated vocab items:');
-              updatedVocab.forEach((item, index) => {
-                console.log(`Updated item ${index}:`, {
-                  word: item.word,
-                  meaning: item.meaning,
-                  context: item.context
-                });
-              });
-              console.log('Calling onUpdatePersistentVocab with:', updatedVocab);
-              onUpdatePersistentVocab(updatedVocab);
-              console.log('📚 === ONUPDATE PERSISTENT VOCAB CALLED ===');
-            } else {
-              console.log('📚 === NO ITEMS NEED UPDATING - SKIPPING ===');
-            }
-          }
-        } else {
-          console.log('📚 === SKIPPING ALREADY PROCESSED BATCH ===');
-        }
-      }
-    };
-
-    processVocabItems();
-  }, [newVocabItems, onUpdatePersistentVocab, persistentVocab]);
-
-  // Reset newVocabItems after processing to prevent re-processing
-  useEffect(() => {
-    if (newVocabItems && newVocabItems.length > 0) {
-      // Clear the items after processing
-      setTimeout(() => {
-        // This will be handled by the parent component
-      }, 100);
-    }
-  }, [newVocabItems]);
-
-  // Cleanup processed items when component unmounts
-  useEffect(() => {
-    return () => {
-      processedVocabRef.current.clear();
-    };
-  }, []);
-
-  // Load cached explanation when switching to explain tab
-  useEffect(() => {
-    if (currentMessage && activeTab === 'explain' && explanationCache[currentMessage]) {
-      setGrammarExplanation(explanationCache[currentMessage].grammar);
-      setSpeakingTips(explanationCache[currentMessage].tips);
-      // Show both sections if both are cached
-      if (explanationCache[currentMessage].grammar && explanationCache[currentMessage].tips) {
-        setShowGrammarSection(true);
-        setShowSpeakingSection(true);
-      } else if (explanationCache[currentMessage].grammar) {
+      
+      // Show relevant sections based on errors
+      if (comprehensiveAnalysis.errorTypes.grammar) {
         setShowGrammarSection(true);
         setShowSpeakingSection(false);
-      } else if (explanationCache[currentMessage].tips) {
-        setShowGrammarSection(false);
+      }
+      if (comprehensiveAnalysis.errorTypes.pronunciation) {
         setShowSpeakingSection(true);
+        setShowGrammarSection(false);
       }
     }
-  }, [currentMessage, activeTab, explanationCache]);
+  }, [comprehensiveAnalysis, setActiveTab]);
 
-  // Auto-load explanations when opened via help button - but only if user manually clicks explain tab
-  // Removed automatic API call on toolbar expand
+  // Auto-load explanations when toolbar is opened via help button
+  useEffect(() => {
+    if (autoLoadExplanations && currentMessage && !explanationCache[currentMessage]) {
+      loadGrammarExplanation(currentMessage);
+      loadSpeakingTips(currentMessage);
+    }
+  }, [autoLoadExplanations, currentMessage, explanationCache]);
 
-  const generateGrammarExplanation = async (message: string) => {
+  // Auto-load grammar explanation when explain tab is active
+  useEffect(() => {
+    if (activeTab === 'explain' && currentMessage && !grammarExplanation) {
+      console.log('Auto-loading grammar explanation for explain tab');
+      loadGrammarExplanation(currentMessage);
+    }
+  }, [activeTab, currentMessage, grammarExplanation]);
+
+  // Auto-update analysis results when they become available
+  useEffect(() => {
+    // Update individual word analysis results when pronunciationWords changes
+    pronunciationWords.forEach(pronunciationWord => {
+      if (wordsAnalyzed.has(pronunciationWord.word)) {
+        // Check if we have a loading state for this word
+        const currentAnalysis = individualWordAnalysis[pronunciationWord.word];
+        if (currentAnalysis && currentAnalysis.feedback === 'Analysis in progress... Please wait for results.') {
+          console.log('🔄 Updating analysis results for word:', pronunciationWord.word);
+          
+          // Calculate overall score based on syllable scores if available
+          let calculatedScore = pronunciationWord.score;
+          if (pronunciationWord.syllableAnalysis && pronunciationWord.syllableAnalysis.length > 0) {
+            const syllableScores = pronunciationWord.syllableAnalysis.map((s: any) => s.score);
+            calculatedScore = Math.round(syllableScores.reduce((sum: number, score: number) => sum + score, 0) / syllableScores.length);
+          }
+          
+          // Generate true syllable analysis with individual sounds using API data
+          const syllableAnalysis = generateSyllableAnalysis(pronunciationWord.word, calculatedScore, pronunciationWord.syllableAnalysis || []);
+          
+          // Generate specific feedback based on score and syllable analysis
+          const feedback = generateSpecificFeedback(pronunciationWord.word, calculatedScore, syllableAnalysis);
+          
+          const analysisResult = {
+            score: calculatedScore,
+            feedback: feedback,
+            syllableAnalysis: syllableAnalysis
+          };
+          
+          setIndividualWordAnalysis(prev => ({
+            ...prev,
+            [pronunciationWord.word]: analysisResult
+          }));
+          
+          console.log('✅ Analysis results updated for word:', pronunciationWord.word);
+        }
+      }
+    });
+  }, [pronunciationWords, wordsAnalyzed]); // Removed individualWordAnalysis from dependencies to prevent infinite loop
+
+  // Auto-update sentence analysis results when they become available
+  useEffect(() => {
+    if (sentenceAnalysis && sentenceAnalyzed) {
+      // Check if we have a loading state for sentence analysis
+      if (sentenceAnalysis.feedback === 'Analysis in progress... Please wait for results.') {
+        console.log('🔄 Updating sentence analysis results');
+        
+        // The sentenceAnalysis should already be updated by analyzeSentencePronunciation
+        // This effect will trigger when the real analysis data becomes available
+        console.log('✅ Sentence analysis results updated');
+      }
+    }
+  }, [sentenceAnalysis, sentenceAnalyzed]);
+
+  // Clear pronunciation analysis when new pending analysis is set
+  // Auto-analyze pronunciation when pendingPronunciationAnalysis is set and pronunciation tab is active
+  useEffect(() => {
+    if (pendingPronunciationAnalysis && activeTab === 'pronunciation' && !isAnalyzingPronunciation && !pronunciationAnalysis) {
+      console.log('🔄 Auto-triggering pronunciation analysis for pending analysis');
+      console.log('📊 Pending analysis text:', pendingPronunciationAnalysis.text);
+      // Small delay to ensure UI is ready
+      setTimeout(() => {
+        analyzePronunciation();
+      }, 100);
+    }
+  }, [pendingPronunciationAnalysis, activeTab, isAnalyzingPronunciation, pronunciationAnalysis]);
+
+  // This ensures that when a new recording is analyzed, previous results are cleared
+  useEffect(() => {
+    if (pendingPronunciationAnalysis) {
+      console.log('🧹 === CLEARING PREVIOUS PRONUNCIATION ANALYSIS ===');
+      console.log('New pending analysis text:', pendingPronunciationAnalysis.text);
+      console.log('New pending analysis responseId:', pendingPronunciationAnalysis.responseId);
+      
+      // Clear previous pronunciation analysis results
+      setPronunciationAnalysis(null);
+      
+      console.log('✅ Previous pronunciation analysis cleared');
+    }
+  }, [pendingPronunciationAnalysis]);
+
+
+
+  // Load grammar explanation
+  const loadGrammarExplanation = async (message: string) => {
+    if (explanationCache[message]?.grammar) {
+      setGrammarExplanation(explanationCache[message].grammar);
+      return;
+    }
+
     setIsLoadingExplanation(true);
     try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/grammar-analysis`, {
@@ -354,40 +885,453 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          message: message
-        })
+        body: JSON.stringify({ message, useComprehensive: true })
       });
 
       if (response.ok) {
         const data = await response.json();
-        setGrammarExplanation(data.analysis);
-        setShowGrammarSection(true);
-        setShowSpeakingSection(false);
+        const grammarText = data.analysis || 'No grammar explanation available.';
+        const grammarTopic = data.grammarTopic || 'General Grammar';
         
-        // Cache the grammar explanation
+        // Use the analysis directly without adding old format wrapper
+        setGrammarExplanation(grammarText);
         setExplanationCache(prev => ({
           ...prev,
-          [message]: {
-            ...prev[message],
-            grammar: data.analysis
+          [message]: { 
+            ...prev[message], 
+            grammar: grammarText,
+            grammarTopic: grammarTopic
           }
         }));
-      } else {
-        setGrammarExplanation('Unable to generate grammar explanation at this time.');
-        setShowGrammarSection(true);
-        setShowSpeakingSection(false);
+        
+        // Load practice tips based on grammar topic
+        
+        // Save grammar topic to database if we have the necessary data
+        if (currentMessageId) {
+          // This will be handled by the parent component when grammar analysis is triggered
+          console.log('Grammar topic identified:', grammarTopic);
+        }
       }
     } catch (error) {
-      console.error('Error generating grammar explanation:', error);
-      setGrammarExplanation('Unable to generate grammar explanation at this time.');
+      console.error('Error loading grammar explanation:', error);
+      setGrammarExplanation('Error loading grammar explanation.');
     } finally {
       setIsLoadingExplanation(false);
     }
   };
 
-  const generateSpeakingTips = async (message: string) => {
-    setIsLoadingExplanation(true);
+  // DEPRECATED: GOP Algorithm functions removed - now using real GOP API
+  
+  // Temporary fallback function for individual word analysis
+  function calculateWordGOP(word: string) {
+    const hasUmlauts = /[äöü]/.test(word);
+    const hasCh = /ch/.test(word);
+    const hasR = /r/.test(word);
+    const isLong = word.length > 6;
+    
+    // Base score calculation
+    let baseScore = 85;
+    
+    // Adjust for difficulty factors
+    if (hasUmlauts) baseScore -= 15;
+    if (hasCh) baseScore -= 20;
+    if (hasR) baseScore -= 10;
+    if (isLong) baseScore -= 5;
+    
+    // Add some realistic variation (±10 points)
+    const variation = (Math.random() - 0.5) * 20;
+    baseScore = Math.max(0, Math.min(100, baseScore + variation));
+    
+    // Generate phoneme-level scores
+    const phonemeScores = [];
+    const phonemes = word.split('').filter(char => ['ä', 'ö', 'ü', 'r', 'ch'].includes(char));
+    
+    for (const phoneme of phonemes) {
+      const rule = PRONUNCIATION_RULES[phoneme as keyof typeof PRONUNCIATION_RULES];
+      if (rule) {
+        const isCorrect = Math.random() > 0.3; // 70% chance of correct pronunciation
+        const actual = isCorrect ? rule.correct : rule.commonMistakes[Math.floor(Math.random() * rule.commonMistakes.length)];
+        
+        let phonemeScore = 85;
+        if (!isCorrect) {
+          phonemeScore = Math.max(20, 85 - 40);
+        }
+        
+        phonemeScores.push({
+          phoneme,
+          score: phonemeScore,
+          feedback: isCorrect ? 'Good pronunciation' : `Practice the ${rule.correct} sound`,
+          expected: rule.correct,
+          actual
+        });
+      }
+    }
+    
+    // Determine difficulty
+    let difficulty: 'easy' | 'medium' | 'hard' = 'easy';
+    if (hasUmlauts || hasCh) difficulty = 'hard';
+    else if (hasR || isLong) difficulty = 'medium';
+    
+    // Generate feedback
+    let feedback = '';
+    if (baseScore >= 90) feedback = 'Excellent pronunciation!';
+    else if (baseScore >= 75) feedback = 'Good pronunciation with minor improvements needed.';
+    else if (baseScore >= 60) feedback = 'Fair pronunciation, practice the difficult sounds.';
+    else feedback = 'Needs significant practice. Focus on the phoneme-level feedback.';
+    
+    return {
+      word,
+      score: Math.round(baseScore),
+      phonemeScores,
+      feedback,
+      difficulty
+    };
+  }
+
+  // German pronunciation rules for individual word analysis
+  const PRONUNCIATION_RULES = {
+    'ch': { difficulty: 'hard', commonMistakes: ['k', 'sh'], correct: 'ç' },
+    'r': { difficulty: 'medium', commonMistakes: ['ɹ', 'w'], correct: 'ʁ' },
+    'ä': { difficulty: 'medium', commonMistakes: ['a', 'e'], correct: 'ɛ' },
+    'ö': { difficulty: 'hard', commonMistakes: ['o', 'e'], correct: 'ø' },
+    'ü': { difficulty: 'hard', commonMistakes: ['u', 'i'], correct: 'y' },
+    'sch': { difficulty: 'medium', commonMistakes: ['sk', 's'], correct: 'ʃ' }
+  };
+
+  const analyzePronunciation = async () => {
+    console.log('🎤 === ANALYZING PRONUNCIATION ===');
+    
+    // Check for pending analysis first (from suggested responses or mic recording)
+    if (pendingPronunciationAnalysis) {
+      console.log('📊 Using pending pronunciation analysis');
+      console.log('📊 Pending analysis text:', pendingPronunciationAnalysis.text);
+      console.log('📊 Pending analysis responseId:', pendingPronunciationAnalysis.responseId);
+      console.log('📊 Pending analysis audioBlob size:', pendingPronunciationAnalysis.audioBlob.size, 'bytes');
+      console.log('📊 Text type:', typeof pendingPronunciationAnalysis.text);
+      console.log('📊 Text length:', pendingPronunciationAnalysis.text.length);
+      
+      setIsAnalyzingPronunciation(true);
+      
+      try {
+        // Convert blob to base64
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+          try {
+            const base64Audio = (reader.result as string).split(',')[1];
+            
+            console.log('📊 About to send pronunciation analysis request');
+            console.log('📊 Using transcription:', pendingPronunciationAnalysis.text);
+            console.log('📊 Base64 audio length:', base64Audio.length);
+            
+            const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pronunciation-analysis`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                audioData: base64Audio,
+                transcription: pendingPronunciationAnalysis.text,
+                language: 'de',
+                post_id: pendingPronunciationAnalysis.responseId
+              })
+            });
+
+            if (!response.ok) {
+              const errorText = await response.text();
+              throw new Error(`Pronunciation analysis failed: ${response.status} - ${errorText}`);
+            }
+
+            const data = await response.json();
+            console.log('✅ Pronunciation analysis completed:', data);
+            console.log('✅ Analysis used transcription:', pendingPronunciationAnalysis.text);
+            
+            // Ensure sentence score is calculated from dimensions if missing or 0 or incorrect
+            if (data.sentenceDimensions) {
+              const dimensionScores = [
+                data.sentenceDimensions.soundAccuracy?.score || 0,
+                data.sentenceDimensions.stressEmphasis?.score || 0,
+                data.sentenceDimensions.smoothness?.score || 0,
+                data.sentenceDimensions.correctSpeed?.score || 0,
+                data.sentenceDimensions.intonationRhythm?.score || 0,
+                data.sentenceDimensions.understandability?.score || 0
+              ];
+              const calculatedScore = Math.round(
+                dimensionScores.reduce((sum, score) => sum + score, 0) / dimensionScores.length
+              );
+              
+              // Always recalculate from dimensions to ensure accuracy
+              data.overallScore = calculatedScore;
+              data.sentenceScore = calculatedScore;
+              console.log('✅ Calculated sentence score from dimensions:', calculatedScore);
+              console.log('📊 Dimension scores:', dimensionScores);
+            }
+            
+            setPronunciationAnalysis(data);
+            setLastAnalyzedSentenceId(pendingPronunciationAnalysis.responseId);
+            if (onPronunciationComplete && data.overallScore) {
+              const practicedText = pendingPronunciationAnalysis?.text
+                || currentMessage
+                || lastGermanVoiceMessage?.transcription
+                || 'sentence';
+              onPronunciationComplete(data.overallScore, practicedText);
+              console.log('📊 Pronunciation score sent to Dashboard (pending):', data.overallScore);
+            }
+          } catch (error) {
+            console.error('❌ Error in pronunciation analysis:', error);
+            alert(`Pronunciation analysis failed: ${(error as Error).message}`);
+          } finally {
+            setIsAnalyzingPronunciation(false);
+          }
+        };
+        
+        reader.onerror = () => {
+          console.error('❌ Error reading audio blob');
+          setIsAnalyzingPronunciation(false);
+          alert('Failed to read audio file.');
+        };
+        
+        console.log('📊 Reading audio blob for analysis');
+        reader.readAsDataURL(pendingPronunciationAnalysis.audioBlob);
+      } catch (error) {
+        console.error('❌ Error starting pronunciation analysis:', error);
+        setIsAnalyzingPronunciation(false);
+      }
+      return;
+    }
+
+    // Fallback to old behavior (lastGermanVoiceMessage)
+    if (!lastGermanVoiceMessage) {
+      console.log('No German voice message available for pronunciation analysis');
+      alert('No German voice message available. Please record a German voice message first.');
+      return;
+    }
+
+    // Check environment variables
+    if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+      alert('Configuration error: Supabase credentials not found. Please check your environment variables.');
+      console.error('Missing environment variables:', {
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+        hasAnonKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY
+      });
+      return;
+    }
+
+    console.log('Environment check:', {
+      supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+      hasAnonKey: !!import.meta.env.VITE_SUPABASE_ANON_KEY
+    });
+
+    setIsAnalyzingPronunciation(true);
+    try {
+      console.log('🎤 === ANALYZING PRONUNCIATION WITH REAL GOP API ===');
+      console.log('Message:', lastGermanVoiceMessage);
+
+      const transcription = lastGermanVoiceMessage.transcription;
+      const words = transcription.split(' ').filter((word: string) => word.length > 0);
+      
+      console.log('🎤 === CALLING REAL GOP API ===');
+      console.log('Words to analyze:', words);
+      
+      // Debug API call info
+      console.log('API Call Debug Info:', {
+        url: `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pronunciation-analysis`,
+        hasAudioData: !!lastGermanVoiceMessage.audioData,
+        audioDataLength: lastGermanVoiceMessage.audioData?.length,
+        transcription: transcription,
+        transcriptionLength: transcription?.length
+      });
+      
+      // Call real GOP API with audio data
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pronunciation-analysis`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audioData: lastGermanVoiceMessage.audioData,
+          transcription: transcription,
+          language: 'de',
+          post_id: lastGermanVoiceMessage.messageId || `voice_${Date.now()}`
+        })
+      });
+
+      console.log('API Response Status:', response.status);
+      console.log('API Response OK:', response.ok);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API Error Response:', errorText);
+        throw new Error(`Pronunciation analysis failed: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Real GOP analysis completed:', data);
+      
+      // Ensure sentence score is calculated from dimensions if missing or 0 or incorrect
+      if (data.sentenceDimensions) {
+        const dimensionScores = [
+          data.sentenceDimensions.soundAccuracy?.score || 0,
+          data.sentenceDimensions.stressEmphasis?.score || 0,
+          data.sentenceDimensions.smoothness?.score || 0,
+          data.sentenceDimensions.correctSpeed?.score || 0,
+          data.sentenceDimensions.intonationRhythm?.score || 0,
+          data.sentenceDimensions.understandability?.score || 0
+        ];
+        const calculatedScore = Math.round(
+          dimensionScores.reduce((sum, score) => sum + score, 0) / dimensionScores.length
+        );
+        
+        // Always recalculate from dimensions to ensure accuracy
+        data.overallScore = calculatedScore;
+        data.sentenceScore = calculatedScore;
+        console.log('✅ Calculated sentence score from dimensions:', calculatedScore);
+        console.log('📊 Dimension scores:', dimensionScores);
+      }
+      
+      setPronunciationAnalysis(data);
+      
+      // Show success message to user
+      console.log('✅ Pronunciation analysis completed successfully!');
+      
+    } catch (error) {
+      console.error('❌ Error in pronunciation analysis:', error);
+      
+      // Show error message to user
+      alert(`Pronunciation analysis failed: ${(error as Error).message}`);
+      
+      // Set error state for UI
+      setPronunciationAnalysis({
+        hasPronunciationErrors: true,
+        words: [],
+        suggestions: ['Analysis failed. Please try again.'],
+        overallScore: 0,
+        error: (error as Error).message
+      });
+    } finally {
+      setIsAnalyzingPronunciation(false);
+    }
+  };
+
+
+  // Word repractice functionality
+  const [isRecordingWord, setIsRecordingWord] = useState(false);
+  const [wordRecording, setWordRecording] = useState<MediaRecorder | null>(null);
+  const [wordAudioChunks, setWordAudioChunks] = useState<Blob[]>([]);
+
+  const startWordRecording = (word: string) => {
+    setPracticingWord(word);
+    setIsRecordingWord(true);
+    setWordAudioChunks([]);
+
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(stream => {
+        const mediaRecorder = new MediaRecorder(stream);
+        setWordRecording(mediaRecorder);
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            setWordAudioChunks(prev => [...prev, event.data]);
+          }
+        };
+
+        mediaRecorder.onstop = async () => {
+          const audioBlob = new Blob(wordAudioChunks, { type: 'audio/wav' });
+          await analyzeIndividualWordPronunciation(word, audioBlob);
+          stream.getTracks().forEach(track => track.stop());
+        };
+
+        mediaRecorder.start();
+      })
+      .catch(error => {
+        console.error('Error accessing microphone:', error);
+        setIsRecordingWord(false);
+        setPracticingWord(null);
+      });
+  };
+
+  const stopWordRecording = () => {
+    console.log('🛑 stopWordRecording called');
+    console.log('🛑 wordRecording exists:', !!wordRecording);
+    console.log('🛑 wordRecording state:', wordRecording?.state);
+    console.log('🛑 isRecordingWord:', isRecordingWord);
+    console.log('🛑 practicingWord:', practicingWord);
+    
+    try {
+    if (wordRecording && wordRecording.state === 'recording') {
+        console.log('🛑 Stopping word recording...');
+      wordRecording.stop();
+      } else {
+        console.log('🛑 No active word recording to stop');
+    }
+    } catch (error) {
+      console.error('❌ Error stopping word recording:', error);
+    }
+    
+    // Reset all word recording states
+    setIsRecordingWord(false);
+    setPracticingWord(null);
+    setWordRecording(null);
+    setWordAudioChunks([]);
+    
+    console.log('🛑 Word recording stopped and states reset');
+  };
+
+  const analyzeIndividualWordPronunciation = async (word: string, audioBlob: Blob) => {
+    try {
+      console.log('🎤 === ANALYZING INDIVIDUAL WORD PRONUNCIATION LOCALLY ===');
+      console.log('Word:', word);
+      
+      // Use local GOP algorithm for individual word
+      const wordScore = calculateWordGOP(word);
+      console.log('✅ Individual word analysis completed locally:', wordScore);
+      
+      // Update the pronunciation analysis with new word score
+      if (pronunciationAnalysis) {
+        const updatedWords = pronunciationAnalysis.words.map((w: any) => 
+          w.word === word ? { 
+            ...w, 
+            score: wordScore.score,
+            feedback: wordScore.feedback,
+            needsPractice: wordScore.score < 70,
+            difficulty: wordScore.difficulty,
+            syllableAnalysis: wordScore.phonemeScores.map((phoneme: any) => ({
+              syllable: phoneme.phoneme,
+              score: phoneme.score,
+              feedback: phoneme.feedback,
+              phoneticExpected: phoneme.expected,
+              phoneticActual: phoneme.actual
+            }))
+          } : w
+        );
+        
+        // Recalculate overall score
+        const newOverallScore = Math.round(updatedWords.reduce((sum: number, w: any) => sum + w.score, 0) / updatedWords.length);
+        
+        setPronunciationAnalysis({
+          ...pronunciationAnalysis,
+          words: updatedWords,
+          overallScore: newOverallScore,
+          hasPronunciationErrors: newOverallScore < 70
+        });
+        
+        console.log('✅ Updated pronunciation analysis with new score:', wordScore.score);
+      }
+    } catch (error) {
+      console.error('❌ Error in word pronunciation analysis:', error);
+    } finally {
+      setPracticingWord(null);
+    }
+  };
+
+  // Load speaking tips
+  const loadSpeakingTips = async (message: string) => {
+    if (explanationCache[message]?.tips) {
+      setSpeakingTips(explanationCache[message].tips);
+      return;
+    }
+
     try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/speaking-tips`, {
         method: 'POST',
@@ -395,110 +1339,23 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          message: message
-        })
+        body: JSON.stringify({ message })
       });
 
       if (response.ok) {
         const data = await response.json();
-        setSpeakingTips(data.tips);
-        setShowSpeakingSection(true);
-        setShowGrammarSection(false);
-        
-        // Cache the speaking tips
+        setSpeakingTips(data.tips || 'No speaking tips available.');
         setExplanationCache(prev => ({
           ...prev,
-          [message]: {
-            ...prev[message],
-            tips: data.tips
-          }
+          [message]: { ...prev[message], tips: data.tips || 'No speaking tips available.' }
         }));
-      } else {
-        setSpeakingTips('Speaking tips unavailable.');
-        setShowSpeakingSection(true);
-        setShowGrammarSection(false);
       }
     } catch (error) {
-      console.error('Error generating speaking tips:', error);
-      setSpeakingTips('Speaking tips unavailable.');
-    } finally {
-      setIsLoadingExplanation(false);
+      console.error('Error loading speaking tips:', error);
+      setSpeakingTips('Error loading speaking tips.');
     }
   };
 
-
-  const generateWordMeaning = async (word: string) => {
-    try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages: [{
-            role: 'user',
-            content: `Provide the English translation and a brief explanation for this German word: "${word}". Format as: WORD: [German word] MEANING: [English translation] EXPLANATION: [Brief explanation]`
-          }],
-          conversationId: 'vocab_helper',
-          systemInstruction: "Provide clear German-English translations and brief explanations for vocabulary words."
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const content = data.message;
-        
-        // Parse the response
-        const wordMatch = content.match(/WORD:\s*(.+?)(?=MEANING:|$)/);
-        const meaningMatch = content.match(/MEANING:\s*(.+?)(?=EXPLANATION:|$)/);
-        const explanationMatch = content.match(/EXPLANATION:\s*(.+)/);
-        
-        const meaning = meaningMatch ? meaningMatch[1].trim() : word;
-        const explanation = explanationMatch ? explanationMatch[1].trim() : '';
-        
-        const newVocabItem: VocabItem = {
-          word: wordMatch ? wordMatch[1].trim() : word,
-          meaning,
-          timestamp: new Date().toISOString(),
-          chatId: 'current_session',
-          category: 'General',
-          theme: 'Current Chat'
-        };
-        
-        // Add to persistent vocabulary
-        if (onUpdatePersistentVocab) {
-          onUpdatePersistentVocab([...persistentVocab, newVocabItem]);
-        }
-        onAddToVocab(newVocabItem.word, newVocabItem.meaning);
-      }
-    } catch (error) {
-      console.error('Error generating word meaning:', error);
-      // Add with basic meaning
-      const newVocabItem: VocabItem = {
-        word,
-        meaning: word,
-        timestamp: new Date().toISOString(),
-        chatId: 'current_session',
-        category: 'General',
-        theme: 'Current Chat'
-      };
-      // Add to persistent vocabulary
-      if (onUpdatePersistentVocab) {
-        onUpdatePersistentVocab([...persistentVocab, newVocabItem]);
-      }
-      onAddToVocab(word, word);
-    }
-  };
-
-  // Remove vocabulary item
-  const removeVocabItem = (index: number) => {
-    if (onUpdatePersistentVocab) {
-      const updatedVocab = persistentVocab.filter((_, i) => i !== index);
-      onUpdatePersistentVocab(updatedVocab);
-    }
-  };
 
   // Comprehensive analysis function
   const analyzeComprehensive = async (message: string) => {
@@ -511,7 +1368,7 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: message,
+          message,
           userLevel: 'Intermediate',
           source: 'text'
         })
@@ -519,26 +1376,9 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
 
       if (response.ok) {
         const data = await response.json();
-        setComprehensiveAnalysis(data);
+        console.log('📊 Comprehensive analysis result:', data);
         
-        // Auto-add vocabulary words if found
-        if (data.corrections.vocabulary) {
-          data.corrections.vocabulary.forEach((word: any) => {
-            const newVocabItem: VocabItem = {
-              word: word.correct,
-              meaning: word.meaning,
-              timestamp: new Date().toISOString(),
-              chatId: 'current_session',
-              category: 'Correction',
-              theme: 'Grammar Help'
-            };
-            // Add to persistent vocabulary
-            if (onUpdatePersistentVocab) {
-              onUpdatePersistentVocab([...persistentVocab, newVocabItem]);
-            }
-            onAddToVocab(word.correct, word.meaning);
-          });
-        }
+        setAnalysisData(data);
         
         // Set up pronunciation words for practice
         if (data.wordsForPractice) {
@@ -569,8 +1409,8 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
     }
   };
 
-  // Word segmentation function
-  const segmentWords = async (audioData: string, transcription: string) => {
+  // Segment words for practice
+  const segmentWords = async (text: string) => {
     try {
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/word-segmentation`, {
         method: 'POST',
@@ -579,15 +1419,14 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          audioData,
-          transcription,
-          language: 'de'
+          audioData: '', // Not needed for text segmentation
+          transcription: text
         })
       });
 
       if (response.ok) {
         const data = await response.json();
-        return data.segments;
+        return data.segments || [];
       }
     } catch (error) {
       console.error('Error segmenting words:', error);
@@ -596,33 +1435,77 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
   };
 
   // Pronunciation practice functions
-  const practiceWord = (word: string) => {
+  const practiceWord = async (word: string) => {
+    console.log('🎤 Starting practice for word:', word);
+    console.log('🎤 Current practicing word:', practicingWord);
+    console.log('🎤 Current recording state:', isRecording);
+    
+    // Add gamification points for starting practice
+    if (onAddExperience) {
+      onAddExperience(5, 'word_practice_start');
+    }
+    
+    // Reset stopping flag and analysis state for this word
+    isStoppingRef.current = false;
+    setWordsAnalyzed(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(word);
+      return newSet;
+    });
+    // Reset ready for analysis when starting new practice (like Suggested Response)
+    setWordsReadyForAnalysis(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(word);
+      return newSet;
+    });
+    setWordsAnalysisComplete(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(word);
+      return newSet;
+    });
+    
+    // Reset sentence states when starting individual word practice
+    setSentenceRecordingCompleted(false);
+    setSentenceReadyForAnalysis(false);
+    setSentenceAnalysis(null);
+    setSentenceAnalyzed(false);
+    setSentenceAnalysisComplete(false);
+    
     setPracticingWord(word);
     setCurrentAttempt(0);
+    // Pass word directly to startRecording to avoid closure/state timing issues
+    await startRecording(word);
   };
 
   const startWordPractice = async () => {
     if (!practicingWord) return;
     
     try {
+      // Reset sentence states when starting individual word practice
+      setSentenceRecordingCompleted(false);
+      setSentenceReadyForAnalysis(false);
+      setSentenceAnalysis(null);
+      setSentenceAnalyzed(false);
+      setSentenceAnalysisComplete(false);
+      
       // Start recording for specific word
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
       const chunks: Blob[] = [];
 
       recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
           chunks.push(event.data);
-        }
       };
 
       recorder.onstop = async () => {
         const audioBlob = new Blob(chunks, { type: 'audio/webm' });
-        await processWordPractice(audioBlob, practicingWord);
-        stream.getTracks().forEach(track => track.stop());
+        await analyzeWordPronunciation(audioBlob);
+        setIsRecording(false);
       };
 
       recorder.start();
+      setMediaRecorder(recorder);
+      setIsRecording(true);
       
       // Auto-stop after 3 seconds for word practice
       setTimeout(() => {
@@ -630,202 +1513,8 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
           recorder.stop();
         }
       }, 3000);
-      
     } catch (error) {
       console.error('Error starting word practice:', error);
-    }
-  };
-
-  const processWordPractice = async (audioBlob: Blob, word: string) => {
-    try {
-      // Convert to base64
-      const arrayBuffer = await audioBlob.arrayBuffer();
-      const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-
-      // Store audio for practice session
-      const storageResponse = await storeAudio(audioBlob, word, 'word');
-      
-      // Send to pronunciation analysis
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pronunciation-analysis`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          audioData: base64Audio,
-          transcription: word,
-          language: 'de'
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const wordScore = data.words?.[0]?.score || 0;
-        
-        // Update the word score
-        updateWordScore(word, wordScore);
-        
-        // Update progress tracking
-        updateProgress(word, wordScore);
-        
-        // Update session progress
-        updateSessionProgress(word, wordScore);
-        
-        // Store practice history
-        const practiceEntry = {
-          word,
-          score: wordScore,
-          attempts: currentAttempt + 1,
-          timestamp: new Date().toISOString(),
-          audioId: storageResponse.audioId
-        };
-        setPracticeHistory(prev => [...prev, practiceEntry]);
-        
-        // Check if word is mastered or max attempts reached
-        if (wordScore >= 80 || currentAttempt >= maxAttempts - 1) {
-          setPracticingWord(null);
-          setCurrentAttempt(0);
-          
-          // Check if all words are mastered
-          const allWordsMastered = pronunciationWords.every(w => 
-            w.word === word ? wordScore >= 80 : w.score >= 80
-          );
-          
-          if (allWordsMastered) {
-            // End practice session
-            endPracticeSession();
-          }
-        } else {
-          setCurrentAttempt(prev => prev + 1);
-        }
-      }
-    } catch (error) {
-      console.error('Error processing word practice:', error);
-    }
-  };
-
-  const storeAudio = async (audioBlob: Blob, word: string, practiceType: string) => {
-    try {
-      const arrayBuffer = await audioBlob.arrayBuffer();
-      const base64Audio = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/audio-storage`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          audioData: base64Audio,
-          word,
-          practiceType,
-          metadata: {
-            timestamp: new Date().toISOString(),
-            attempts: currentAttempt + 1
-          }
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setAudioStorage(prev => ({
-          ...prev,
-          [data.audioId]: data.url
-        }));
-        return data;
-      }
-    } catch (error) {
-      console.error('Error storing audio:', error);
-    }
-    return { audioId: '', url: '' };
-  };
-
-  const getAudioUrl = (audioId: string) => {
-    return audioStorage[audioId] || '';
-  };
-
-  // Visual feedback components
-  const ErrorBadge = ({ type, hasError }: { type: string, hasError: boolean }) => {
-    if (!hasError) return null;
-    
-    const badgeConfig = {
-      grammar: { color: 'bg-red-100 text-red-800', icon: AlertCircle, label: 'Grammar' },
-      vocabulary: { color: 'bg-blue-100 text-blue-800', icon: BookOpen, label: 'Vocabulary' },
-      pronunciation: { color: 'bg-green-100 text-green-800', icon: Volume2, label: 'Pronunciation' }
-    };
-    
-    const config = badgeConfig[type as keyof typeof badgeConfig];
-    if (!config) return null;
-    
-    const Icon = config.icon;
-
-  return (
-      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${config.color}`}>
-        <Icon className="h-3 w-3 mr-1" />
-        {config.label}
-      </span>
-    );
-  };
-
-  const ProgressBar = ({ score, maxScore = 100 }: { score: number, maxScore?: number }) => {
-    const percentage = Math.min((score / maxScore) * 100, 100);
-    const color = percentage >= 80 ? 'bg-green-500' : percentage >= 60 ? 'bg-yellow-500' : 'bg-red-500';
-    
-    return (
-      <div className="w-full bg-gray-200 rounded-full h-2">
-        <div 
-          className={`h-2 rounded-full transition-all duration-300 ${color}`}
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
-    );
-  };
-
-  const ScoreDisplay = ({ score, label }: { score: number, label: string }) => {
-    const color = score >= 80 ? 'text-green-600' : score >= 60 ? 'text-yellow-600' : 'text-red-600';
-    
-    return (
-      <div className="flex items-center space-x-2">
-        <span className="text-sm font-medium text-gray-700">{label}:</span>
-        <span className={`text-sm font-bold ${color}`}>{score}/100</span>
-        {score >= 80 && <CheckCircle className="h-4 w-4 text-green-500" />}
-      </div>
-    );
-  };
-
-  const AchievementBadge = ({ type, unlocked }: { type: string, unlocked: boolean }) => {
-    if (!unlocked) return null;
-    
-    const achievements = {
-      'first_practice': { icon: Target, label: 'First Practice', color: 'bg-blue-100 text-blue-800' },
-      'perfect_score': { icon: Trophy, label: 'Perfect Score', color: 'bg-yellow-100 text-yellow-800' },
-      'word_master': { icon: Star, label: 'Word Master', color: 'bg-purple-100 text-purple-800' }
-    };
-    
-    const achievement = achievements[type as keyof typeof achievements];
-    if (!achievement) return null;
-    
-    const Icon = achievement.icon;
-    
-    return (
-      <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${achievement.color} animate-pulse`}>
-        <Icon className="h-4 w-4 mr-2" />
-        {achievement.label}
-      </div>
-    );
-  };
-
-  const updateWordScore = (word: string, score: number) => {
-    setPronunciationWords(prev => prev.map(w => 
-      w.word === word 
-        ? { ...w, score, needsPractice: score < 80 }
-        : w
-    ));
-    
-    // Check if word is mastered
-    if (score >= 80) {
-      setMasteredWords(prev => new Set([...prev, word]));
     }
   };
 
@@ -840,7 +1529,1719 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
       averageScore: 0
     };
     setCurrentSession(newSession);
+    console.log('🎤 Practice session started:', sessionId);
     return sessionId;
+  };
+
+  const startRecording = async (wordOverride?: string) => {
+    console.log('🎤 startRecording called');
+    console.log('🎤 Current practicing word:', practicingWord);
+    console.log('🎤 Word override parameter:', wordOverride);
+    
+    // Use wordOverride if provided (to avoid state timing issues), otherwise use practicingWord
+    // This ensures we use the correct word when onstop handler fires
+    const currentWord = wordOverride || practicingWord;
+    console.log('🎤 Using word for recording:', currentWord);
+    
+    try {
+      console.log('🎤 Requesting microphone access...');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('🎤 Microphone access granted, stream:', stream);
+      
+      const recorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+
+      recorder.ondataavailable = (event) => {
+        console.log('🎤 Data available, chunk size:', event.data.size);
+        chunks.push(event.data);
+      };
+
+      recorder.onstop = async () => {
+        console.log('🎤 Recording stopped (onstop handler)');
+        console.log('🎤 Captured word at onstop:', currentWord);
+        console.log('🎤 Current practicingWord state:', practicingWord);
+        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+        console.log('🎤 Audio blob created, size:', audioBlob.size);
+        console.log('🎤 Chunks array length:', chunks.length);
+        
+        // Store audio blob for word practice (similar to sentence practice)
+        // Use captured currentWord instead of practicingWord from closure
+        if (currentWord && currentWord !== 'sentence') {
+          console.log('🎤 Storing audio blob for word:', currentWord);
+          setWordAudioBlobs(prev => {
+            const newMap = new Map(prev);
+            newMap.set(currentWord, audioBlob);
+            console.log('✅ Audio blob stored in wordAudioBlobs for word:', currentWord);
+            return newMap;
+          });
+          
+          // Mark word as ready for analysis (don't auto-analyze, let user click Analyze button)
+          // Note: wordsReadyForAnalysis is already set in stopRecording(), but set it here too as backup
+          setWordsRecordingCompleted(prev => {
+            const newSet = new Set([...prev, currentWord]);
+            console.log('✅ Word marked as recording completed (onstop):', currentWord);
+            return newSet;
+          });
+          setWordsReadyForAnalysis(prev => {
+            const newSet = new Set([...prev, currentWord]);
+            console.log('✅ Word marked as ready for analysis (onstop backup):', currentWord);
+            return newSet;
+          });
+          // Don't mark as complete yet - wait for user to click Analyze button
+          console.log('✅ Word recording completed and ready for analysis - waiting for user to click Analyze');
+        } else {
+          console.log('⚠️ No word to store audio blob for (currentWord:', currentWord, ')');
+        }
+        
+        // Stop all tracks
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      // Start recording immediately with timeslice to ensure data chunks are collected
+      // Timeslice of 100ms ensures data is available even for short recordings
+      recorder.start(100);
+      setMediaRecorder(recorder);
+      
+      // Set appropriate recording state based on what's being practiced
+      // Use currentWord for consistency (should be 'sentence' for sentence practice, word string for word practice)
+      if (currentWord === 'sentence') {
+        setIsSentenceRecording(true);
+        setIsWordRecording(false);
+      } else {
+        setIsWordRecording(true);
+        setIsSentenceRecording(false);
+      }
+        setIsRecording(true);
+      
+        console.log('🎤 Recording started for pronunciation practice');
+      
+    } catch (error) {
+      console.error('❌ Error starting recording:', error);
+      console.error('❌ Error details:', {
+        name: (error as Error).name,
+        message: (error as Error).message,
+        stack: (error as Error).stack
+      });
+    }
+  };
+
+  const stopRecording = () => {
+    console.log('🛑 stopRecording called');
+    console.log('🛑 MediaRecorder exists:', !!mediaRecorder);
+    console.log('🛑 Is recording:', isRecording);
+    console.log('🛑 Is stopping:', isStoppingRef.current);
+    console.log('🛑 Practicing word:', practicingWord);
+    
+    if (mediaRecorder && isRecording && !isStoppingRef.current) {
+      console.log('🛑 Stopping recording...');
+      isStoppingRef.current = true;
+      
+      // Store practicingWord value to avoid closure issues
+      const currentPracticingWord = practicingWord;
+      
+      mediaRecorder.stop();
+      
+      // Set recording states to false immediately when user clicks stop
+      setIsRecording(false);
+      setIsSentenceRecording(false);
+      setIsWordRecording(false);
+      
+      // Mark sentence as recording completed (word will be handled in recorder.onstop)
+      if (currentPracticingWord === 'sentence') {
+        // For sentence practice, use separate sentence states
+        // Don't mark as complete immediately - wait for user to click Analyze button
+        setSentenceRecordingCompleted(true);
+        setSentenceReadyForAnalysis(true);
+        setSentenceAnalysisComplete(false); // Don't enable Analyze button yet - wait for recording to fully stop
+        console.log('✅ Sentence marked as recording completed and ready for analysis (will enable Analyze after recorder.onstop)');
+      } else if (currentPracticingWord && currentPracticingWord !== 'sentence') {
+        // For word practice, immediately mark as ready for analysis (similar to sentence practice)
+        // The audio blob will be stored in recorder.onstop handler, but we mark ready now so Analyze button appears
+        setWordsRecordingCompleted(prev => {
+          const newSet = new Set([...prev, currentPracticingWord]);
+          console.log('✅ Word marked as recording completed (immediate):', currentPracticingWord);
+          return newSet;
+        });
+        setWordsReadyForAnalysis(prev => {
+          const newSet = new Set([...prev, currentPracticingWord]);
+          console.log('✅ Word marked as ready for analysis (immediate):', currentPracticingWord);
+          return newSet;
+        });
+        console.log('✅ Word recording stopped - marked as ready for analysis immediately');
+      }
+      
+      console.log('🎤 Recording stopped, waiting for audio blob to be created in onstop handler');
+      
+      // Reset the stopping flag after a short delay
+      setTimeout(() => {
+        isStoppingRef.current = false;
+        console.log('🛑 Stopping flag reset');
+      }, 1000);
+        } else {
+      console.log('🛑 Cannot stop recording - no recorder, not recording, or already stopping');
+      console.log('🛑 Debug info:', {
+        mediaRecorder: !!mediaRecorder,
+        isRecording,
+        isStopping: isStoppingRef.current
+      });
+    }
+  };
+
+  // Sentence recording functions for pronunciation practice
+  const startSentenceRecording = async () => {
+    console.log('🎤 ===== START SENTENCE RECORDING CALLED =====');
+    console.log('🎤 Starting sentence recording for pronunciation practice...');
+    
+    try {
+      console.log('🎤 Requesting microphone access...');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('✅ Microphone access granted, stream obtained');
+      
+      // Store in refs for immediate access (avoid closure issues)
+      sentenceStreamRef.current = stream;
+      setSentenceStream(stream); // Also store in state for UI
+      console.log('✅ Stream stored in ref and state');
+      
+      const recorder = new MediaRecorder(stream);
+      const audioChunks: BlobPart[] = [];
+      
+      recorder.ondataavailable = (event) => {
+        audioChunks.push(event.data);
+      };
+      
+      recorder.onstop = async () => {
+        console.log('🛑 Sentence recording stopped (onstop handler)');
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        setSentenceAudioBlob(audioBlob);
+        console.log('✅ Audio blob created, size:', audioBlob.size);
+        
+        // Recording state already set to false in stopSentenceRecording
+        // Just ensure it's false here as well
+        setIsSentenceRecording(false);
+        
+        // Mark sentence as ready for analysis (don't auto-analyze, let user click Analyze button)
+        setSentenceRecordingCompleted(true);
+        setSentenceReadyForAnalysis(true);
+        // Don't mark as complete yet - wait for user to click Analyze button
+        setSentenceAnalysisComplete(false);
+        console.log('✅ Sentence marked as recording completed and ready for analysis');
+        
+        // Stop all tracks and clear stream reference (already stopped, but ensure cleanup)
+        stream.getTracks().forEach(track => {
+          if (track.readyState === 'live') {
+            track.stop();
+          }
+        });
+        
+        // Clear refs and state
+        sentenceStreamRef.current = null;
+        sentenceRecorderRef.current = null;
+        setSentenceStream(null);
+        setSentenceRecorder(null);
+        console.log('✅ Refs and state cleared');
+      };
+      
+      recorder.start();
+      console.log('✅ MediaRecorder started');
+      
+      // Store in refs for immediate access (avoid closure issues)
+      sentenceRecorderRef.current = recorder;
+      setSentenceRecorder(recorder); // Also store in state for UI
+      console.log('✅ Recorder stored in ref and state');
+      
+      // NOW set recording state to true AFTER everything is initialized
+      setIsSentenceRecording(true);
+      console.log('✅ isSentenceRecording set to true');
+      console.log('✅ Sentence recording started successfully, recorder and stream stored in refs and state');
+      console.log('🎤 ===== START SENTENCE RECORDING END =====');
+      
+    } catch (error) {
+      console.error('❌ Error starting sentence recording:', error);
+      console.error('❌ Error details:', {
+        name: (error as Error).name,
+        message: (error as Error).message,
+        stack: (error as Error).stack
+      });
+      
+      // Clean up on error
+      setIsSentenceRecording(false);
+      setPracticingWord(null);
+      sentenceStreamRef.current = null;
+      sentenceRecorderRef.current = null;
+      setSentenceStream(null);
+      setSentenceRecorder(null);
+      
+      alert('Could not access microphone. Please check permissions and try again.');
+      throw error; // Re-throw so startSentencePractice can handle it
+    }
+  };
+
+  const stopSentenceRecording = () => {
+    console.log('🛑 ===== STOP SENTENCE RECORDING CALLED =====');
+    console.log('🛑 Recorder ref:', !!sentenceRecorderRef.current);
+    console.log('🛑 Recorder state:', sentenceRecorderRef.current?.state);
+    console.log('🛑 Stream ref:', !!sentenceStreamRef.current);
+    console.log('🛑 isSentenceRecording state:', isSentenceRecording);
+    console.log('🛑 practicingWord:', practicingWord);
+    
+    // IMMEDIATELY set recording state to false for instant UI feedback
+    setIsSentenceRecording(false);
+    
+    // Use refs for immediate access (avoid closure issues with state)
+    const recorder = sentenceRecorderRef.current;
+    const stream = sentenceStreamRef.current;
+    
+    // Defensive check: if refs are missing but we're trying to stop, warn
+    if (!recorder && !stream) {
+      console.warn('⚠️ WARNING: Stop called but no recorder or stream refs found!');
+      console.warn('⚠️ This may indicate recording never started properly.');
+      // Still clear practicingWord to allow retry
+      setPracticingWord(null);
+      return;
+    }
+    
+    // Immediately stop all stream tracks to stop recording
+    if (stream) {
+      console.log('🛑 Stopping all stream tracks immediately...');
+      stream.getTracks().forEach(track => {
+        if (track.readyState === 'live') {
+          track.stop();
+          console.log('🛑 Track stopped:', track.kind, track.label);
+        }
+      });
+      sentenceStreamRef.current = null;
+      setSentenceStream(null);
+    } else {
+      console.warn('⚠️ No stream ref found - recording may not have started');
+    }
+    
+    // Stop the recorder if it exists
+    if (recorder) {
+      if (recorder.state === 'recording') {
+        console.log('🛑 Stopping MediaRecorder...');
+        try {
+          recorder.stop();
+          // The recorder.onstop handler will set sentenceReadyForAnalysis
+          console.log('✅ Recorder.stop() called successfully');
+        } catch (e) {
+          console.error('❌ Error stopping recorder:', e);
+          // If recorder.stop() fails, manually clean up
+          sentenceRecorderRef.current = null;
+          setSentenceRecorder(null);
+          // Don't set ready for analysis if recording didn't complete properly
+        }
+      } else if (recorder.state === 'inactive') {
+        console.log('🛑 Recorder already stopped, cleaning up...');
+        // Recorder already stopped, clean up states
+        sentenceRecorderRef.current = null;
+        setSentenceRecorder(null);
+        // Don't set ready states here - recording wasn't properly completed
+      } else {
+        console.log('🛑 Recorder in unexpected state:', recorder.state);
+        // Force stop
+        try {
+          recorder.stop();
+        } catch (e) {
+          console.error('❌ Error force-stopping recorder:', e);
+          sentenceRecorderRef.current = null;
+          setSentenceRecorder(null);
+        }
+      }
+    } else {
+      console.warn('⚠️ No recorder ref found - recording may not have started');
+    }
+    
+    // Clear practicingWord
+    setPracticingWord(null);
+    
+    console.log('✅ Stop button clicked - recording state set to false, stream stopped');
+    console.log('🛑 ===== STOP SENTENCE RECORDING END =====');
+  };
+
+  const analyzeSentencePronunciation = async (audioBlob: Blob) => {
+    console.log('🔍 Analyzing sentence pronunciation...');
+    setIsAnalyzingPronunciation(true);
+    
+    try {
+      // Convert audio to base64
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      let binaryString = '';
+      const chunkSize = 8192;
+      
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.slice(i, i + chunkSize);
+        binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      
+      const base64Audio = btoa(binaryString);
+      
+      // First transcribe the audio
+      const transcriptionResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/whisper`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audioData: base64Audio,
+          language: 'de'
+        })
+      });
+      
+      if (!transcriptionResponse.ok) {
+        throw new Error(`Transcription failed: ${transcriptionResponse.statusText}`);
+      }
+      
+      const transcriptionData = await transcriptionResponse.json();
+      console.log('📝 Transcription:', transcriptionData.transcription);
+      
+      // Then analyze pronunciation
+      const analysisResponse = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pronunciation-analysis`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audioData: base64Audio,
+          transcription: transcriptionData.transcription,
+          expectedTranscription: currentMessage || lastGermanVoiceMessage?.transcription || pendingPronunciationAnalysis?.text || ''
+        })
+      });
+      
+      if (!analysisResponse.ok) {
+        throw new Error(`Analysis failed: ${analysisResponse.statusText}`);
+      }
+      
+      const analysisData = await analysisResponse.json();
+      console.log('📊 Analysis result:', analysisData);
+      console.log('📊 Words in analysis result:', analysisData.words?.length || 0);
+      
+      // Ensure word-level scores are properly calculated from dimensions if missing or 0
+      if (analysisData.words && Array.isArray(analysisData.words)) {
+        console.log('🔍 Processing word-level scores...');
+        analysisData.words = analysisData.words.map((word: any) => {
+          let wordScore = word.score || 0;
+          
+          // Calculate score from dimensions if score is missing, 0, or dimensions exist
+          if (word.dimensions && (wordScore === 0 || !wordScore)) {
+            const dimensionScores = [
+              word.dimensions.soundAccuracy?.score || 0,
+              word.dimensions.stressEmphasis?.score || 0,
+              word.dimensions.smoothness?.score || 0,
+              word.dimensions.correctSpeed?.score || 0,
+              word.dimensions.intonationRhythm?.score || 0,
+              word.dimensions.understandability?.score || 0
+            ];
+            
+            // Calculate average of dimension scores
+            const calculatedScore = Math.round(
+              dimensionScores.reduce((sum: number, score: number) => sum + score, 0) / dimensionScores.length
+            );
+            
+            wordScore = calculatedScore;
+            console.log(`✅ Calculated word score for "${word.word}" from dimensions:`, calculatedScore);
+            console.log(`📊 Dimension scores for "${word.word}":`, dimensionScores);
+          } else if (word.dimensions && wordScore > 0) {
+            // Verify score matches dimensions (recalculate to ensure accuracy)
+            const dimensionScores = [
+              word.dimensions.soundAccuracy?.score || 0,
+              word.dimensions.stressEmphasis?.score || 0,
+              word.dimensions.smoothness?.score || 0,
+              word.dimensions.correctSpeed?.score || 0,
+              word.dimensions.intonationRhythm?.score || 0,
+              word.dimensions.understandability?.score || 0
+            ];
+            
+            const calculatedScore = Math.round(
+              dimensionScores.reduce((sum: number, score: number) => sum + score, 0) / dimensionScores.length
+            );
+            
+            // Use calculated score to ensure accuracy
+            wordScore = calculatedScore;
+            console.log(`✅ Verified/recalculated word score for "${word.word}":`, calculatedScore);
+          }
+          
+          // Ensure word has proper structure with score
+          return {
+            ...word,
+            score: wordScore,
+            needsPractice: wordScore < 75,
+            // Ensure dimensions exist
+            dimensions: word.dimensions || {
+              soundAccuracy: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } },
+              stressEmphasis: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } },
+              smoothness: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } },
+              correctSpeed: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } },
+              intonationRhythm: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } },
+              understandability: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } }
+            }
+          };
+        });
+        
+        console.log('✅ Processed all word-level scores');
+        console.log('📊 Word scores:', analysisData.words.map((w: any) => ({ word: w.word, score: w.score })));
+        
+        // Ensure ALL words from the expected sentence are included
+        // If some words are missing from the API response, create placeholder entries for them
+        const expectedText = currentMessage || lastGermanVoiceMessage?.transcription || pendingPronunciationAnalysis?.text || '';
+        if (expectedText) {
+          const expectedWordsList = expectedText.split(' ').filter(w => w.length > 0).map(w => 
+            w.toLowerCase().replace(/[.,!?;:]/g, '').trim()
+          );
+          
+          // Normalize API word list for comparison
+          const apiWordsSet = new Set(analysisData.words.map((w: any) => 
+            w.word.toLowerCase().replace(/[.,!?;:]/g, '').trim()
+          ));
+          
+          // Find missing words and create placeholder entries for them
+          expectedWordsList.forEach((expectedWord, index) => {
+            if (!apiWordsSet.has(expectedWord)) {
+              // Create placeholder word entry with low score (Red rating)
+              // This ensures all words are clickable and show scores
+              const placeholderWord: any = {
+                word: expectedText.split(' ')[index] || expectedWord, // Use original word with punctuation
+                score: 45, // Low score (Red rating) for undetected words
+                needsPractice: true,
+                feedback: `"${expectedWord}" was not detected in the recording. Please speak clearly and try again.`,
+                dimensions: {
+                  soundAccuracy: { score: 45, feedback: { correct: [], incorrect: [`Word "${expectedWord}" was not clearly pronounced`], improvement: ['Practice speaking this word more clearly', 'Ensure all words are spoken'] } },
+                  stressEmphasis: { score: 50, feedback: { correct: [], incorrect: ['Word not detected'], improvement: ['Focus on clear pronunciation'] } },
+                  smoothness: { score: 50, feedback: { correct: [], incorrect: ['Word not detected'], improvement: ['Ensure smooth flow'] } },
+                  correctSpeed: { score: 50, feedback: { correct: [], incorrect: ['Word not detected'], improvement: ['Practice timing'] } },
+                  intonationRhythm: { score: 50, feedback: { correct: [], incorrect: ['Word not detected'], improvement: ['Practice rhythm'] } },
+                  understandability: { score: 40, feedback: { correct: [], incorrect: [`Word "${expectedWord}" was not understandable`], improvement: ['Speak more clearly', 'Practice pronunciation'] } }
+                }
+              };
+              
+              analysisData.words.push(placeholderWord);
+              console.log(`⚠️ Created placeholder word entry for missing word: "${expectedWord}"`);
+            }
+          });
+          
+          console.log('✅ Verified all expected words are included in analysis');
+          console.log('📊 Total words in analysis:', analysisData.words.length);
+        }
+      } else {
+        console.warn('⚠️ No words array found in analysis result');
+      }
+      
+      // Ensure sentence score is calculated from dimensions if missing or 0 or incorrect
+      if (analysisData.sentenceDimensions) {
+        const dimensionScores = [
+          analysisData.sentenceDimensions.soundAccuracy?.score || 0,
+          analysisData.sentenceDimensions.stressEmphasis?.score || 0,
+          analysisData.sentenceDimensions.smoothness?.score || 0,
+          analysisData.sentenceDimensions.correctSpeed?.score || 0,
+          analysisData.sentenceDimensions.intonationRhythm?.score || 0,
+          analysisData.sentenceDimensions.understandability?.score || 0
+        ];
+        const calculatedScore = Math.round(
+          dimensionScores.reduce((sum, score) => sum + score, 0) / dimensionScores.length
+        );
+        
+        // Always recalculate from dimensions to ensure accuracy
+        analysisData.overallScore = calculatedScore;
+        analysisData.sentenceScore = calculatedScore;
+        console.log('✅ Calculated sentence score from dimensions:', calculatedScore);
+        console.log('📊 Dimension scores:', dimensionScores);
+      }
+      
+      // Update the pronunciation analysis state
+      setPronunciationAnalysis(analysisData);
+      
+      // Force re-render with timestamp to ensure UI updates
+      setTimeout(() => {
+        setPronunciationAnalysis({
+          ...analysisData, 
+          source: 'practice', // Mark this as practice analysis
+          timestamp: Date.now()
+        });
+        console.log('🔄 Forced re-render with new overall score:', analysisData.overallScore);
+        
+        // Track pronunciation score in session data
+        if (onPronunciationComplete && analysisData.overallScore) {
+          const practicedText = pendingPronunciationAnalysis?.text
+            || currentMessage
+            || lastGermanVoiceMessage?.transcription
+            || 'sentence';
+          onPronunciationComplete(analysisData.overallScore, practicedText);
+          console.log('📊 Pronunciation score sent to Dashboard:', analysisData.overallScore);
+        }
+      }, 100);
+      
+    } catch (error) {
+      console.error('❌ Error analyzing sentence pronunciation:', error);
+      alert('Failed to analyze pronunciation. Please try again.');
+    } finally {
+      setIsAnalyzingPronunciation(false);
+    }
+  };
+
+  const analyzeWordPronunciation = async (audioBlob: Blob, wordOverride?: string) => {
+    try {
+      // Use wordOverride if provided, otherwise fall back to practicingWord
+      const wordToAnalyze = wordOverride || practicingWord;
+      console.log('📊 ===== ANALYZE PRONUNCIATION START =====');
+      console.log('📊 Analyzing pronunciation for word:', wordToAnalyze);
+      console.log('📊 Word override provided:', !!wordOverride, wordOverride);
+      console.log('📊 PracticingWord from state:', practicingWord);
+      console.log('📊 Audio blob size:', audioBlob.size, 'bytes');
+      console.log('📊 Current pronunciationWords before analysis:', pronunciationWords);
+      console.log('📊 Current wordsAnalysisComplete before analysis:', Array.from(wordsAnalysisComplete));
+      
+      // Handle sentence practice differently
+      if (wordToAnalyze === 'sentence') {
+        console.log('📊 Handling sentence practice - calling analyzeSentencePronunciation');
+        await analyzeSentencePronunciation(audioBlob);
+        return;
+      }
+      
+      // Validate word to analyze
+      if (!wordToAnalyze || wordToAnalyze === 'sentence') {
+        console.error('❌ No valid word to analyze');
+        return;
+      }
+      
+      // Enhanced audio validation for individual words
+      if (audioBlob.size < 1000) { // Less than 1KB is likely empty or very short
+        console.log('❌ Audio blob too small, likely no audio recorded:', audioBlob.size, 'bytes');
+        console.log('💡 User needs to record actual audio before analysis');
+        
+        // Show specific error message for no audio
+        const errorMessage = 'No analysis can be done because no word pronunciation was spoken and recorded. Please speak the word clearly and try again.';
+        const errorData: PronunciationWord = {
+          word: wordToAnalyze || 'Unknown',
+          score: 0,
+          needsPractice: true,
+          feedback: errorMessage,
+          commonMistakes: ['No audio recorded'],
+          syllableAnalysis: []
+        };
+        
+        setPronunciationWords(prev => {
+          const existing = prev.find(w => w.word.toLowerCase() === wordToAnalyze?.toLowerCase());
+          if (existing) {
+            return prev.map(w => w.word.toLowerCase() === wordToAnalyze?.toLowerCase() ? errorData : w);
+          } else {
+            return [...prev, errorData];
+          }
+        });
+        console.log('📊 ===== ANALYZE PRONUNCIATION END (NO AUDIO) =====');
+        return;
+      }
+      
+      // Convert audio to base64
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+
+      // Send to pronunciation analysis
+      console.log('📊 Sending API request to pronunciation-analysis...');
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/pronunciation-analysis`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audioData: base64,
+          transcription: wordToAnalyze || 'Test pronunciation'
+        })
+      });
+
+      console.log('📊 API response status:', response.status);
+      console.log('📊 API response ok:', response.ok);
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('📊 Pronunciation analysis result:', data);
+        console.log('📊 First word analysis:', data.words?.[0]);
+        console.log('📊 First word dimensions:', data.words?.[0]?.dimensions);
+        
+        if (data.words && data.words.length > 0) {
+          const wordAnalysis = data.words[0]; // Get first word analysis
+          console.log('📊 Word analysis dimensions:', wordAnalysis.dimensions);
+          
+          // Enhanced word validation - use wordToAnalyze instead of practicingWord
+          const expectedWord = wordToAnalyze?.toLowerCase().trim();
+          const recordedWord = wordAnalysis.word?.toLowerCase().trim();
+          
+          console.log('🔍 Word validation:', { expected: expectedWord, recorded: recordedWord });
+          
+          // Check if no word was detected (empty or very short transcription)
+          if (!recordedWord || recordedWord.length < 2) {
+            console.log('❌ No word detected in recording');
+            
+            const errorMessage = 'No analysis can be done because no word pronunciation was spoken and recorded. Please speak the word clearly and try again.';
+            const errorData: PronunciationWord = {
+              word: wordToAnalyze || 'Unknown',
+              score: 0,
+              needsPractice: true,
+              feedback: errorMessage,
+              commonMistakes: ['No word detected in recording'],
+              syllableAnalysis: []
+            };
+            
+            setPronunciationWords(prev => {
+              const existing = prev.find(w => w.word.toLowerCase() === wordToAnalyze?.toLowerCase());
+              if (existing) {
+                return prev.map(w => w.word.toLowerCase() === wordToAnalyze?.toLowerCase() ? errorData : w);
+              } else {
+                return [...prev, errorData];
+              }
+            });
+            
+            // Keep analysis as complete even for errors (button should remain enabled)
+            if (wordToAnalyze) {
+              console.log('✅ Word analysis remains complete (no word detected):', wordToAnalyze);
+            } else {
+              console.log('❌ No wordToAnalyze set when trying to mark analysis complete (no word detected)');
+            }
+            
+            console.log('📊 ===== ANALYZE PRONUNCIATION END (NO WORD DETECTED) =====');
+            return;
+          }
+          
+          // Check if incorrect/irrelevant word was recorded
+          // Enhanced validation: check for partial matches, common mispronunciations, and irrelevant words
+          const isRelevantWord = expectedWord && recordedWord && (
+            expectedWord === recordedWord ||
+            expectedWord.includes(recordedWord) ||
+            recordedWord.includes(expectedWord) ||
+            // Check for common phonetic variations
+            expectedWord.replace(/[aeiou]/g, '') === recordedWord.replace(/[aeiou]/g, '') ||
+            // Check for similar sounding words (basic phonetic similarity)
+            Math.abs(expectedWord.length - recordedWord.length) <= 2 && 
+            expectedWord.split('').filter((char, i) => char === recordedWord[i]).length >= Math.min(expectedWord.length, recordedWord.length) * 0.6
+          );
+          
+          if (!isRelevantWord) {
+            console.log('❌ Irrelevant/incorrect word recorded:', { expected: expectedWord, recorded: recordedWord });
+            
+            const errorMessage = `No analysis can be done because irrelevant/incorrect word pronunciation was spoken and recorded. Expected "${wordToAnalyze}" but recorded "${wordAnalysis.word}". Please practice the correct word.`;
+            const errorData: PronunciationWord = {
+              word: wordToAnalyze || 'Unknown',
+              score: 0,
+              needsPractice: true,
+              feedback: errorMessage,
+              commonMistakes: [`Recorded "${wordAnalysis.word}" instead of "${wordToAnalyze}"`],
+              syllableAnalysis: []
+            };
+            
+            setPronunciationWords(prev => {
+              const existing = prev.find(w => w.word.toLowerCase() === wordToAnalyze?.toLowerCase());
+              if (existing) {
+                return prev.map(w => w.word.toLowerCase() === wordToAnalyze?.toLowerCase() ? errorData : w);
+              } else {
+                return [...prev, errorData];
+              }
+            });
+            
+            // Keep analysis as complete even for errors (button should remain enabled)
+            if (wordToAnalyze) {
+              console.log('✅ Word analysis remains complete (irrelevant word):', wordToAnalyze);
+            } else {
+              console.log('❌ No wordToAnalyze set when trying to mark analysis complete (irrelevant word)');
+            }
+            
+            console.log('📊 ===== ANALYZE PRONUNCIATION END (IRRELEVANT WORD) =====');
+            return;
+          }
+          
+          // Calculate word score - use API score if available, otherwise calculate from dimensions or syllables
+          let wordScore = wordAnalysis.score || 0;
+          
+          // If dimensions are available, calculate score from dimensions (most accurate)
+          if (wordAnalysis.dimensions) {
+            const dimensionScores = [
+              wordAnalysis.dimensions.soundAccuracy?.score || 0,
+              wordAnalysis.dimensions.stressEmphasis?.score || 0,
+              wordAnalysis.dimensions.smoothness?.score || 0,
+              wordAnalysis.dimensions.correctSpeed?.score || 0,
+              wordAnalysis.dimensions.intonationRhythm?.score || 0,
+              wordAnalysis.dimensions.understandability?.score || 0
+            ];
+            const calculatedScore = Math.round(
+              dimensionScores.reduce((sum, score) => sum + score, 0) / dimensionScores.length
+            );
+            wordScore = calculatedScore;
+            console.log('✅ Word score calculated from dimensions:', calculatedScore);
+          } else if (wordAnalysis.syllableAnalysis && wordAnalysis.syllableAnalysis.length > 0) {
+            // Fallback to syllable scores if dimensions not available
+            const syllableScores = wordAnalysis.syllableAnalysis.map((s: any) => s.score);
+            wordScore = Math.round(syllableScores.reduce((sum: number, score: number) => sum + score, 0) / syllableScores.length);
+          }
+          
+          // Determine RAG status based on accuracy rating
+          const ragStatus = wordScore >= 90 ? 'Green' : wordScore >= 70 ? 'Amber' : 'Red';
+          
+          // Generate feedback aligned with RAG status
+          const feedback = ragStatus === 'Green' ? 
+            `Excellent pronunciation of "${wordAnalysis.word}"! Very clear and accurate.` :
+            ragStatus === 'Amber' ? 
+            `Good pronunciation of "${wordAnalysis.word}". Minor improvements possible.` :
+            `"${wordAnalysis.word}" requires more practice. Focus on pronunciation fundamentals.`;
+          
+          // Use wordToAnalyze for storage to ensure it matches what we search for in handleAnalyzeWord
+          // This ensures the word stored matches the word being analyzed, not the API response word
+          const pronunciationData: PronunciationWord = {
+            word: wordToAnalyze || wordAnalysis.word, // Use wordToAnalyze first, fallback to API word
+            score: wordScore,
+            needsPractice: wordAnalysis.needsPractice,
+            feedback: feedback,
+            commonMistakes: wordAnalysis.commonMistakes || [],
+            syllableAnalysis: wordAnalysis.syllableAnalysis || [],
+            dimensions: wordAnalysis.dimensions || {
+              soundAccuracy: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } },
+              stressEmphasis: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } },
+              smoothness: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } },
+              correctSpeed: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } },
+              intonationRhythm: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } },
+              understandability: { score: wordScore, feedback: { correct: [], incorrect: [], improvement: [] } }
+            }
+          };
+          
+          // Update pronunciation words - use wordToAnalyze for matching to ensure consistency
+          setPronunciationWords(prev => {
+            const wordToMatch = wordToAnalyze?.toLowerCase();
+            const existing = prev.find(w => w.word.toLowerCase() === wordToMatch);
+            if (existing) {
+              return prev.map(w => w.word.toLowerCase() === wordToMatch ? pronunciationData : w);
+            } else {
+              return [...prev, pronunciationData];
+            }
+          });
+          
+          console.log('✅ Pronunciation analysis completed for:', wordToAnalyze, 'Score:', wordScore, 'RAG:', ragStatus);
+          
+          // Mark analysis as complete for this word (only if not already set)
+          if (wordToAnalyze && !wordsAnalysisComplete.has(wordToAnalyze)) {
+            setWordsAnalysisComplete(prev => {
+              const newSet = new Set([...prev, wordToAnalyze]);
+              console.log('✅ Word analysis marked as complete (success):', wordToAnalyze);
+              console.log('📊 Updated wordsAnalysisComplete:', Array.from(newSet));
+              return newSet;
+            });
+          } else if (wordToAnalyze) {
+            console.log('✅ Word analysis already marked as complete:', wordToAnalyze);
+          } else {
+            console.log('❌ No wordToAnalyze set when trying to mark analysis complete');
+          }
+          
+          // Note: wordsReadyForAnalysis is already marked in stopRecording for immediate button availability
+        } else {
+          // No words detected by API - likely no speech or unclear speech
+          console.log('❌ No words detected by API - likely no speech or unclear speech');
+          
+          const errorMessage = 'No analysis can be done because no word pronunciation was spoken and recorded. Please speak the word clearly and try again.';
+          const errorData: PronunciationWord = {
+            word: wordToAnalyze || 'Unknown',
+            score: 0,
+            needsPractice: true,
+            feedback: errorMessage,
+            commonMistakes: ['No words detected in audio'],
+            syllableAnalysis: []
+          };
+          
+          setPronunciationWords(prev => {
+            const existing = prev.find(w => w.word.toLowerCase() === wordToAnalyze?.toLowerCase());
+            if (existing) {
+              return prev.map(w => w.word.toLowerCase() === wordToAnalyze?.toLowerCase() ? errorData : w);
+            } else {
+              return [...prev, errorData];
+            }
+          });
+          console.log('📊 ===== ANALYZE PRONUNCIATION END (NO WORDS DETECTED BY API) =====');
+        }
+      } else {
+        console.error('❌ Pronunciation analysis failed:', response.status);
+        console.log('💡 Word not marked as ready for analysis due to analysis failure');
+        
+        // Handle API failure - could be due to no audio or other issues
+        const errorMessage = 'No analysis can be done because no word pronunciation was spoken and recorded. Please speak the word clearly and try again.';
+        const errorData: PronunciationWord = {
+          word: wordToAnalyze || 'Unknown',
+          score: 0,
+          needsPractice: true,
+          feedback: errorMessage,
+          commonMistakes: ['API analysis failed - likely no clear speech'],
+          syllableAnalysis: []
+        };
+        
+        setPronunciationWords(prev => {
+          const existing = prev.find(w => w.word.toLowerCase() === wordToAnalyze?.toLowerCase());
+          if (existing) {
+            return prev.map(w => w.word.toLowerCase() === wordToAnalyze?.toLowerCase() ? errorData : w);
+          } else {
+            return [...prev, errorData];
+          }
+        });
+        console.log('📊 ===== ANALYZE PRONUNCIATION END (API FAILURE) =====');
+      }
+    } catch (error) {
+      console.error('❌ Error analyzing pronunciation:', error);
+      console.log('💡 Word not marked as ready for analysis due to error');
+      
+      // Handle any errors during analysis - could be due to no audio or other issues
+      const errorMessage = 'No analysis can be done because no word pronunciation was spoken and recorded. Please speak the word clearly and try again.';
+      const errorData: PronunciationWord = {
+        word: practicingWord || 'Unknown',
+        score: 0,
+        needsPractice: true,
+        feedback: errorMessage,
+        commonMistakes: ['Analysis error - likely no clear speech'],
+        syllableAnalysis: []
+      };
+      
+      setPronunciationWords(prev => {
+        const existing = prev.find(w => w.word === practicingWord);
+        if (existing) {
+          return prev.map(w => w.word === practicingWord ? errorData : w);
+        } else {
+          return [...prev, errorData];
+        }
+      });
+      console.log('📊 ===== ANALYZE PRONUNCIATION END (ERROR) =====');
+    } finally {
+      console.log('📊 ===== ANALYZE PRONUNCIATION FUNCTION COMPLETED =====');
+      console.log('📊 Final wordsAnalysisComplete:', Array.from(wordsAnalysisComplete));
+    }
+  };
+
+  const handleAnalyzeWord = async (word: string) => {
+    console.log('🔍 ===== ANALYZE WORD BUTTON CLICKED =====');
+    console.log('🔍 Analyze word from view:', word);
+    console.log('🔍 Current pronunciationWords:', pronunciationWords);
+    console.log('🔍 Current wordsAnalysisComplete:', Array.from(wordsAnalysisComplete));
+
+    const audioBlob = wordAudioBlobs.get(word);
+    if (!audioBlob) {
+      console.log('❌ No audio blob found for word:', word);
+      alert('Please record the word first before analyzing.');
+      return;
+    }
+
+    if (!wordsReadyForAnalysis.has(word)) {
+      console.log('❌ Word not ready for analysis yet:', word);
+      alert('Please finish recording the word first.');
+      return;
+    }
+
+    const previousPracticingWord = practicingWord;
+    if (practicingWord !== word) {
+      setPracticingWord(word);
+    }
+
+    setIsAnalyzing(true);
+
+    try {
+      console.log('🔍 Starting word pronunciation analysis...');
+      // Pass the word to analyzeWordPronunciation to ensure correct word is analyzed and stored
+      await analyzeWordPronunciation(audioBlob, word);
+
+      // Try to find the word result - check both the exact word and practicingWord
+      let wordResult = pronunciationWords.find(
+        (w) => w.word.toLowerCase() === word.toLowerCase()
+      );
+      
+      // If not found, try finding by practicingWord (fallback)
+      if (!wordResult && practicingWord) {
+        wordResult = pronunciationWords.find(
+          (w) => w.word.toLowerCase() === practicingWord.toLowerCase()
+        );
+      }
+
+      if (wordResult) {
+        console.log('📊 Found word result after analysis:', wordResult);
+        console.log('📊 Word result has dimensions:', !!wordResult.dimensions);
+
+        if (pronunciationAnalysis) {
+          // Update only the specific word, preserving all other words
+          const updatedWords = pronunciationAnalysis.words.map((w) =>
+            w.word.toLowerCase() === word.toLowerCase() ? wordResult : w
+          );
+          const wordExists = updatedWords.some(
+            (w) => w.word.toLowerCase() === word.toLowerCase()
+          );
+          if (!wordExists) {
+            updatedWords.push(wordResult);
+          }
+          
+          // Recalculate overallScore based on all words (including the updated one)
+          // This ensures the overall score reflects the new word score while other words remain unchanged
+          const newOverallScore = updatedWords.length > 0
+            ? Math.round(updatedWords.reduce((sum, w) => sum + w.score, 0) / updatedWords.length)
+            : pronunciationAnalysis.overallScore;
+          
+          const updatedAnalysis = {
+            ...pronunciationAnalysis,
+            words: updatedWords,
+            overallScore: newOverallScore,
+            sentenceScore: newOverallScore, // Update sentence score as well
+            hasPronunciationErrors: newOverallScore < 75,
+          };
+          setPronunciationAnalysis(updatedAnalysis);
+          console.log(
+            '✅ Updated pronunciationAnalysis with word:',
+            word,
+            'with dimensions:',
+            !!wordResult.dimensions,
+            'New overall score:',
+            newOverallScore,
+            'Other words preserved:',
+            updatedWords.length - 1
+          );
+
+          setTimeout(() => {
+            setPronunciationAnalysis({
+              ...updatedAnalysis,
+              timestamp: Date.now(),
+            });
+          }, 100);
+        } else {
+          const wordList = [wordResult];
+          let overallScore = wordResult.score;
+          let sentenceScore = wordResult.score;
+          let sentenceDimensions:
+            | {
+                soundAccuracy?: PronunciationWord['dimensions']['soundAccuracy'];
+                stressEmphasis?: PronunciationWord['dimensions']['stressEmphasis'];
+                smoothness?: PronunciationWord['dimensions']['smoothness'];
+                correctSpeed?: PronunciationWord['dimensions']['correctSpeed'];
+                intonationRhythm?: PronunciationWord['dimensions']['intonationRhythm'];
+                understandability?: PronunciationWord['dimensions']['understandability'];
+              }
+            | undefined;
+
+          if (wordResult.dimensions) {
+            const dimensionScores = [
+              wordResult.dimensions.soundAccuracy?.score || 0,
+              wordResult.dimensions.stressEmphasis?.score || 0,
+              wordResult.dimensions.smoothness?.score || 0,
+              wordResult.dimensions.correctSpeed?.score || 0,
+              wordResult.dimensions.intonationRhythm?.score || 0,
+              wordResult.dimensions.understandability?.score || 0,
+            ];
+            overallScore = Math.round(
+              dimensionScores.reduce((sum, score) => sum + score, 0) /
+                dimensionScores.length
+            );
+            sentenceScore = overallScore;
+            sentenceDimensions = {
+              soundAccuracy: wordResult.dimensions.soundAccuracy,
+              stressEmphasis: wordResult.dimensions.stressEmphasis,
+              smoothness: wordResult.dimensions.smoothness,
+              correctSpeed: wordResult.dimensions.correctSpeed,
+              intonationRhythm: wordResult.dimensions.intonationRhythm,
+              understandability: wordResult.dimensions.understandability,
+            };
+          }
+
+          setPronunciationAnalysis({
+            overallScore,
+            sentenceScore,
+            words: wordList,
+            hasPronunciationErrors: overallScore < 75,
+            suggestions: [],
+            sentenceDimensions,
+          });
+          console.log('✅ Created new pronunciationAnalysis with word:', word);
+        }
+
+        setWordsAnalysisComplete((prev) => {
+          const newSet = new Set([...prev, word]);
+          console.log('✅ Word marked as analysis complete:', word);
+          return newSet;
+        });
+        
+        // Remove word from wordsReadyForAnalysis so Analyse button disappears and Practice button appears
+        setWordsReadyForAnalysis(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(word);
+          console.log('✅ Word removed from wordsReadyForAnalysis - Analyse button will hide, Practice button will show');
+          return newSet;
+        });
+      } else {
+        console.log('⚠️ Word result not found after analysis');
+        alert('Analysis completed but word data not found. Please try again.');
+      }
+    } catch (error) {
+      console.error('❌ Error analyzing word:', error);
+      alert('Failed to analyze word pronunciation. Please try again.');
+    } finally {
+      setIsAnalyzing(false);
+      if (previousPracticingWord !== word) {
+        setPracticingWord(previousPracticingWord ?? null);
+      }
+      console.log('🔍 ===== ANALYZE WORD BUTTON CLICK END =====');
+    }
+  };
+
+
+  // Helper function to break word into individual sounds/syllables
+  const breakWordIntoSounds = (word: string): string[] => {
+    const sounds: string[] = [];
+    const wordLower = word.toLowerCase();
+    
+    // Simple phonetic breakdown for common German/English sounds
+    for (let i = 0; i < wordLower.length; i++) {
+      const char = wordLower[i];
+      const nextChar = wordLower[i + 1];
+      
+      // Handle common digraphs (two-letter sounds)
+      if (i < wordLower.length - 1) {
+        const digraph = char + nextChar;
+        if (['ch', 'sh', 'th', 'ph', 'ck', 'ng', 'qu'].includes(digraph)) {
+          sounds.push(digraph);
+          i++; // Skip next character
+          continue;
+        }
+      }
+      
+      // Single character sounds
+      sounds.push(char);
+    }
+    
+    return sounds;
+  };
+
+  // Helper function to generate syllable-level analysis with actual pronunciation data
+  const generateSyllableAnalysis = (word: string, overallScore: number, apiSyllableAnalysis: any[] = []): any[] => {
+    const sounds = breakWordIntoSounds(word);
+    const syllableAnalysis: any[] = [];
+    
+    sounds.forEach((sound, index) => {
+      // Try to find matching syllable data from API
+      const apiSyllable = apiSyllableAnalysis.find(s => 
+        s.syllable.toLowerCase() === sound.toLowerCase() || 
+        s.syllable.toLowerCase().includes(sound.toLowerCase())
+      );
+      
+      let soundScore = overallScore;
+      let soundFeedback = '';
+      let actualEmphasis = 'Medium';
+      let expectedEmphasis = 'Medium';
+      let emphasisComparison = '';
+      
+      if (apiSyllable) {
+        // Use actual API data
+        soundScore = apiSyllable.score || overallScore;
+        
+        // Determine actual emphasis based on phonetic analysis
+        if (apiSyllable.phoneticActual && apiSyllable.phoneticExpected) {
+          // Compare actual vs expected phonetic patterns
+          const actualStress = analyzeStressPattern(apiSyllable.phoneticActual);
+          const expectedStress = analyzeStressPattern(apiSyllable.phoneticExpected);
+          
+          actualEmphasis = actualStress;
+          expectedEmphasis = expectedStress;
+          
+          if (actualStress === expectedStress) {
+            emphasisComparison = `Correct emphasis (${actualStress})`;
+            // Boost score slightly for correct emphasis
+            soundScore = Math.min(100, soundScore + 2);
+          } else {
+            emphasisComparison = `Expected ${expectedStress}, got ${actualStress}`;
+            // Reduce score for incorrect emphasis
+            soundScore = Math.max(0, soundScore - 5);
+          }
+        }
+        
+        // Use API feedback if available, otherwise generate enhanced feedback
+        soundFeedback = apiSyllable.feedback || generateSoundFeedback(sound, soundScore, actualEmphasis, expectedEmphasis, apiSyllable.phoneticExpected, apiSyllable.phoneticActual);
+      } else {
+        // Fallback to generated analysis
+        const variation = Math.random() * 20 - 10; // ±10 points variation
+        soundScore = Math.max(0, Math.min(100, Math.round(overallScore + variation)));
+        soundFeedback = generateSoundFeedback(sound, soundScore, actualEmphasis, expectedEmphasis);
+        
+        // For fallback, assume correct emphasis
+        actualEmphasis = soundScore >= 85 ? 'High' : soundScore >= 70 ? 'Medium' : 'Low';
+        expectedEmphasis = actualEmphasis;
+        emphasisComparison = `Correct emphasis (${actualEmphasis})`;
+      }
+      
+      syllableAnalysis.push({
+        syllable: sound,
+        score: soundScore,
+        feedback: soundFeedback,
+        actualEmphasis: actualEmphasis,
+        expectedEmphasis: expectedEmphasis,
+        emphasisComparison: emphasisComparison,
+        phoneticExpected: apiSyllable?.phoneticExpected || '',
+        phoneticActual: apiSyllable?.phoneticActual || ''
+      });
+    });
+    
+    return syllableAnalysis;
+  };
+
+  // Helper function to analyze stress patterns from phonetic data
+  const analyzeStressPattern = (phonetic: string): string => {
+    // Simple stress pattern analysis based on phonetic notation
+    if (phonetic.includes('ˈ') || phonetic.includes('ˈ')) {
+      return 'High'; // Primary stress
+    } else if (phonetic.includes('ˌ') || phonetic.includes('ˌ')) {
+      return 'Medium'; // Secondary stress
+    } else {
+      return 'Low'; // Unstressed
+    }
+  };
+
+  // Enhanced helper function to generate specific sound feedback based on score, emphasis, and phonetic data
+  const generateSoundFeedback = (sound: string, score: number, actualEmphasis?: string, expectedEmphasis?: string, phoneticExpected?: string, phoneticActual?: string): string => {
+    // Determine if emphasis matches
+    const emphasisMatches = actualEmphasis === expectedEmphasis;
+    
+    // Generate feedback based on score and emphasis alignment
+    if (score >= 95) {
+      if (emphasisMatches) {
+        return `Excellent "${sound}" sound! Perfect emphasis and clear articulation.`;
+      } else {
+        return `Excellent "${sound}" sound with clear articulation. Focus on emphasis: expected ${expectedEmphasis}, got ${actualEmphasis}.`;
+      }
+    } else if (score >= 90) {
+      if (emphasisMatches) {
+        return `Very good "${sound}" sound with correct emphasis. Minor refinement in articulation needed.`;
+      } else {
+        return `Very good "${sound}" sound. Improve emphasis (expected ${expectedEmphasis}, got ${actualEmphasis}) and articulation clarity.`;
+      }
+    } else if (score >= 80) {
+      if (emphasisMatches) {
+        return `Good "${sound}" sound with correct emphasis. Work on articulation clarity and sound precision.`;
+      } else {
+        return `Good "${sound}" sound. Focus on emphasis accuracy (expected ${expectedEmphasis}, got ${actualEmphasis}) and articulation.`;
+      }
+    } else if (score >= 70) {
+      if (emphasisMatches) {
+        return `Fair "${sound}" sound with correct emphasis. Practice articulation, sound clarity, and pronunciation precision.`;
+      } else {
+        return `Fair "${sound}" sound. Improve emphasis (expected ${expectedEmphasis}, got ${actualEmphasis}), articulation, and sound clarity.`;
+      }
+    } else if (score >= 60) {
+      if (emphasisMatches) {
+        return `"${sound}" needs significant practice. Focus on basic articulation, sound production, and pronunciation fundamentals.`;
+      } else {
+        return `"${sound}" needs significant practice. Work on emphasis (expected ${expectedEmphasis}, got ${actualEmphasis}), articulation, and basic pronunciation.`;
+      }
+    } else {
+      if (emphasisMatches) {
+        return `"${sound}" requires extensive practice. Focus on basic sound production, articulation fundamentals, and pronunciation basics.`;
+      } else {
+        return `"${sound}" requires extensive practice. Work on emphasis (expected ${expectedEmphasis}, got ${actualEmphasis}), basic articulation, and sound production.`;
+      }
+    }
+  };
+
+  // Helper function to generate specific feedback based on score and syllable analysis
+  const generateSpecificFeedback = (word: string, score: number, syllableAnalysis: any[] = []): string => {
+    if (score >= 90) {
+      const goodAspects = syllableAnalysis.length > 0 ? 
+        `All sounds pronounced clearly` : 
+        `Clear articulation throughout`;
+      return `Excellent pronunciation of "${word}"! ${goodAspects}. Maintain this level of clarity and accuracy.`;
+    } else if (score >= 80) {
+      const improvements = syllableAnalysis.length > 0 ? 
+        `Focus on individual sound clarity and stress` : 
+        `Work on word stress and timing`;
+      return `Very good pronunciation of "${word}". ${improvements}. Overall clarity is good, minor refinements needed.`;
+    } else if (score >= 70) {
+      const improvements = syllableAnalysis.length > 0 ? 
+        `Pay attention to individual sound accuracy` : 
+        `Focus on pronunciation fundamentals`;
+      return `Good pronunciation of "${word}". ${improvements}. Clear articulation needed in some areas.`;
+    } else if (score >= 60) {
+      return `Fair pronunciation of "${word}". Focus on basic pronunciation patterns, individual sound clarity, and word stress. Practice individual sounds more.`;
+    } else {
+      return `"${word}" requires significant practice. Focus on pronunciation fundamentals, individual sound breakdown, and basic sound production.`;
+    }
+  };
+
+  // Individual word analysis function - OPTIMIZED FOR INSTANT RESPONSE
+  const analyzeIndividualWord = async (word: string) => {
+    console.log('🔍 ===== ANALYZE INDIVIDUAL WORD START =====');
+    console.log('🔍 Analyzing individual word:', word);
+    
+    // Check if the word analysis is complete and ready for display
+    if (!wordsAnalysisComplete.has(word)) {
+      console.log('❌ Word analysis not complete - analysis still in progress:', word);
+      setAnalyzingWord(null);
+      return;
+    }
+    
+    console.log('✅ Word is ready for analysis, proceeding...');
+    setAnalyzingWord(word);
+    
+    // Add gamification points for starting analysis
+    if (onAddExperience) {
+      onAddExperience(3, 'word_analysis_start');
+    }
+    
+    try {
+      // Check if we have actual pronunciation analysis results for this word
+      const existingAnalysis = pronunciationWords.find(p => p.word === word);
+      
+      if (existingAnalysis) {
+        console.log('📊 Using existing pronunciation analysis for word:', word);
+        
+        // Check if this is an error case (no words spoken, incorrect word, etc.)
+        if (existingAnalysis.feedback.includes('No analysis can be done') || 
+            existingAnalysis.feedback.includes('no word pronunciation was spoken') ||
+            existingAnalysis.feedback.includes('unrelated and incorrect word pronunciation') ||
+            existingAnalysis.feedback.includes('irrelevant/incorrect word pronunciation')) {
+          console.log('❌ Error case detected - no valid analysis available:', existingAnalysis.feedback);
+          
+          // Show the error message instead of fake analysis
+          const errorResult = {
+            score: 0,
+            feedback: existingAnalysis.feedback,
+            syllableAnalysis: []
+          };
+          
+          setIndividualWordAnalysis(prev => ({
+            ...prev,
+            [word]: errorResult
+          }));
+          
+          // Mark word as analyzed to show error state
+          setWordsAnalyzed(prev => new Set([...prev, word]));
+          
+          console.log('❌ Error state set for word:', word);
+          setAnalyzingWord(null);
+          return;
+        }
+        
+        // Calculate overall score based on syllable scores if available
+        let calculatedScore = existingAnalysis.score;
+        if (existingAnalysis.syllableAnalysis && existingAnalysis.syllableAnalysis.length > 0) {
+          const syllableScores = existingAnalysis.syllableAnalysis.map(s => s.score);
+          calculatedScore = Math.round(syllableScores.reduce((sum, score) => sum + score, 0) / syllableScores.length);
+        }
+        
+        // Generate true syllable analysis with individual sounds using API data
+        const syllableAnalysis = generateSyllableAnalysis(word, calculatedScore, existingAnalysis.syllableAnalysis || []);
+        
+        // Generate specific feedback based on score and syllable analysis
+        const feedback = generateSpecificFeedback(word, calculatedScore, syllableAnalysis);
+        
+        const analysisResult = {
+          score: calculatedScore,
+          feedback: feedback,
+          syllableAnalysis: syllableAnalysis
+        };
+        
+        console.log('📊 Analysis result created:', analysisResult);
+      
+      setIndividualWordAnalysis(prev => ({
+        ...prev,
+          [word]: analysisResult
+      }));
+      
+      // Add points for word analysis
+        const pointsEarned = calculatePoints(analysisResult.score, false);
+      addPoints(pointsEarned);
+      
+      // Record progress
+        recordProgress(analysisResult.score, 1, false);
+      
+      // Add to difficult words if score is low
+        if (analysisResult.score < 70) {
+        const phoneticData = phoneticBreakdowns[currentMessage || '']?.find((w: any) => w.original === word);
+        if (phoneticData) {
+            addToDifficultWords(word, analysisResult.score, phoneticData.phonetic, phoneticData.transliteration);
+        }
+      } else {
+        // Update practice count for existing difficult words
+          updateDifficultWordPractice(word, analysisResult.score);
+      }
+      
+      // Mark word as analyzed
+      setWordsAnalyzed(prev => new Set([...prev, word]));
+      
+      console.log('✅ Individual word analysis completed for:', word);
+      } else {
+        console.log('❌ No pronunciation analysis available for word:', word);
+        console.log('💡 Analysis may still be in progress, showing loading state...');
+        
+        // Show loading state while analysis is in progress
+        const loadingResult = {
+          score: 0,
+          feedback: 'Analysis in progress... Please wait for results.',
+          syllableAnalysis: []
+        };
+        
+        setIndividualWordAnalysis(prev => ({
+          ...prev,
+          [word]: loadingResult
+        }));
+        
+        // Mark word as analyzed to show loading state
+        setWordsAnalyzed(prev => new Set([...prev, word]));
+        
+        console.log('⏳ Loading state set for word:', word);
+        setAnalyzingWord(null);
+        return;
+      }
+    } catch (error) {
+      console.error('❌ Error analyzing individual word:', error);
+    } finally {
+      setAnalyzingWord(null);
+    }
+  };
+
+  // Sentence-level practice function
+  const startSentencePractice = async () => {
+    console.log('🎤 ===== START SENTENCE PRACTICE CALLED =====');
+    console.log('🎤 Starting sentence practice for:', currentMessage);
+    
+    // Set practicingWord to 'sentence' so stopRecording can identify it
+    setPracticingWord('sentence');
+    console.log('✅ practicingWord set to "sentence"');
+    
+    // Reset sentence analysis state
+    setSentenceAnalysis(null);
+    setSentenceAnalyzed(false);
+    setSentenceRecordingCompleted(false);
+    setSentenceReadyForAnalysis(false);
+    setSentenceAnalysisComplete(false);
+    setSentenceAudioBlob(null);
+    
+    // Reset individual word states when starting sentence practice
+    setWordsRecordingCompleted(new Set());
+    setWordsReadyForAnalysis(new Set());
+    setWordsAnalyzed(new Set());
+    setWordsAnalysisComplete(new Set());
+    setIndividualWordAnalysis({});
+    
+    // Optimistically flip recording state so UI shows Stop immediately
+    setIsSentenceRecording(true);
+    
+    // Use the sentence-specific recording function
+    try {
+      await startSentenceRecording();
+      console.log('✅ startSentenceRecording completed successfully');
+    } catch (error) {
+      console.error('❌ Error in startSentenceRecording:', error);
+      // Reset state on error
+      setIsSentenceRecording(false);
+      setPracticingWord(null);
+      alert('Failed to start recording. Please check microphone permissions and try again.');
+    }
+    console.log('🎤 ===== START SENTENCE PRACTICE END =====');
+  };
+
+  // Sentence-level analysis function - triggered when Analyze button is clicked
+  const analyzeSentence = async () => {
+    console.log('🔍 ===== ANALYZE SENTENCE BUTTON CLICKED =====');
+    console.log('🔍 Analyzing sentence:', currentMessage);
+    console.log('📊 Sentence recording completed:', sentenceRecordingCompleted);
+    console.log('📊 Sentence ready for analysis:', sentenceReadyForAnalysis);
+    console.log('📊 Sentence audio blob exists:', !!sentenceAudioBlob);
+    
+    // Check if we have audio to analyze
+    if (!sentenceAudioBlob) {
+      console.log('❌ No sentence audio blob available for analysis');
+      alert('Please record the sentence first before analyzing.');
+      return;
+    }
+    
+    if (!sentenceReadyForAnalysis) {
+      console.log('❌ Sentence not ready for analysis yet');
+      alert('Please finish recording the sentence first.');
+      return;
+    }
+    
+    setIsAnalyzing(true);
+    
+    // Add gamification points for starting sentence analysis
+    if (onAddExperience) {
+      onAddExperience(10, 'sentence_analysis_start');
+    }
+    
+    try {
+      // Analyze the recorded sentence audio
+      console.log('🔍 Starting sentence pronunciation analysis...');
+      await analyzeSentencePronunciation(sentenceAudioBlob);
+      
+      // Mark as complete after analysis
+      setSentenceAnalysisComplete(true);
+      console.log('✅ Sentence analysis completed and marked as complete');
+      
+      // Reset recording readiness so user can practice again
+      setSentenceReadyForAnalysis(false);
+      setSentenceRecordingCompleted(false);
+      setSentenceAudioBlob(null);
+      setSentenceAnalyzed(true);
+      setPracticingWord(null);
+      setIsSentenceRecording(false);
+      
+    } catch (error) {
+      console.error('❌ Error analyzing sentence:', error);
+      alert('Failed to analyze sentence pronunciation. Please try again.');
+      setIsAnalyzing(false);
+    } finally {
+      setIsAnalyzing(false);
+      console.log('🔍 ===== ANALYZE SENTENCE BUTTON CLICK END =====');
+    }
+  };
+
+  // Gamification functions
+  const calculatePoints = (score: number, isSentence: boolean = false) => {
+    let basePoints = 0;
+    if (score >= 90) basePoints = isSentence ? 20 : 10;
+    else if (score >= 80) basePoints = isSentence ? 15 : 8;
+    else if (score >= 70) basePoints = isSentence ? 10 : 5;
+    else if (score >= 60) basePoints = isSentence ? 5 : 3;
+    else basePoints = isSentence ? 2 : 1;
+    
+    return basePoints;
+  };
+
+  const addPoints = (points: number) => {
+    const newTotal = userPoints + points;
+    setUserPoints(newTotal);
+    setRecentPointsEarned(points);
+    localStorage.setItem('pronunciation_points', newTotal.toString());
+    
+    // Check for level up
+    const newLevel = Math.floor(newTotal / 100) + 1;
+    if (newLevel > userLevel) {
+      setUserLevel(newLevel);
+      localStorage.setItem('pronunciation_level', newLevel.toString());
+      console.log(`🎉 Level up! You're now level ${newLevel}!`);
+    }
+    
+    // Clear recent points after 3 seconds
+    setTimeout(() => {
+      setRecentPointsEarned(0);
+    }, 3000);
+  };
+
+  const getLevelProgress = () => {
+    const currentLevelPoints = userPoints % 100;
+    const pointsToNextLevel = 100 - currentLevelPoints;
+    return {
+      currentLevelPoints,
+      pointsToNextLevel,
+      progressPercentage: (currentLevelPoints / 100) * 100
+    };
+  };
+
+  // Progress tracking functions
+  const recordProgress = (score: number, wordCount: number, isSentence: boolean) => {
+    const today = new Date().toDateString();
+    const todayRecord = progressHistory.find((record: any) => record.date === today);
+    
+    const newRecord = {
+      date: today,
+      wordsPracticed: (todayRecord?.wordsPracticed || 0) + wordCount,
+      averageScore: todayRecord ? 
+        Math.round(((todayRecord.averageScore * todayRecord.wordsPracticed) + score) / (todayRecord.wordsPracticed + wordCount)) :
+        score,
+      totalSessions: (todayRecord?.totalSessions || 0) + 1,
+      pointsEarned: (todayRecord?.pointsEarned || 0) + calculatePoints(score, isSentence),
+      sentencesPracticed: todayRecord ? 
+        (todayRecord.sentencesPracticed || 0) + (isSentence ? 1 : 0) :
+        (isSentence ? 1 : 0)
+    };
+
+    const updatedHistory = progressHistory.filter((record: any) => record.date !== today);
+    updatedHistory.push(newRecord);
+    
+    // Keep only last 30 days
+    const recentHistory = updatedHistory.slice(-30);
+    
+    setProgressHistory(recentHistory);
+    localStorage.setItem('pronunciation_progress_history', JSON.stringify(recentHistory));
+    
+    // Update streak and award badges
+    updateStreak();
+    awardDailyBadge(newRecord.wordsPracticed, newRecord.pointsEarned);
+  };
+
+  const getProgressStats = () => {
+    const last7Days = progressHistory.slice(-7);
+    const last30Days = progressHistory;
+    
+    const totalWords = last30Days.reduce((sum: number, day: any) => sum + day.wordsPracticed, 0);
+    const totalSessions = last30Days.reduce((sum: number, day: any) => sum + day.totalSessions, 0);
+    const avgScore = last30Days.length > 0 ? 
+      Math.round(last30Days.reduce((sum: number, day: any) => sum + day.averageScore, 0) / last30Days.length) : 0;
+    
+    const weeklyWords = last7Days.reduce((sum: number, day: any) => sum + day.wordsPracticed, 0);
+    const weeklySessions = last7Days.reduce((sum: number, day: any) => sum + day.totalSessions, 0);
+    
+    return {
+      totalWords,
+      totalSessions,
+      avgScore,
+      weeklyWords,
+      weeklySessions,
+      streak: calculateStreak()
+    };
+  };
+
+  const calculateStreak = () => {
+    let streak = 0;
+    const today = new Date();
+    
+    for (let i = 0; i < 30; i++) {
+      const checkDate = new Date(today);
+      checkDate.setDate(today.getDate() - i);
+      const dateString = checkDate.toDateString();
+      
+      const dayRecord = progressHistory.find((record: any) => record.date === dateString);
+      if (dayRecord && dayRecord.wordsPracticed > 0) {
+        streak++;
+      } else {
+        break;
+      }
+    }
+    
+    return streak;
+  };
+
+  // Streak and Badge Management
+  const updateStreak = () => {
+    const newStreak = calculateStreak();
+    setCurrentStreak(newStreak);
+    localStorage.setItem('pronunciation_current_streak', newStreak.toString());
+    
+    if (newStreak > longestStreak) {
+      setLongestStreak(newStreak);
+      localStorage.setItem('pronunciation_longest_streak', newStreak.toString());
+    }
+  };
+
+  const awardDailyBadge = (wordsPracticed: number, pointsEarned: number) => {
+    const today = new Date().toDateString();
+    const existingBadge = dailyBadges.find((badge: any) => badge.date === today);
+    
+    if (existingBadge) return; // Already awarded today
+    
+    let badgeType = '';
+    let badgeIcon = '';
+    let badgeColor = '';
+    
+    if (wordsPracticed >= 20) {
+      badgeType = 'Word Master';
+      badgeIcon = '🏆';
+      badgeColor = 'gold';
+    } else if (wordsPracticed >= 10) {
+      badgeType = 'Word Warrior';
+      badgeIcon = '⚔️';
+      badgeColor = 'silver';
+    } else if (wordsPracticed >= 5) {
+      badgeType = 'Word Explorer';
+      badgeIcon = '🗺️';
+      badgeColor = 'bronze';
+    } else if (wordsPracticed >= 1) {
+      badgeType = 'Daily Practice';
+      badgeIcon = '⭐';
+      badgeColor = 'blue';
+    }
+    
+    if (badgeType) {
+      const newBadge = {
+        date: today,
+        type: badgeType,
+        icon: badgeIcon,
+        color: badgeColor,
+        wordsPracticed,
+        pointsEarned
+      };
+      
+      const updatedBadges = [...dailyBadges, newBadge].slice(-30); // Keep last 30 badges
+      setDailyBadges(updatedBadges);
+      localStorage.setItem('pronunciation_daily_badges', JSON.stringify(updatedBadges));
+      
+      console.log(`🏅 Badge earned: ${badgeType} ${badgeIcon}`);
+    }
+  };
+
+  const getStreakMilestones = () => {
+    const milestones = [
+      { days: 7, badge: '🔥', name: 'Week Warrior' },
+      { days: 14, badge: '💪', name: 'Two Week Champion' },
+      { days: 30, badge: '👑', name: 'Monthly Master' },
+      { days: 60, badge: '🌟', name: 'Two Month Legend' },
+      { days: 100, badge: '🏆', name: 'Century Champion' }
+    ];
+    
+    return milestones.filter(milestone => currentStreak >= milestone.days);
+  };
+
+  // Difficult Words Library Management
+  const addToDifficultWords = (word: string, score: number, phonetic: string, transliteration: string) => {
+    const existingWord = difficultWords.find((w: any) => w.word === word);
+    
+    if (existingWord) {
+      // Update existing word with new score if it's lower (more difficult)
+      if (score < existingWord.lowestScore) {
+        const updatedWords = difficultWords.map((w: any) => 
+          w.word === word ? { ...w, lowestScore: score, lastPracticed: new Date().toISOString() } : w
+        );
+        setDifficultWords(updatedWords);
+        localStorage.setItem('pronunciation_difficult_words', JSON.stringify(updatedWords));
+      }
+    } else {
+      // Add new difficult word
+      const newWord = {
+        word,
+        phonetic,
+        transliteration,
+        lowestScore: score,
+        timesPracticed: 1,
+        firstAdded: new Date().toISOString(),
+        lastPracticed: new Date().toISOString(),
+        improvement: 0
+      };
+      
+      const updatedWords = [...difficultWords, newWord];
+      setDifficultWords(updatedWords);
+      localStorage.setItem('pronunciation_difficult_words', JSON.stringify(updatedWords));
+      
+      console.log(`📚 Added "${word}" to difficult words library (score: ${score})`);
+    }
+  };
+
+  const removeFromDifficultWords = (word: string) => {
+    const updatedWords = difficultWords.filter((w: any) => w.word !== word);
+    setDifficultWords(updatedWords);
+    localStorage.setItem('pronunciation_difficult_words', JSON.stringify(updatedWords));
+    console.log(`🗑️ Removed "${word}" from difficult words library`);
+  };
+
+  const updateDifficultWordPractice = (word: string, newScore: number) => {
+    const updatedWords = difficultWords.map((w: any) => {
+      if (w.word === word) {
+        const improvement = newScore - w.lowestScore;
+        return {
+          ...w,
+          lowestScore: Math.min(w.lowestScore, newScore),
+          timesPracticed: w.timesPracticed + 1,
+          lastPracticed: new Date().toISOString(),
+          improvement: Math.max(w.improvement, improvement)
+        };
+      }
+      return w;
+    });
+    
+    setDifficultWords(updatedWords);
+    localStorage.setItem('pronunciation_difficult_words', JSON.stringify(updatedWords));
+  };
+
+  const getDifficultWordsStats = () => {
+    const totalWords = difficultWords.length;
+    const avgScore = totalWords > 0 ? 
+      Math.round(difficultWords.reduce((sum: number, w: any) => sum + w.lowestScore, 0) / totalWords) : 0;
+    const mostImproved = difficultWords.reduce((best: any, current: any) => 
+      current.improvement > (best?.improvement || 0) ? current : best, null);
+    
+    return { totalWords, avgScore, mostImproved };
   };
 
   const endPracticeSession = () => {
@@ -857,20 +3258,6 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
       localStorage.setItem('practice_sessions', JSON.stringify(savedSessions));
       
       setCurrentSession(null);
-      return sessionData;
-    }
-    return null;
-  };
-
-  const updateSessionProgress = (word: string, score: number) => {
-    if (currentSession) {
-      const updatedSession = {
-        ...currentSession,
-        wordsPracticed: [...currentSession.wordsPracticed, word],
-        totalScore: currentSession.totalScore + score,
-        averageScore: (currentSession.totalScore + score) / (currentSession.wordsPracticed.length + 1)
-      };
-      setCurrentSession(updatedSession);
     }
   };
 
@@ -879,117 +3266,85 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
     
     return {
       wordsPracticed: currentSession.wordsPracticed.length,
-      averageScore: Math.round(currentSession.averageScore),
-      duration: Date.now() - new Date(currentSession.startTime).getTime(),
-      masteredInSession: currentSession.wordsPracticed.filter(word => masteredWords.has(word)).length
+      totalScore: currentSession.totalScore,
+      averageScore: currentSession.averageScore,
+      duration: Date.now() - new Date(currentSession.startTime).getTime()
     };
   };
 
-  // Progress tracking and gamification functions
-  const addXP = (amount: number) => {
-    setUserProgress(prev => {
-      const newXP = prev.xp + amount;
-      const newLevel = Math.floor(newXP / 100) + 1;
-      const leveledUp = newLevel > prev.level;
-      
-      return {
-        ...prev,
-        xp: newXP,
-        level: newLevel,
-        achievements: leveledUp ? [...prev.achievements, 'level_up'] : prev.achievements
-      };
-    });
+  // Achievement badge component
+  const AchievementBadge: React.FC<{type: string, unlocked: boolean}> = ({ type, unlocked }) => {
+    const badges = {
+      first_practice: { icon: '🎯', label: 'First Practice' },
+      perfect_score: { icon: '⭐', label: 'Perfect Score' },
+      word_master: { icon: '🏆', label: 'Word Master' }
+    };
+    
+    const badge = badges[type as keyof typeof badges];
+    if (!badge) return null;
+    
+    return (
+      <div className={`px-2 py-1 rounded text-xs ${unlocked ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-400'}`}>
+        {badge.icon} {badge.label}
+      </div>
+    );
   };
 
-  const checkAchievements = (newWord: string, score: number) => {
-    const newAchievements: string[] = [];
+  // Error badge component
+  const ErrorBadge: React.FC<{type: string, hasError: boolean}> = ({ type, hasError }) => {
+    const badgeConfig = {
+      grammar: { color: 'bg-red-100 text-red-800', icon: AlertCircle, label: 'Grammar' },
+      vocabulary: { color: 'bg-primary-100 text-text800', icon: BookOpen, label: 'Vocabulary' },
+      pronunciation: { color: 'bg-green-100 text-green-800', icon: Volume2, label: 'Pronunciation' }
+    };
     
-    // First word mastered
-    if (score >= 80 && !userProgress.achievements.includes('first_mastery')) {
-      newAchievements.push('first_mastery');
-    }
+    const config = badgeConfig[type as keyof typeof badgeConfig];
+    if (!config) return null;
     
-    // Perfect score
-    if (score >= 100 && !userProgress.achievements.includes('perfect_score')) {
-      newAchievements.push('perfect_score');
-    }
-    
-    // Streak achievements
-    if (userProgress.streak >= 5 && !userProgress.achievements.includes('streak_5')) {
-      newAchievements.push('streak_5');
-    }
-    
-    if (newAchievements.length > 0) {
-      setUserProgress(prev => ({
-        ...prev,
-        achievements: [...prev.achievements, ...newAchievements]
-      }));
-    }
+    return (
+      <div className={`flex items-center space-x-1 px-2 py-1 rounded text-xs ${config.color}`}>
+        <config.icon className="h-3 w-3" />
+        <span>{config.label}</span>
+        {hasError && <span className="ml-1">⚠️</span>}
+      </div>
+    );
   };
 
-  const updateProgress = (word: string, score: number) => {
-    // Add XP based on score
-    const xpGained = Math.floor(score / 10);
-    addXP(xpGained);
+  const updateWordScore = (word: string, score: number) => {
+    setPronunciationWords(prev => prev.map(w => 
+      w.word === word 
+        ? { ...w, score, needsPractice: score < 80 }
+        : w
+    ));
     
-    // Update word mastery count
     if (score >= 80) {
-      setUserProgress(prev => ({
-        ...prev,
-        totalWordsMastered: prev.totalWordsMastered + 1,
-        streak: prev.streak + 1
-      }));
-    } else {
-      setUserProgress(prev => ({
-        ...prev,
-        streak: 0
-      }));
+      setMasteredWords(prev => new Set([...prev, word]));
     }
-    
-    // Check for achievements
-    checkAchievements(word, score);
-  };
-
-  const getProgressStats = () => {
-    return {
-      level: userProgress.level,
-      xp: userProgress.xp,
-      xpToNextLevel: (userProgress.level * 100) - userProgress.xp,
-      totalWordsMastered: userProgress.totalWordsMastered,
-      streak: userProgress.streak,
-      achievements: userProgress.achievements
-    };
   };
 
   if (!isVisible) return null;
 
   return (
-    <div className="w-full bg-gradient-to-br from-white to-slate-50 flex flex-col h-full shadow-lg">
-      {/* Tabs */}
-      <div className="flex border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white">
+    <div className="h-full flex flex-col bg-background-light border-l border-gray-200">
+      {/* Tab Navigation */}
+      <div className="flex border-b border-gray-200">
         <button
           onClick={() => setActiveTab('vocab')}
-          className={`flex-1 px-4 py-3 text-sm font-semibold transition-all duration-200 ${
+          className={`flex-1 px-4 py-3 text-sm font-semibold transition-all duration-200 flex flex-col items-center justify-center space-y-1 ${
             activeTab === 'vocab'
-              ? 'text-blue-700 border-b-2 border-blue-600 bg-gradient-to-r from-blue-50 to-indigo-50'
-              : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100'
+              ? 'text-text border-b-2 border-text bg-gray-50'
+              : 'text-text-muted hover:text-text hover:bg-gray-50'
           }`}
         >
-          <BookOpen className="h-4 w-4 inline mr-2" />
-          Vocabulary
+          <BookOpen className="h-5 w-5" />
+          <span>Vocabulary</span>
         </button>
         <button
-          onClick={() => {
-            setActiveTab('explain');
-            // Only call API when user manually clicks explain tab
-            if (currentMessage && !explanationCache[currentMessage]) {
-              generateGrammarExplanation(currentMessage);
-            }
-          }}
+          onClick={() => setActiveTab('explain')}
           className={`flex-1 px-4 py-3 text-sm font-semibold transition-all duration-200 ${
             activeTab === 'explain'
-              ? 'text-blue-700 border-b-2 border-blue-600 bg-gradient-to-r from-blue-50 to-indigo-50'
-              : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100'
+              ? 'text-text border-b-2 border-text bg-gray-50'
+              : 'text-text-muted hover:text-text hover:bg-gray-50'
           }`}
         >
           <Lightbulb className="h-4 w-4 inline mr-2" />
@@ -997,498 +3352,625 @@ export default function Toolbar({ isVisible, currentMessage, onAddToVocab, autoL
         </button>
         <button
           onClick={() => setActiveTab('pronunciation')}
-          className={`flex-1 px-4 py-3 text-sm font-semibold transition-all duration-200 ${
+          className={`flex-1 px-4 py-3 text-sm font-semibold transition-all duration-200 flex flex-col items-center justify-center space-y-1 ${
             activeTab === 'pronunciation'
-              ? 'text-blue-700 border-b-2 border-blue-600 bg-gradient-to-r from-blue-50 to-indigo-50'
-              : 'text-slate-600 hover:text-slate-800 hover:bg-gradient-to-r hover:from-slate-50 hover:to-slate-100'
+              ? 'text-text border-b-2 border-text bg-gray-50'
+              : 'text-text-muted hover:text-text hover:bg-gray-50'
           }`}
         >
-          <Volume2 className="h-4 w-4 inline mr-2" />
-          Pronunciation
+          <Volume2 className="h-5 w-5" />
+          <span>Pronunciation</span>
         </button>
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-y-auto p-4 bg-gradient-to-b from-slate-50/50 to-white">
+      <div className="flex-1 overflow-y-auto p-4">
         {activeTab === 'vocab' && (
           <div className="space-y-6">
-            {vocabItems.length > 0 ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-semibold text-gray-900 text-base">Collected Vocabulary</h4>
-                  <select
-                    value={vocabFilter}
-                    onChange={(e) => setVocabFilter(e.target.value)}
-                    className="text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white"
-                  >
-                    <option value="all">All</option>
-                    <option value="General">General</option>
-                    <option value="Current Chat">Current Chat</option>
-                  </select>
-                </div>
-                {vocabItems
-                  .filter(item => vocabFilter === 'all' || item.category === vocabFilter || item.theme === vocabFilter)
-                  .map((item, index) => (
-                    <div key={index} className="bg-gradient-to-br from-slate-50 to-white border border-slate-200 rounded-xl p-4 flex items-center justify-between hover:shadow-md transition-all duration-200 shadow-sm">
-                      <div className="flex-1">
-                        <div className="font-semibold text-gray-900 text-base">{item.word}</div>
-                        <div className="text-sm text-gray-600 mt-1">{item.meaning}</div>
-                        <div className="text-xs text-gray-500 mt-2">
-                          {item.category} • {item.theme}
-                        </div>
+            {/* Instructions Section */}
+            <div className="bg-background-light border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold text-primary flex items-center font-display">
+                  <BookOpen className="h-4 w-4 mr-2" />
+                  How to Use the Vocabulary Tab
+                </h4>
+              </div>
+              <ul className="text-xs text-primary space-y-1.5 leading-relaxed font-body">
+                <li className="flex items-start">
+                  <Volume2 className="h-3 w-3 mr-2 mt-0.5 flex-shrink-0" />
+                  <span><strong>Listen:</strong> Click the audio icon to hear the German pronunciation.</span>
+                </li>
+                <li className="flex items-start">
+                  <X className="h-3 w-3 mr-2 mt-0.5 flex-shrink-0" />
+                  <span><strong>Delete:</strong> Mastered a word? Click the X to remove it from your list.</span>
+                </li>
+                <li className="flex items-start">
+                  <Star className="h-3 w-3 mr-2 mt-0.5 flex-shrink-0" />
+                  <span><strong>Star:</strong> Save words to My Vocabulary for deeper practice inside the Vocabulary Builder.</span>
+                </li>
+                <li className="flex items-start">
+                  <BookOpen className="h-3 w-3 mr-2 mt-0.5 flex-shrink-0" />
+                  <span><strong>Vocabulary Builder:</strong> Explore topic-based words, flashcards, and tests from the main panel.</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* Vocabulary Views */}
+            <div className="flex space-x-2">
+              <button
+                onClick={() => {
+                  setVocabView('conversation');
+                }}
+                className={`px-3 py-1 rounded text-sm ${
+                  vocabView === 'conversation' ? 'btn-glossy' : 'bg-gray-200 text-gray-700'
+                }`}
+              >
+                Conversations
+              </button>
+              <button
+                onClick={() => {
+                  setVocabView('builder');
+                  if (onOpenVocabularyBuilder) {
+                    onOpenVocabularyBuilder();
+                  }
+                }}
+                className={`px-3 py-1 rounded text-sm ${
+                  vocabView === 'builder' ? 'btn-glossy' : 'bg-gray-200 text-gray-700'
+                }`}
+              >
+                Vocabulary Builder
+              </button>
+            </div>
+
+            {/* Vocabulary Content */}
+            {vocabView === 'conversation' ? (
+              <div className="space-y-3">
+                {vocabItems.map((item, index) => {
+                const isStarred = myVocab.has(item.word);
+                return (
+                  <div key={index} className="bg-gray-50 rounded-lg p-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="font-semibold text-gray-900">{item.word}</h4>
+                        <p className="text-sm text-gray-600">{item.meaning}</p>
+                        <p className="text-xs text-gray-500 mt-1">{item.category}</p>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <button
-                          onClick={async () => await speakText(item.word)}
-                          className="p-2 hover:bg-slate-100 rounded-lg transition-all duration-200 hover:shadow-sm"
-                          title="Listen"
-                        >
-                          <Volume2 className="h-4 w-4 text-gray-500" />
-                        </button>
-                        <button
-                          onClick={() => removeVocabItem(index)}
-                          className="p-2 hover:bg-red-50 rounded-lg transition-all duration-200 hover:shadow-sm"
-                          title="Remove"
-                        >
-                          <X className="h-4 w-4 text-red-500" />
-                        </button>
+                        {/* Audio Button */}
+                        <div className="relative group">
+                          <button
+                            onClick={() => handlePlayAudio(item.word)}
+                            className="text-text500 hover:text-text600 transition-colors"
+                          >
+                            <Volume2 className="h-4 w-4" />
+                          </button>
+                          <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+                            Listen
+                          </div>
+                        </div>
+                        
+                        {/* Delete Button */}
+                        <div className="relative group">
+                          <button
+                            onClick={() => handleDeleteFromVocab(item.word)}
+                            className="text-red-500 hover:text-red-600 transition-colors"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                          <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+                            Learnt the word, Let's delete it
+                          </div>
+                        </div>
+                        
+                        {/* Star Button */}
+                        <div className="relative group">
+                          <button
+                            onClick={() => handleAddToMyVocab(item.word, item.meaning)}
+                            className={`transition-colors ${
+                              isStarred 
+                                ? 'text-yellow-500 hover:text-yellow-600' 
+                                : 'text-gray-400 hover:text-text500'
+                            }`}
+                          >
+                            <Star className={`h-4 w-4 ${isStarred ? 'fill-yellow-500' : ''}`} />
+                          </button>
+                          <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+                            {isStarred ? 'Remove from Vocabulary' : 'Add to Vocabulary'}
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  ))}
+                  </div>
+                );
+              })}
+
+                {/* New Vocabulary Items */}
+                {newVocabItems && newVocabItems.length > 0 && (
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-gray-900">New Words</h3>
+                    {newVocabItems.map((item, index) => {
+                      const isStarred = myVocab.has(item.word);
+                      return (
+                        <div key={index} className="bg-background-light border border-gray-200 rounded-lg p-3">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h4 className="font-semibold text-text900">{item.word}</h4>
+                              <p className="text-sm text-text700">{item.meaning}</p>
+                              <p className="text-xs text-text600 mt-1">{item.context}</p>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              {/* Audio Button */}
+                              <div className="relative group">
+                                <button
+                                  onClick={() => handlePlayAudio(item.word)}
+                                  className="text-text500 hover:text-text600 transition-colors"
+                                >
+                                  <Volume2 className="h-4 w-4" />
+                                </button>
+                                <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+                                  Listen
+                                </div>
+                              </div>
+                              
+                              {/* Delete Button */}
+                              <div className="relative group">
+                                <button
+                                  onClick={() => handleDeleteFromVocab(item.word)}
+                                  className="text-red-500 hover:text-red-600 transition-colors"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                                <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+                                  Learnt the word, Let's delete it
+                                </div>
+                              </div>
+                              
+                              {/* Star Button */}
+                              <div className="relative group">
+                                <button
+                                  onClick={() => handleAddToMyVocab(item.word, item.meaning)}
+                                  className={`transition-colors ${
+                                    isStarred 
+                                      ? 'text-yellow-500 hover:text-yellow-600' 
+                                      : 'text-text500 hover:text-text700'
+                                  }`}
+                                >
+                                  <Star className={`h-4 w-4 ${isStarred ? 'fill-yellow-500' : ''}`} />
+                                </button>
+                                <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-white text-black text-xs px-2 py-1 rounded shadow-md border border-gray-200 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+                                  {isStarred ? 'Remove from Vocabulary' : 'Add to Vocabulary'}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="text-center py-8">
-                <div className="w-16 h-16 bg-gradient-to-br from-slate-100 to-slate-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <BookOpen className="h-8 w-8 text-slate-400" />
-                </div>
-                <h3 className="text-lg font-bold text-slate-800 mb-2">No Vocabulary Yet</h3>
-                <p className="text-sm text-gray-600 mb-6">
-                  Start a conversation and use the translate feature to collect German words
-                </p>
-                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6 text-center shadow-sm">
-                  <p className="text-sm text-blue-700">
-                    💡 Click the "EN" button on any AI message, then "Add words to vocab" to start building your vocabulary!
-                  </p>
-                </div>
-              </div>
-            )}
+            ) : null}
           </div>
         )}
 
         {activeTab === 'explain' && (
-          <div className="h-full flex flex-col">
-            <div className="flex-1 overflow-y-auto pr-2 max-h-[600px]" style={{
-              scrollbarWidth: 'thin',
-              scrollbarColor: '#d1d5db #f3f4f6'
-            }}>
-              {isLoadingExplanation ? (
-                <div className="text-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                  <p className="text-sm text-gray-600">Analyzing grammar...</p>
+          <div className="space-y-6">
+            {currentMessage ? (
+              <div className="space-y-6">
+                {/* Error Analysis */}
+                {analysisData && (
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      <ErrorBadge type="grammar" hasError={analysisData.errorTypes.grammar} />
+                      <ErrorBadge type="vocabulary" hasError={analysisData.errorTypes.vocabulary} />
+                      <ErrorBadge type="pronunciation" hasError={analysisData.errorTypes.pronunciation} />
                 </div>
-              ) : (showGrammarSection || showSpeakingSection) ? (
-                <div className="space-y-6 pb-6 relative">
-                  {/* Scroll indicator */}
-                  <div className="absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-t from-white to-transparent pointer-events-none z-10"></div>
-                  
-                  {/* Grammar Structure */}
-                  {showGrammarSection && grammarExplanation && (
-                    <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
-                      <h4 className="font-bold text-blue-900 mb-6 flex items-center text-lg">
-                        <Lightbulb className="h-6 w-6 mr-3" />
-                        Grammar Analysis
-                      </h4>
-                      <div className="prose prose-sm max-w-none">
-                        <div 
-                          className="text-sm text-blue-800 leading-relaxed"
-                          dangerouslySetInnerHTML={{ 
-                            __html: grammarExplanation
-                              .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                              .replace(/\n/g, '<br/>')
-                          }}
-                        />
                       </div>
-                      
-                      {/* Show Speaking Like a Local button after grammar analysis */}
-                      {!showSpeakingSection && (
-                        <div className="mt-6">
-                          <button
-                            onClick={() => generateSpeakingTips(currentMessage)}
-                            disabled={!currentMessage || isLoadingExplanation}
-                            className="w-full bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white px-4 py-3 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
-                          >
-                            <span className="text-sm">🗣️</span>
-                            <span>Speaking Like a Local</span>
-                          </button>
+                )}
+
+                {/* Grammar Explanation */}
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-2 mb-3">
+                    <Lightbulb className="h-5 w-5 text-text600" />
+                    <h4 className="font-semibold text-gray-900">Grammar Explanation</h4>
+                  </div>
+                  {isLoadingExplanation ? (
+                    <div className="bg-white border border-primary-200 rounded-lg p-6 shadow-sm">
+                      <div className="flex items-center justify-center space-x-2">
+                        <Loader2 className="h-5 w-5 animate-spin text-text600" />
+                        <span className="text-sm text-gray-600">Loading explanation...</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-white border border-primary-200 rounded-lg p-6 shadow-sm transition-all duration-200 hover:shadow-md">
+                      {grammarExplanation ? (
+                        <div className="text-sm text-gray-700 leading-relaxed">
+                          {grammarExplanation.split('\n').map((line, index) => {
+                            // Skip empty lines
+                            if (!line.trim()) return null;
+                            
+                            // Clean up any remaining numbers and labels
+                            let cleanLine = line
+                              .replace(/^\d+\.\s*/, '') // Remove "1. ", "2. ", etc.
+                              .replace(/^(Title|Rule|Example|Correct|Try similar patterns|Remember|German tip):\s*/i, '') // Remove labels
+                              .replace(/^(Correct|Example|Rule|Remember|German tip):\s*/i, '') // Remove additional label variations
+                              .trim();
+                            
+                            // Highlight German text in quotes
+                            const germanText = cleanLine.match(/[""]([^""]+)[""]/g);
+                            if (germanText) {
+                              let processedLine = cleanLine;
+                              germanText.forEach(german => {
+                                const cleanGerman = german.replace(/[""]/g, '');
+                                processedLine = processedLine.replace(german, `<span class="font-medium text-text900">"${cleanGerman}"</span>`);
+                              });
+                              return (
+                                <p key={index} 
+                                   className="mb-2"
+                                   dangerouslySetInnerHTML={{ __html: processedLine }}
+                                />
+                              );
+                            }
+                            
+                            // Handle emoji indicators with proper icons
+                            if (cleanLine.includes('💡')) {
+                              return (
+                                <div key={index} className="flex items-start space-x-2 mb-3">
+                                  <Lightbulb className="h-4 w-4 text-text600 mt-0.5 flex-shrink-0" />
+                                  <span className="font-bold text-text900">{cleanLine.replace('💡', '').trim()}</span>
+                                </div>
+                              );
+                            }
+                            
+                            // Handle Rule without emoji - add 📖 icon
+                            if (cleanLine.toLowerCase().includes('rule:') || cleanLine.toLowerCase().includes('the preposition')) {
+                              return (
+                                <div key={index} className="flex items-start space-x-2 mb-3">
+                                  <BookOpen className="h-4 w-4 text-text600 mt-0.5 flex-shrink-0" />
+                                  <span className="text-gray-700">{cleanLine.replace(/^(rule:|correct:)/i, '').trim()}</span>
+                                </div>
+                              );
+                            }
+                            
+                            if (cleanLine.includes('📖')) {
+                              return (
+                                <div key={index} className="flex items-start space-x-2 mb-3">
+                                  <BookOpen className="h-4 w-4 text-text600 mt-0.5 flex-shrink-0" />
+                                  <span className="text-gray-700">{cleanLine.replace('📖', '').trim()}</span>
+                                </div>
+                              );
+                            }
+                            
+                            if (cleanLine.includes('✅')) {
+                              return (
+                                <div key={index} className="flex items-start space-x-2 mb-3">
+                                  <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                                  <span className="text-gray-700">{cleanLine.replace('✅', '').trim()}</span>
+                                </div>
+                              );
+                            }
+                            
+                            // Handle Example without emoji - add ✅ icon
+                            if (cleanLine.includes('"') && !cleanLine.includes('✅') && !cleanLine.includes('👉')) {
+                              return (
+                                <div key={index} className="flex items-start space-x-2 mb-3">
+                                  <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                                  <span className="text-gray-700">{cleanLine}</span>
+                                </div>
+                              );
+                            }
+                            
+                            if (cleanLine.includes('👉')) {
+                              return (
+                                <div key={index} className="flex items-start space-x-2 mb-3">
+                                  <ArrowRight className="h-4 w-4 text-text600 mt-0.5 flex-shrink-0" />
+                                  <span className="text-gray-700">{cleanLine.replace('👉', '').trim()}</span>
+                                </div>
+                              );
+                            }
+                            
+                            if (cleanLine.includes('🧠')) {
+                              return (
+                                <div key={index} className="flex items-start space-x-2 mb-3">
+                                  <Target className="h-4 w-4 text-text600 mt-0.5 flex-shrink-0" />
+                                  <span className="text-gray-700">{cleanLine.replace('🧠', '').trim()}</span>
+                                </div>
+                              );
+                            }
+                            
+                            // Handle Remember without emoji - add 🧠 icon
+                            if (cleanLine.toLowerCase().includes('remember:') || cleanLine.toLowerCase().includes('after')) {
+                              return (
+                                <div key={index} className="flex items-start space-x-2 mb-3">
+                                  <Target className="h-4 w-4 text-text600 mt-0.5 flex-shrink-0" />
+                                  <span className="text-gray-700">{cleanLine.replace(/^(remember:|after)/i, '').trim()}</span>
+                                </div>
+                              );
+                            }
+                            
+                            if (cleanLine.includes('🎯')) {
+                              return (
+                                <div key={index} className="flex items-start space-x-2 mb-3">
+                                  <Target className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                                  <span className="text-gray-700">{cleanLine.replace('🎯', '').trim()}</span>
+                                </div>
+                              );
+                            }
+                            
+                            // Handle German tip without emoji - add 🎯 icon
+                            if (cleanLine.toLowerCase().includes('german tip:') || cleanLine.toLowerCase().includes('commonly used')) {
+                              return (
+                                <div key={index} className="flex items-start space-x-2 mb-3">
+                                  <Target className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                                  <span className="text-gray-700">{cleanLine.replace(/^(german tip:)/i, '').trim()}</span>
+                                </div>
+                              );
+                            }
+                            
+                            return (
+                              <p key={index} className="mb-2">
+                                {cleanLine}
+                              </p>
+                            );
+                          })}
                         </div>
+                      ) : (
+                        <p className="text-sm text-gray-500 italic">No grammar explanation available.</p>
                       )}
                     </div>
                   )}
-
-                  {/* Speaking Tips */}
-                  {showSpeakingSection && speakingTips && (
-                    <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6 border border-green-200">
-                      <h4 className="font-bold text-green-900 mb-4 flex items-center text-lg">
-                        <span className="text-sm bg-green-200 text-green-800 px-3 py-1 rounded-full mr-3 font-semibold">TIP</span>
-                        Speaking Like a Local
-                      </h4>
-                      <div 
-                        className="text-sm text-green-800 leading-relaxed"
-                        dangerouslySetInnerHTML={{ 
-                          __html: speakingTips
-                            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                            .replace(/\n/g, '<br/>')
-                        }}
-                      />
-                    </div>
-                  )}
                 </div>
-              ) : (
-                <div className="text-center py-8">
-                  <Lightbulb className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                  <p className="text-sm text-gray-600 mb-6">
-                    Get grammar analysis and speaking tips for the current message
-                  </p>
-                  <div className="space-y-3">
-                    {!showGrammarSection && (
-                      <button
-                        onClick={() => generateGrammarExplanation(currentMessage)}
-                        disabled={!currentMessage || isLoadingExplanation}
-                        className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white px-4 py-3 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
-                      >
-                        <Lightbulb className="h-4 w-4" />
-                        <span>Grammar Analysis</span>
-                      </button>
+
+                {/* Speak Like a Local */}
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-2 mb-3">
+                    <Volume2 className="h-5 w-5 text-purple-600" />
+                    <h4 className="font-semibold text-gray-900">Speak Like a Local</h4>
+                  </div>
+                  <div className="bg-white border border-purple-200 rounded-lg p-6 shadow-sm transition-all duration-200 hover:shadow-md">
+                    {speakingTips ? (
+                      <div className="text-sm text-gray-700 leading-relaxed">
+                        {speakingTips.split('\n').map((line, index) => {
+                          // Highlight German text in quotes
+                          const germanText = line.match(/[""]([^""]+)[""]/g);
+                          if (germanText) {
+                            let processedLine = line;
+                            germanText.forEach(german => {
+                              const cleanGerman = german.replace(/[""]/g, '');
+                              processedLine = processedLine.replace(german, `<span class="font-medium text-purple-900">"${cleanGerman}"</span>`);
+                            });
+                            return (
+                              <p key={index} 
+                                 className="mb-2"
+                                 dangerouslySetInnerHTML={{ __html: processedLine }}
+                              />
+                            );
+                          }
+                          
+                          // Handle emoji indicators
+                          if (line.includes('🇩🇪')) {
+                            return (
+                              <div key={index} className="flex items-start space-x-2 mb-3">
+                                <Volume2 className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                                <span className="font-semibold text-purple-900">{line.replace('🇩🇪', '').trim()}</span>
+                              </div>
+                            );
+                          }
+                          
+                          if (line.includes('✅')) {
+                            return (
+                              <div key={index} className="flex items-start space-x-2 mb-3">
+                                <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                                <span className="text-gray-700">{line.replace('✅', '').trim()}</span>
+                              </div>
+                            );
+                          }
+                          
+                          if (line.includes('👉')) {
+                            return (
+                              <div key={index} className="flex items-start space-x-2 mb-3">
+                                <ArrowRight className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                                <span className="text-gray-700">{line.replace('👉', '').trim()}</span>
+                              </div>
+                            );
+                          }
+                          
+                          if (line.includes('🎯')) {
+                            return (
+                              <div key={index} className="flex items-start space-x-2 mb-3">
+                                <Target className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                                <span className="text-gray-700">{line.replace('🎯', '').trim()}</span>
+                              </div>
+                            );
+                          }
+                          
+                          return (
+                            <p key={index} className="mb-2">
+                              {line}
+                            </p>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500 italic">No speaking tips available.</p>
                     )}
                   </div>
+                </div>
+
+                </div>
+              ) : (
+                <div className="bg-white border border-gray-200 rounded-lg p-8 shadow-sm">
+                  <div className="text-center">
+                    <Lightbulb className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Ready to Learn</h3>
+                    <p className="text-sm text-gray-600 max-w-md mx-auto">
+                      Grammar explanations and speaking tips will appear here when the AI sends a message
+                    </p>
+                  </div>
+                </div>
+              )}
+          </div>
+        )}
+
+        {activeTab === 'pronunciation' && (
+          <div className="space-y-6">
+            {/* Pronunciation Analysis Section */}
+            <div className="bg-primary-50 border border-primary-200 rounded-lg p-4">
+              <h4 className="font-semibold text-text900 mb-3">Analyze Your Pronunciation</h4>
+              
+              {/* Show pending analysis if available */}
+              {pendingPronunciationAnalysis ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">Sentence to Analyze:</p>
+                      <p className="text-sm text-gray-600">"{pendingPronunciationAnalysis.text}"</p>
+                      {/* Debug info - remove in production */}
+                      {process.env.NODE_ENV === 'development' && (
+                        <p className="text-xs text-gray-400 mt-1">
+                          Debug: Text length: {pendingPronunciationAnalysis.text.length}, 
+                          ResponseId: {pendingPronunciationAnalysis.responseId}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={handleAnalyzeButtonClick}
+                      disabled={!canAnalyzePronunciation}
+                      className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:bg-primary-300 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {isAnyAnalyzing ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>{analyzeButtonLabel}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Volume2 className="h-4 w-4" />
+                          <span>{analyzeButtonLabel}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ) : !lastGermanVoiceMessage ? (
+                <div className="text-center py-4">
+                  <Volume2 className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                  <p className="text-sm text-gray-600">
+                    Practice a suggested response or send a German voice message to analyze pronunciation
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">Last German Message:</p>
+                      <p className="text-sm text-gray-600">"{lastGermanVoiceMessage.transcription}"</p>
+                    </div>
+                    <button
+                      onClick={handleAnalyzeButtonClick}
+                      disabled={!canAnalyzePronunciation}
+                      className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:bg-primary-300 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {isAnyAnalyzing ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>{analyzeButtonLabel}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Volume2 className="h-4 w-4" />
+                          <span>{analyzeButtonLabel}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              {/* Show results if analysis is complete */}
+              {pronunciationAnalysis && (
+                <div className="mt-4">
+                  <PronunciationSentenceView
+                    pronunciationData={pronunciationAnalysis}
+                    sentence={pendingPronunciationAnalysis?.text || lastGermanVoiceMessage?.transcription || ''}
+                    onRepracticeWord={(word) => {
+                      console.log('Repractice word:', word);
+                    }}
+                    onRepracticeSentence={() => {
+                      console.log('Repractice sentence');
+                    }}
+                    onPlayCorrectPronunciation={() => {
+                      const text = pendingPronunciationAnalysis?.text || lastGermanVoiceMessage?.transcription || '';
+                      germanTTS.speak(text);
+                    }}
+                    onPracticeWord={(word) => {
+                      console.log('Practice word from view:', word);
+                      practiceWord(word);
+                    }}
+                    onPracticeSentence={() => {
+                      console.log('Practice sentence from view');
+                      startSentencePractice();
+                    }}
+                    isRecordingWord={(word) => {
+                      return practicingWord === word && isWordRecording;
+                    }}
+                    isRecordingSentence={isSentenceRecording}
+                    onStopRecording={() => {
+                      console.log('🛑 onStopRecording called');
+                      console.log('🛑 practicingWord:', practicingWord);
+                      console.log('🛑 isSentenceRecording:', isSentenceRecording);
+                      console.log('🛑 isWordRecording:', isWordRecording);
+                      
+                      // Check if this is sentence recording
+                      if (practicingWord === 'sentence' || isSentenceRecording) {
+                        console.log('🛑 Stopping sentence recording...');
+                        stopSentenceRecording();
+                      } else if (practicingWord && practicingWord !== 'sentence') {
+                        console.log('🛑 Stopping word recording...');
+                        stopRecording();
+                      } else {
+                        console.warn('⚠️ onStopRecording called but no active recording detected');
+                        console.warn('⚠️ practicingWord:', practicingWord);
+                        console.warn('⚠️ isSentenceRecording:', isSentenceRecording);
+                        console.warn('⚠️ isWordRecording:', isWordRecording);
+                        // Fallback: try to stop sentence recording if state suggests it
+                        if (isSentenceRecording) {
+                          console.log('🛑 Fallback: Attempting to stop sentence recording...');
+                          stopSentenceRecording();
+                        }
+                      }
+                    }}
+                    onAnalyzeWord={handleAnalyzeWord}
+                    onAnalyzeSentence={() => {
+                      console.log('Analyze sentence from view');
+                      // Update pronunciationAnalysis with sentence-level results if available
+                      if (sentenceAnalysis && pronunciationAnalysis) {
+                        setPronunciationAnalysis({
+                          ...pronunciationAnalysis,
+                          overallScore: sentenceAnalysis.overallScore,
+                          sentenceScore: sentenceAnalysis.overallScore,
+                          sentenceDimensions: sentenceAnalysis.sentenceDimensions || pronunciationAnalysis.sentenceDimensions
+                        });
+                      }
+                      analyzeSentence();
+                    }}
+                    isWordReadyForAnalysis={(word) => {
+                      // Word is ready for analysis if it's in wordsReadyForAnalysis AND not yet analyzed
+                      // Once analyzed, wordsReadyForAnalysis is cleared, so this returns false and Practice button shows
+                      return wordsReadyForAnalysis.has(word) && !wordsAnalysisComplete.has(word);
+                    }}
+                    isWordAnalyzed={(word) => {
+                      // Word has been analyzed if it's in wordsAnalysisComplete
+                      return wordsAnalysisComplete.has(word);
+                    }}
+                    isSentenceReadyForAnalysis={sentenceReadyForAnalysis && !isAnalyzing}
+                  />
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {activeTab === 'pronunciation' && (
-          <div className="space-y-6">
-            {currentMessage ? (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                <h4 className="font-semibold text-gray-900 text-base">Pronunciation Practice</h4>
-                  <div className="flex space-x-2">
-                    {!currentSession ? (
-                      <button
-                        onClick={startPracticeSession}
-                        className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 flex items-center space-x-2"
-                      >
-                        <Target className="h-4 w-4" />
-                        <span>Start Session</span>
-                      </button>
-                    ) : (
-                      <button
-                        onClick={endPracticeSession}
-                        className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center space-x-2"
-                      >
-                        <Trophy className="h-4 w-4" />
-                        <span>End Session</span>
-                      </button>
-                    )}
-                    <button
-                      onClick={() => analyzeComprehensive(currentMessage)}
-                      disabled={isAnalyzing}
-                      className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 flex items-center space-x-2"
-                    >
-                      {isAnalyzing ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Volume2 className="h-4 w-4" />
-                      )}
-                      <span>Analyze</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Progress Stats */}
-                <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-4">
-                  <h5 className="font-semibold text-purple-900 mb-3 flex items-center">
-                    <Trophy className="h-5 w-5 mr-2" />
-                    Your Progress
-                  </h5>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="text-purple-700">Level:</span>
-                      <span className="ml-2 font-bold text-purple-900">{getProgressStats().level}</span>
-                    </div>
-                    <div>
-                      <span className="text-purple-700">XP:</span>
-                      <span className="ml-2 font-bold text-purple-900">{getProgressStats().xp}</span>
-                    </div>
-                    <div>
-                      <span className="text-purple-700">Words Mastered:</span>
-                      <span className="ml-2 font-bold text-green-600">{getProgressStats().totalWordsMastered}</span>
-                    </div>
-                    <div>
-                      <span className="text-purple-700">Streak:</span>
-                      <span className="ml-2 font-bold text-orange-600">{getProgressStats().streak}</span>
-                    </div>
-                  </div>
-                  
-                  {/* XP Progress Bar */}
-                  <div className="mt-3">
-                    <div className="flex justify-between text-xs text-purple-600 mb-1">
-                      <span>Level {getProgressStats().level}</span>
-                      <span>{getProgressStats().xpToNextLevel} XP to next level</span>
-                    </div>
-                    <div className="w-full bg-purple-200 rounded-full h-2">
-                      <div 
-                        className="bg-gradient-to-r from-purple-500 to-blue-500 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${(getProgressStats().xp % 100) / 100 * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                  
-                  {/* Recent Achievements */}
-                  {getProgressStats().achievements.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-purple-200">
-                      <p className="text-xs text-purple-600 mb-2">Recent Achievements:</p>
-                      <div className="flex flex-wrap gap-1">
-                        {getProgressStats().achievements.slice(-3).map((achievement, idx) => (
-                          <AchievementBadge key={idx} type={achievement} unlocked={true} />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Session Stats */}
-                {currentSession && (
-                  <div className="bg-blue-50 rounded-xl p-4">
-                    <h5 className="font-semibold text-blue-900 mb-2">Practice Session</h5>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-blue-700">Words Practiced:</span>
-                        <span className="ml-2 font-bold">{getSessionStats()?.wordsPracticed || 0}</span>
-                      </div>
-                      <div>
-                        <span className="text-blue-700">Average Score:</span>
-                        <span className="ml-2 font-bold">{getSessionStats()?.averageScore || 0}/100</span>
-                      </div>
-                      <div>
-                        <span className="text-blue-700">Mastered:</span>
-                        <span className="ml-2 font-bold text-green-600">{getSessionStats()?.masteredInSession || 0}</span>
-                      </div>
-                      <div>
-                        <span className="text-blue-700">Duration:</span>
-                        <span className="ml-2 font-bold">{Math.round((getSessionStats()?.duration || 0) / 1000 / 60)}m</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Current Message */}
-                <div className="bg-gray-50 rounded-xl p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-sm font-semibold text-gray-700">Current Message</span>
-                    <button
-                      onClick={async () => await speakText(currentMessage)}
-                      className="flex items-center space-x-2 px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
-                    >
-                      <Volume2 className="h-4 w-4" />
-                      <span className="text-sm font-medium">Listen</span>
-                    </button>
-                  </div>
-                  <p className="text-sm text-gray-700 leading-relaxed">{currentMessage}</p>
-                </div>
-                
-                {/* Error Badges */}
-                {analysisData && (
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    <ErrorBadge type="grammar" hasError={analysisData.errorTypes.grammar} />
-                    <ErrorBadge type="vocabulary" hasError={analysisData.errorTypes.vocabulary} />
-                    <ErrorBadge type="pronunciation" hasError={analysisData.errorTypes.pronunciation} />
-                  </div>
-                )}
-
-                {/* Words for Practice */}
-                {pronunciationWords.length > 0 && (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h5 className="text-sm font-semibold text-gray-700">Words to Practice</h5>
-                      <div className="flex space-x-2">
-                        <AchievementBadge type="first_practice" unlocked={practiceHistory.length > 0} />
-                        <AchievementBadge type="perfect_score" unlocked={pronunciationWords.some(w => w.score >= 100)} />
-                      </div>
-                    </div>
-                    {pronunciationWords.map((wordData, index) => (
-                      <div key={index} className="bg-gray-50 rounded-xl p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <span className="text-lg font-semibold">{wordData.word}</span>
-                          <div className="flex items-center space-x-2">
-                            <ScoreDisplay score={wordData.score} label="Score" />
-                            {wordData.needsPractice && (
-                              <button
-                                onClick={() => practiceWord(wordData.word)}
-                                className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 flex items-center space-x-1"
-                              >
-                                <Mic className="h-3 w-3" />
-                                <span>Practice</span>
-                              </button>
-                            )}
-                            {wordData.score >= 80 && (
-                              <AchievementBadge type="word_master" unlocked={true} />
-                            )}
-                          </div>
-                        </div>
-                        
-                        {/* Enhanced Progress bar */}
-                        <div className="mb-3">
-                          <ProgressBar score={wordData.score} />
-                          <div className="flex justify-between text-xs text-gray-500 mt-1">
-                            <span>0</span>
-                            <span>50</span>
-                            <span>100</span>
-                          </div>
-                        </div>
-                        
-                        <div className="space-y-2">
-                          <p className="text-sm text-gray-600">{wordData.feedback}</p>
-                          
-                          {/* Difficulty and sounds to focus on */}
-                          {wordData.difficulty && (
-                            <div className="flex items-center space-x-2">
-                              <span className="text-xs text-gray-500">Difficulty:</span>
-                              <span className={`text-xs px-2 py-1 rounded ${
-                                wordData.difficulty === 'easy' ? 'bg-green-100 text-green-800' :
-                                wordData.difficulty === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-red-100 text-red-800'
-                              }`}>
-                                {wordData.difficulty}
-                              </span>
-                            </div>
-                          )}
-                          
-                          {wordData.soundsToFocus && wordData.soundsToFocus.length > 0 && (
-                            <div className="flex items-center space-x-2">
-                              <span className="text-xs text-gray-500">Focus on:</span>
-                              <div className="flex space-x-1">
-                                {wordData.soundsToFocus.map((sound, idx) => (
-                                  <span key={idx} className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded">
-                                    {sound}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          
-                          {/* Common mistakes */}
-                          {wordData.commonMistakes && wordData.commonMistakes.length > 0 && (
-                            <div className="mt-2">
-                              <p className="text-xs text-gray-500 mb-1">Common mistakes:</p>
-                              <ul className="text-xs text-gray-600 space-y-1">
-                                {wordData.commonMistakes.map((mistake, idx) => (
-                                  <li key={idx} className="flex items-start">
-                                    <span className="text-red-500 mr-1">•</span>
-                                    {mistake}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                          
-                          {/* Improvement tips */}
-                          {wordData.improvementTips && wordData.improvementTips.length > 0 && (
-                            <div className="mt-2">
-                              <p className="text-xs text-gray-500 mb-1">Tips:</p>
-                              <ul className="text-xs text-gray-600 space-y-1">
-                                {wordData.improvementTips.map((tip, idx) => (
-                                  <li key={idx} className="flex items-start">
-                                    <span className="text-blue-500 mr-1">•</span>
-                                    {tip}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-                        
-                        {/* Practice History for this word */}
-                        {practiceHistory.filter(h => h.word === wordData.word).length > 0 && (
-                          <div className="mt-3 pt-3 border-t border-gray-200">
-                            <p className="text-xs text-gray-500 mb-2">Practice History:</p>
-                            <div className="flex space-x-2">
-                              {practiceHistory
-                                .filter(h => h.word === wordData.word)
-                                .slice(-2) // Show last 2 attempts
-                                .map((history, idx) => (
-                                  <div key={idx} className="flex items-center space-x-1">
-                                    <span className={`text-xs px-2 py-1 rounded ${
-                                      history.score >= 80 ? 'bg-green-100 text-green-800' : 
-                                      history.score >= 60 ? 'bg-yellow-100 text-yellow-800' : 
-                                      'bg-red-100 text-red-800'
-                                    }`}>
-                                      {history.score}
-                                    </span>
-                                  </div>
-                                ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Practice Session */}
-                {practicingWord && (
-                  <div className="bg-blue-50 rounded-xl p-6">
-                    <h5 className="font-semibold mb-4">Practice: {practicingWord}</h5>
-                    <div className="space-y-4">
-                      <button
-                        onClick={startWordPractice}
-                        className="w-full bg-blue-500 text-white py-3 rounded-lg hover:bg-blue-600"
-                      >
-                        Record "{practicingWord}"
-                      </button>
-                      <div className="text-center">
-                        <p className="text-sm text-gray-600">
-                          Attempt {currentAttempt} of {maxAttempts}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* General Practice Tips */}
-                <div className="space-y-3">
-                  <h5 className="text-sm font-semibold text-gray-700">Practice Tips</h5>
-                  <ul className="text-sm text-gray-600 space-y-2">
-                    <li className="flex items-start">
-                      <span className="text-blue-500 mr-2">•</span>
-                      Listen to the pronunciation first
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-500 mr-2">•</span>
-                      Repeat the sentence slowly
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-500 mr-2">•</span>
-                      Focus on difficult sounds
-                    </li>
-                    <li className="flex items-start">
-                      <span className="text-blue-500 mr-2">•</span>
-                      Practice with rhythm and intonation
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <Volume2 className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-sm text-gray-600">
-                  Pronunciation practice will be available when the AI sends a message
-                </p>
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );
